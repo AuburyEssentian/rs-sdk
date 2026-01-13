@@ -257,7 +257,8 @@ async function promptAdvanced() {
         fs.copyFileSync('webclient/out/client.js', 'engine/public/client/client.js');
         fs.copyFileSync('webclient/out/deps.js', 'engine/public/client/deps.js');
     } else if (choice === 'build-java') {
-        child_process.execSync('gradlew build', {
+        const command = process.platform === 'win32' ? 'gradlew' : './gradlew';
+        child_process.execSync(`${command} build`, {
             stdio: 'inherit',
             cwd: 'javaclient'
         });
