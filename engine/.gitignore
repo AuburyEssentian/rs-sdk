@@ -37,9 +37,8 @@ coverage/
 .idea/
 
 # these are artifacts generated from other repos
-public/loader.jar
-public/runescape*.jar
-public/client/*.js.map
+public/
+screenshots/
 
 ### Windows ###
 Thumbs.db

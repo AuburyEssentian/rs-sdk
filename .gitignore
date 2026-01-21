@@ -1,4 +1,9 @@
 node_modules/
 .DS_Store
+runs/
+agent/
+screenshots/
+public-bot/
+public-client/
 
 server.json

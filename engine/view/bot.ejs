@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>2004Scape Bot Client</title>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=0.7">
+
+    <style>
+        html {
+            touch-action: manipulation;
+        }
+
+        body,
+        td,
+        p {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12px;
+            color: white;
+        }
+
+        body {
+            margin: 0px 0px;
+            overflow: auto;
+            background-color: black;
+        }
+
+        #game {
+            padding-left: 0;
+            padding-right: 0;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }
+
+        canvas {
+            width: 765px;
+            height: 503px;
+            display: block;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            outline: none;
+            -webkit-tap-highlight-color: rgba(255, 255, 255, 0);
+            z-index: -1;
+        }
+
+        html:-webkit-full-screen {
+            background-color: black !important;
+        }
+
+        .centered {
+            text-align: center;
+        }
+
+        .green {
+            text-decoration: none;
+            color: #04A800;
+        }
+
+        #controls {
+            margin-top: 3px;
+            margin-bottom: 10px;
+        }
+
+        #controls > a, #controls select, #controls optgroup, #controls optgroup > option, #controls input, #controls button {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12px;
+        }
+
+        select {
+            text-decoration: none;
+            background-color: black;
+            color: #04A800;
+            border: none;
+        }
+
+        #mobilekeyboard-container {
+            display: none;
+        }
+
+        /* Bot Controls Styling */
+        #bot-controls {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #04A800;
+            display: inline-block;
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        #bot-controls input {
+            background: #111;
+            color: #04A800;
+            border: 1px solid #04A800;
+            padding: 4px 8px;
+            margin: 2px;
+        }
+
+        #bot-controls button {
+            background: #04A800;
+            color: black;
+            border: none;
+            padding: 4px 12px;
+            margin: 2px;
+            cursor: pointer;
+        }
+
+        #bot-controls button:hover {
+            background: #06D000;
+        }
+
+        #bot-controls label {
+            color: #04A800;
+            margin-right: 5px;
+        }
+
+        .bot-status {
+            color: #04A800;
+            margin-top: 5px;
+            font-size: 11px;
+        }
+    </style>
+
+    <script>
+        function toggleFullscreen() {
+            if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            } else {
+                let element = document.getElementById('canvas');
+                if (element.requestFullscreen) {
+                    element.requestFullscreen();
+                } else if (element.webkitRequestFullscreen) {
+                    element.webkitRequestFullscreen();
+                } else if (element.mozRequestFullScreen) {
+                    element.mozRequestFullScreen();
+                } else if (element.msRequestFullscreen) {
+                    element.msRequestFullscreen();
+                }
+            }
+        }
+
+        function saveScreenshot() {
+            document.getElementById('screenshot').download = 'screenshot-' + Math.floor(Date.now() / 1000) + '.png';
+            document.getElementById('screenshot').href = document.getElementById('canvas').toDataURL('image/png').replace(/^data:image\/[^;]/, 'data:application/octet-stream');
+        }
+
+        function loadSettings() {
+            // Load saved credentials, or generate new username if none saved
+            const savedUser = localStorage.getItem('bot_username');
+            const savedPass = localStorage.getItem('bot_password');
+            const usernameField = document.getElementById('bot-username');
+            if (savedUser) {
+                usernameField.value = savedUser;
+            } else if (!usernameField.value) {
+                // Generate random if nothing saved and field is empty
+                usernameField.value = 'b' + Math.random().toString(36).substring(2, 7);
+            }
+            if (savedPass) document.getElementById('bot-password').value = savedPass;
+        }
+
+        function setSize(size) {
+            let canvas = document.getElementById('canvas');
+            if (size == null) { size = document.getElementById('size').value; }
+            switch (size) {
+                default:
+                case '1':
+                case '2':
+                case '3':
+                    canvas.style.width = (765 * parseInt(size)) + 'px';
+                    canvas.style.height = (503 * parseInt(size)) + 'px';
+                    canvas.style.maxWidth = 'none';
+                    break;
+                case 'auto':
+                    canvas.style.width = '100%';
+                    canvas.style.height = 'auto';
+                    let maxWidth = ((window.innerHeight - 120) / 503) * 765;
+                    canvas.style.maxWidth = maxWidth + 'px';
+                    break;
+            }
+            document.getElementById('size').value = size;
+            localStorage.setItem('canvasSize', size);
+        }
+    </script>
+</head>
+
+<body>
+    <center>
+        <div id="game">
+            <canvas id="canvas" width="765" height="503">
+                Your browser is not capable of running our web client.
+            </canvas>
+        </div>
+
+        <div class="centered" id="controls">
+            <select id="size" name="size" onchange="setSize();">
+                <optgroup>
+                <option value="1" id="1">1x Size</option>
+                <option value="2" id="2">2x Size</option>
+                <option value="3" id="3">3x Size</option>
+                <option value="auto" id="auto">Auto Sizing</option>
+                </optgroup>
+            </select> |
+            <a class="green" href="#" id="fullscreen" onclick="toggleFullscreen();">Go Fullscreen</a> |
+            <a class="green" href="#" id="screenshot" onclick="saveScreenshot();">Take screenshot</a> |
+            <a class="green" href="/">Standard Client</a>
+        </div>
+
+        <!-- Bot Controls -->
+        <div id="bot-controls">
+            <div>
+                <input type="text" id="bot-username" placeholder="username" value="">
+                <button onclick="randomUsername();" title="Generate random name" style="background:#333;color:#04A800;padding:4px 8px;">🎲</button>
+                <input type="password" id="bot-password" placeholder="password" value="test">
+                <button onclick="quickLogin();" style="background:#04A800;">Login</button>
+                <button onclick="skipTutorial();">Skip Tutorial</button>
+            </div>
+            <div class="bot-status" id="bot-status">Ready</div>
+        </div>
+    </center>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#04A800';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Bot Client Loading...', canvas.width / 2, canvas.height / 2);
+        }
+    </script>
+
+    <script type="module">
+        import { Client } from './bot/client.js';
+
+        <% if (per_deployment_token) { %>
+            document.cookie = 'per_deployment_token="<%= per_deployment_token %>"; Domain=' + window.location.hostname;
+        <% } %>
+
+        // Store client instance globally for bot control
+        let clientInstance = null;
+
+        (() => {
+            clientInstance = new Client(<%= nodeid %>, <%= lowmem %>, <%= members %>);
+            window.gameClient = clientInstance;
+        })();
+
+        // Generate a short random username (keep it very short)
+        function generateUsername() {
+            const rand = Math.random().toString(36).substring(2, 7);
+            return 'b' + rand; // e.g. "b3kf2" (6 chars)
+        }
+
+
+        // Generate new random username
+        window.randomUsername = function() {
+            const username = generateUsername();
+            document.getElementById('bot-username').value = username;
+            document.getElementById('bot-status').textContent = 'Generated: ' + username;
+            return username;
+        };
+
+        // Quick login - uses entered username or generates random if empty
+        window.quickLogin = async function() {
+            let username = document.getElementById('bot-username').value.trim();
+            if (!username) {
+                username = generateUsername();
+                document.getElementById('bot-username').value = username;
+            }
+            const password = document.getElementById('bot-password').value || 'test';
+
+            document.getElementById('bot-status').textContent = 'Logging in as ' + username + '...';
+
+            if (clientInstance && clientInstance.autoLogin) {
+                try {
+                    await clientInstance.autoLogin(username, password);
+                    // Save the username to localStorage on successful login
+                    localStorage.setItem('bot_username', username);
+                    document.getElementById('bot-status').textContent = 'Logged in as ' + username;
+                } catch (e) {
+                    document.getElementById('bot-status').textContent = 'Login error: ' + e.message;
+                }
+            } else {
+                document.getElementById('bot-status').textContent = 'Client not ready, retrying...';
+                setTimeout(() => window.quickLogin(), 1000);
+            }
+        };
+
+        // Fully autonomous auto-login function
+        window.autoLogin = async function() {
+            const username = document.getElementById('bot-username').value;
+            const password = document.getElementById('bot-password').value;
+
+            if (!username || !password) {
+                document.getElementById('bot-status').textContent = 'Error: Please enter username and password';
+                return;
+            }
+
+            // Save credentials
+            localStorage.setItem('bot_username', username);
+            localStorage.setItem('bot_password', password);
+
+            // Use the fully autonomous autoLogin method
+            if (clientInstance && clientInstance.autoLogin) {
+                document.getElementById('bot-status').textContent = 'Logging in as ' + username + '...';
+                try {
+                    await clientInstance.autoLogin(username, password);
+                    document.getElementById('bot-status').textContent = 'Login initiated for ' + username;
+                } catch (e) {
+                    document.getElementById('bot-status').textContent = 'Login error: ' + e.message;
+                }
+            } else {
+                document.getElementById('bot-status').textContent = 'Client not ready. Please wait...';
+                // Retry after a short delay
+                setTimeout(() => window.autoLogin(), 1000);
+            }
+        };
+
+        // Create account and login function
+        window.createAndLogin = async function() {
+            const username = document.getElementById('bot-username').value || generateUsername();
+            const password = document.getElementById('bot-password').value || 'botpass123';
+
+            // Update the input fields with generated/provided values
+            document.getElementById('bot-username').value = username;
+            document.getElementById('bot-password').value = password;
+
+            document.getElementById('bot-status').textContent = 'Logging in as ' + username + '... (new accounts auto-register)';
+
+            // Save credentials
+            localStorage.setItem('bot_username', username);
+            localStorage.setItem('bot_password', password);
+
+            // Use fully autonomous login (server auto-registers new accounts)
+            if (clientInstance && clientInstance.autoLogin) {
+                try {
+                    await clientInstance.autoLogin(username, password);
+                    document.getElementById('bot-status').textContent = 'Login initiated for ' + username;
+                } catch (e) {
+                    document.getElementById('bot-status').textContent = 'Login error: ' + e.message;
+                }
+            } else {
+                document.getElementById('bot-status').textContent = 'Client not ready. Please wait...';
+                setTimeout(() => window.createAndLogin(), 1000);
+            }
+        };
+
+        // Tutorial skip functions
+        let skipTutorialInterval = null;
+
+        window.talkToGuide = function() {
+            if (clientInstance && clientInstance.findNpcByName && clientInstance.talkToNpc) {
+                const guideIndex = clientInstance.findNpcByName('RuneScape Guide');
+                if (guideIndex >= 0) {
+                    clientInstance.talkToNpc(guideIndex);
+                    document.getElementById('bot-status').textContent = 'Talking to RuneScape Guide (index: ' + guideIndex + ')';
+                } else {
+                    document.getElementById('bot-status').textContent = 'RuneScape Guide not found nearby';
+                }
+            } else {
+                document.getElementById('bot-status').textContent = 'Client not ready';
+            }
+        };
+
+        window.skipTutorial = async function() {
+            if (!clientInstance || !clientInstance.skipTutorial) {
+                document.getElementById('bot-status').textContent = 'Client not ready';
+                return;
+            }
+
+            // Auto-retry up to 5 times with delays to handle "waiting for dialog" states
+            for (let attempt = 0; attempt < 5; attempt++) {
+                const result = await clientInstance.skipTutorial();
+                document.getElementById('bot-status').textContent = result.message;
+
+                // If we're waiting for dialog, wait longer for server response
+                if (result.message.includes('Waiting')) {
+                    await new Promise(r => setTimeout(r, 800));
+                    continue;
+                }
+
+                // If successful action, wait a bit then try next step
+                if (result.success) {
+                    await new Promise(r => setTimeout(r, 600));
+                    continue;
+                }
+
+                // No NPC found or other terminal state - stop
+                break;
+            }
+        };
+
+        // Auto-repeat skip tutorial - keeps clicking through dialogs
+        window.autoSkipTutorial = function() {
+            if (skipTutorialInterval) {
+                clearInterval(skipTutorialInterval);
+                skipTutorialInterval = null;
+                document.getElementById('bot-status').textContent = 'Auto-skip stopped';
+                return;
+            }
+
+            document.getElementById('bot-status').textContent = 'Auto-skip started (click again to stop)';
+            skipTutorialInterval = setInterval(async () => {
+                if (clientInstance && clientInstance.skipTutorial) {
+                    const result = await clientInstance.skipTutorial();
+                    document.getElementById('bot-status').textContent = 'Auto: ' + result.message;
+                }
+            }, 600); // Run every 600ms (every tick)
+        };
+
+        // Show current dialog state
+        window.showDialogState = function() {
+            if (!clientInstance) {
+                document.getElementById('bot-status').textContent = 'Client not ready';
+                return;
+            }
+
+            const isDialog = clientInstance.isDialogOpen ? clientInstance.isDialogOpen() : false;
+            const chatId = clientInstance.getChatInterface ? clientInstance.getChatInterface() : -1;
+            const waiting = clientInstance.isWaitingForDialog ? clientInstance.isWaitingForDialog() : false;
+            const options = clientInstance.getDialogOptions ? clientInstance.getDialogOptions() : [];
+
+            let msg = `Dialog: ${isDialog ? 'OPEN' : 'closed'} | Interface: ${chatId} | Waiting: ${waiting}`;
+            if (options.length > 0) {
+                msg += '\nOptions: ' + options.map(o => o.index + ': ' + o.text).join(', ');
+            }
+
+            document.getElementById('bot-status').textContent = msg;
+            console.log('Dialog state:', { isDialog, chatId, waiting, options });
+        };
+
+        // Click specific dialog option (1-5) or continue (0)
+        window.clickDialog = function(optionIndex) {
+            if (!clientInstance || !clientInstance.clickDialogOption) {
+                document.getElementById('bot-status').textContent = 'Client not ready';
+                return;
+            }
+
+            const result = clientInstance.clickDialogOption(optionIndex);
+            document.getElementById('bot-status').textContent = result
+                ? `Clicked dialog option ${optionIndex}`
+                : `Failed to click option ${optionIndex}`;
+        };
+
+        window.listNpcs = function() {
+            if (clientInstance && clientInstance.getNearbyNpcs) {
+                const npcs = clientInstance.getNearbyNpcs();
+                if (npcs.length === 0) {
+                    document.getElementById('bot-status').textContent = 'No NPCs nearby';
+                } else {
+                    const npcList = npcs.slice(0, 5).map(n => n.name + ' (#' + n.index + ')').join(', ');
+                    const more = npcs.length > 5 ? ' +' + (npcs.length - 5) + ' more' : '';
+                    document.getElementById('bot-status').textContent = 'NPCs: ' + npcList + more;
+                    console.log('All nearby NPCs:', npcs);
+                }
+            } else {
+                document.getElementById('bot-status').textContent = 'Client not ready';
+            }
+        };
+
+        window.captureScreenshot = async function() {
+            const canvas = document.getElementById('canvas');
+            if (!canvas) {
+                document.getElementById('bot-status').textContent = 'Canvas not found';
+                return;
+            }
+
+            try {
+                const dataUrl = canvas.toDataURL('image/png');
+                const response = await fetch('/api/screenshot', {
+                    method: 'POST',
+                    body: dataUrl
+                });
+                const result = await response.json();
+                if (result.success) {
+                    document.getElementById('bot-status').textContent = 'Screenshot saved: ' + result.filename;
+                    console.log('Screenshot saved:', result.filename);
+                } else {
+                    document.getElementById('bot-status').textContent = 'Screenshot failed: ' + result.error;
+                }
+            } catch (e) {
+                document.getElementById('bot-status').textContent = 'Screenshot error: ' + e.message;
+            }
+        };
+
+        loadSettings();
+    </script>
+</body>
+
+</html>
