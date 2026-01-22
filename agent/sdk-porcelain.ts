@@ -297,23 +297,75 @@ export class BotActions {
      * Walks to a location and waits until the player arrives (or gets close enough).
      */
     async walkTo(x: number, z: number, tolerance: number = 1): Promise<ActionResult> {
-        const result = await this.sdk.sendWalk(x, z);
-        if (!result.success) {
-            return result;
+        const MAX_STEP = 15; // Max tiles per walk command
+        const MAX_ATTEMPTS = 100; // More attempts for longer walks
+
+        let consecutiveFailures = 0;
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            const state = this.sdk.getState();
+            if (!state?.player) {
+                return { success: false, message: 'No player state' };
+            }
+
+            const px = state.player.worldX;
+            const pz = state.player.worldZ;
+            const dx = x - px;
+            const dz = z - pz;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+
+            // Close enough?
+            if (dist <= tolerance) {
+                return { success: true, message: `Arrived at (${x}, ${z})` };
+            }
+
+            // Calculate intermediate target (move MAX_STEP tiles toward goal)
+            let targetX = x;
+            let targetZ = z;
+            if (dist > MAX_STEP) {
+                const ratio = MAX_STEP / dist;
+                targetX = Math.round(px + dx * ratio);
+                targetZ = Math.round(pz + dz * ratio);
+            }
+
+            // Send walk command
+            const result = await this.sdk.sendWalk(targetX, targetZ);
+            if (!result.success) {
+                consecutiveFailures++;
+                if (consecutiveFailures >= 3) {
+                    return result;
+                }
+                // Small delay and retry
+                await new Promise(r => setTimeout(r, 500));
+                continue;
+            }
+            consecutiveFailures = 0;
+
+            // Wait until we've moved (or timeout)
+            try {
+                await this.sdk.waitForCondition(s => {
+                    if (!s.player) return false;
+                    const newDx = Math.abs(s.player.worldX - targetX);
+                    const newDz = Math.abs(s.player.worldZ - targetZ);
+                    return (newDx <= 2 && newDz <= 2);
+                }, 10000);
+            } catch {
+                // Timeout - check if we moved
+                const afterState = this.sdk.getState();
+                if (afterState?.player?.worldX === px && afterState?.player?.worldZ === pz) {
+                    // Didn't move at all - might be blocked, try smaller steps
+                    for (const [ddx, ddz] of [[0, -5], [5, 0], [0, 5], [-5, 0]]) {
+                        await this.sdk.sendWalk(px + ddx, pz + ddz).catch(() => {});
+                        await new Promise(r => setTimeout(r, 2000));
+                        const newState = this.sdk.getState();
+                        if (newState?.player?.worldX !== px || newState?.player?.worldZ !== pz) {
+                            break; // We moved!
+                        }
+                    }
+                }
+            }
         }
 
-        try {
-            await this.sdk.waitForCondition(state => {
-                if (!state.player) return false;
-                const dx = Math.abs(state.player.worldX - x);
-                const dz = Math.abs(state.player.worldZ - z);
-                return dx <= tolerance && dz <= tolerance;
-            }, 30000);
-
-            return { success: true, message: `Arrived at (${x}, ${z})` };
-        } catch {
-            return { success: false, message: 'Timed out walking' };
-        }
+        return { success: false, message: 'Max walk attempts exceeded' };
     }
 
     // ============ Porcelain: Shop Actions ============
