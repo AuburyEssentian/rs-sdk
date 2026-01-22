@@ -110,6 +110,16 @@ interface ShopState {
     playerItems: ShopItem[];
 }
 
+interface CombatStyleState {
+    currentStyle: number;
+    styles: Array<{
+        index: number;
+        name: string;
+        type: string;
+        trainedSkill: string;
+    }>;
+}
+
 interface BotWorldState {
     tick: number;
     inGame: boolean;
@@ -127,6 +137,7 @@ interface BotWorldState {
     shop: ShopState;
     modalOpen: boolean;
     modalInterface: number;
+    combatStyle?: CombatStyleState;
 }
 
 // Action types
@@ -598,13 +609,13 @@ const server = Bun.serve({
         return new Response('Not found', { status: 404 });
     },
     websocket: {
-        open(ws) {
+        open(ws: unknown) {
             console.log('[Sync] WebSocket connection opened');
         },
-        message(ws, message) {
+        message(ws: unknown, message: string | Buffer) {
             handleClientMessage(ws, message.toString());
         },
-        close(ws) {
+        close(ws: unknown) {
             const username = wsToUsername.get(ws);
             if (username) {
                 const session = botSessions.get(username);

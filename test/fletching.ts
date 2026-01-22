@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Fletching Test - gain 1 level in Fletching
 
-import { setupBotWithTutorialSkip, sleep, BotSession } from './utils/skip_tutorial';
+import { setupBotWithTutorialSkip, sleep, type BotSession } from './utils/skip_tutorial';
 
 const BOT_NAME = process.env.BOT_NAME;
 const MAX_TURNS = 200;
@@ -11,7 +11,7 @@ let rsbot: (...args: string[]) => Promise<{ stdout: string; stderr: string; exit
 async function getSkillLevel(skill: string): Promise<number> {
     const result = await rsbot('skills');
     const match = result.stdout.match(new RegExp(`${skill}:\\s*(\\d+)\\/(\\d+)`, 'i'));
-    return match ? parseInt(match[2]) : 1;
+    return match?.[2] ? parseInt(match[2]) : 1;
 }
 
 async function getInventory(): Promise<any[]> {
@@ -19,7 +19,9 @@ async function getInventory(): Promise<any[]> {
     const items: any[] = [];
     for (const line of result.stdout.split('\n')) {
         const match = line.match(/^\s*\[(\d+)\]\s*(.+?)\s*x(\d+)\s*\(id:\s*(\d+)\)/);
-        if (match) items.push({ slot: parseInt(match[1]), name: match[2].trim(), count: parseInt(match[3]), id: parseInt(match[4]) });
+        if (match?.[1] && match[2] && match[3] && match[4]) {
+            items.push({ slot: parseInt(match[1]), name: match[2].trim(), count: parseInt(match[3]), id: parseInt(match[4]) });
+        }
     }
     return items;
 }
@@ -29,7 +31,9 @@ async function getLocations(): Promise<any[]> {
     const locs: any[] = [];
     for (const line of result.stdout.split('\n')) {
         const match = line.match(/^\s*(.+?)\s+at\s+\((\d+),\s*(\d+)\)\s*-\s*(\d+)\s*tiles,\s*id:\s*(\d+)/);
-        if (match) locs.push({ name: match[1].trim(), x: parseInt(match[2]), z: parseInt(match[3]), distance: parseInt(match[4]), id: parseInt(match[5]) });
+        if (match?.[1] && match[2] && match[3] && match[4] && match[5]) {
+            locs.push({ name: match[1].trim(), x: parseInt(match[2]), z: parseInt(match[3]), distance: parseInt(match[4]), id: parseInt(match[5]) });
+        }
     }
     return locs;
 }
@@ -39,7 +43,9 @@ async function getGroundItems(): Promise<any[]> {
     const items: any[] = [];
     for (const line of result.stdout.split('\n')) {
         const match = line.match(/^\s*(.+?)\s*x(\d+)\s+at\s+\((\d+),\s*(\d+)\)\s*-\s*(\d+)\s*tiles\s*\(id:\s*(\d+)\)/);
-        if (match) items.push({ name: match[1].trim(), x: parseInt(match[3]), z: parseInt(match[4]), id: parseInt(match[6]) });
+        if (match?.[1] && match[3] && match[4] && match[6]) {
+            items.push({ name: match[1].trim(), x: parseInt(match[3]), z: parseInt(match[4]), id: parseInt(match[6]) });
+        }
     }
     return items;
 }

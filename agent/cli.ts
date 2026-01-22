@@ -15,7 +15,7 @@ function getStateDir(): { dir: string; botName: string | null } {
 
     // If --bot flag provided, use agent-state/<bot>/
     if (botFlagIndex !== -1 && args[botFlagIndex + 1]) {
-        const botName = args[botFlagIndex + 1];
+        const botName = args[botFlagIndex + 1]!;
         return {
             dir: join(import.meta.dir, 'agent-state', botName),
             botName
@@ -619,8 +619,8 @@ async function main() {
 
             switch (actionType) {
                 case 'walk': {
-                    const x = parseInt(args[2]);
-                    const z = parseInt(args[3]);
+                    const x = parseInt(args[2] ?? '');
+                    const z = parseInt(args[3] ?? '');
                     const running = args.includes('--run') || args.includes('-r');
                     if (isNaN(x) || isNaN(z)) {
                         console.log('Usage: rsbot action walk <x> <z> [--run]');
@@ -631,7 +631,7 @@ async function main() {
                 }
 
                 case 'talk': {
-                    const npcIndex = parseInt(args[2]);
+                    const npcIndex = parseInt(args[2] ?? '');
                     if (isNaN(npcIndex)) {
                         console.log('Usage: rsbot action talk <npc_index>');
                         return;
@@ -641,8 +641,8 @@ async function main() {
                 }
 
                 case 'interact-npc': {
-                    const npcIndex = parseInt(args[2]);
-                    const optionIndex = parseInt(args[3]);
+                    const npcIndex = parseInt(args[2] ?? '');
+                    const optionIndex = parseInt(args[3] ?? '');
                     if (isNaN(npcIndex) || isNaN(optionIndex)) {
                         console.log('Usage: rsbot action interact-npc <npc_index> <option_index>');
                         return;
@@ -653,10 +653,10 @@ async function main() {
 
                 case 'interact-loc':
                 case 'loc': {
-                    const x = parseInt(args[2]);
-                    const z = parseInt(args[3]);
-                    const locId = parseInt(args[4]);
-                    const optionIndex = parseInt(args[5]) || 1;
+                    const x = parseInt(args[2] ?? '');
+                    const z = parseInt(args[3] ?? '');
+                    const locId = parseInt(args[4] ?? '');
+                    const optionIndex = parseInt(args[5] ?? '') || 1;
                     if (isNaN(x) || isNaN(z) || isNaN(locId)) {
                         console.log('Usage: rsbot action interact-loc <x> <z> <loc_id> [option_index]');
                         return;
@@ -666,9 +666,9 @@ async function main() {
                 }
 
                 case 'pickup': {
-                    const x = parseInt(args[2]);
-                    const z = parseInt(args[3]);
-                    const itemId = parseInt(args[4]);
+                    const x = parseInt(args[2] ?? '');
+                    const z = parseInt(args[3] ?? '');
+                    const itemId = parseInt(args[4] ?? '');
                     if (isNaN(x) || isNaN(z) || isNaN(itemId)) {
                         console.log('Usage: rsbot action pickup <x> <z> <item_id>');
                         return;
@@ -679,8 +679,8 @@ async function main() {
 
                 case 'use-item':
                 case 'use': {
-                    const slot = parseInt(args[2]);
-                    const optionIndex = parseInt(args[3]) || 1;
+                    const slot = parseInt(args[2] ?? '');
+                    const optionIndex = parseInt(args[3] ?? '') || 1;
                     if (isNaN(slot)) {
                         console.log('Usage: rsbot action use-item <slot> [option_index]');
                         return;
@@ -691,8 +691,8 @@ async function main() {
 
                 case 'use-item-on-item':
                 case 'item-on-item': {
-                    const sourceSlot = parseInt(args[2]);
-                    const targetSlot = parseInt(args[3]);
+                    const sourceSlot = parseInt(args[2] ?? '');
+                    const targetSlot = parseInt(args[3] ?? '');
                     if (isNaN(sourceSlot) || isNaN(targetSlot)) {
                         console.log('Usage: rsbot action use-item-on-item <source_slot> <target_slot>');
                         console.log('  source_slot: the item being used (e.g., tinderbox)');
@@ -708,10 +708,10 @@ async function main() {
 
                 case 'use-item-on-loc':
                 case 'item-on-loc': {
-                    const itemSlot = parseInt(args[2]);
-                    const x = parseInt(args[3]);
-                    const z = parseInt(args[4]);
-                    const locId = parseInt(args[5]);
+                    const itemSlot = parseInt(args[2] ?? '');
+                    const x = parseInt(args[3] ?? '');
+                    const z = parseInt(args[4] ?? '');
+                    const locId = parseInt(args[5] ?? '');
                     if (isNaN(itemSlot) || isNaN(x) || isNaN(z) || isNaN(locId)) {
                         console.log('Usage: rsbot action use-item-on-loc <item_slot> <x> <z> <loc_id>');
                         console.log('  item_slot: the inventory slot of the item to use');
@@ -727,7 +727,7 @@ async function main() {
                 }
 
                 case 'drop': {
-                    const slot = parseInt(args[2]);
+                    const slot = parseInt(args[2] ?? '');
                     if (isNaN(slot)) {
                         console.log('Usage: rsbot action drop <slot>');
                         return;
@@ -737,7 +737,7 @@ async function main() {
                 }
 
                 case 'dialog': {
-                    const optionIndex = parseInt(args[2]);
+                    const optionIndex = parseInt(args[2] ?? '');
                     if (isNaN(optionIndex)) {
                         console.log('Usage: rsbot action dialog <option_index>');
                         console.log('  0 = click continue');
@@ -750,7 +750,7 @@ async function main() {
 
                 case 'interface':
                 case 'iface': {
-                    const optionIndex = parseInt(args[2]);
+                    const optionIndex = parseInt(args[2] ?? '');
                     if (isNaN(optionIndex) || optionIndex < 1) {
                         console.log('Usage: rsbot action interface <option_index>');
                         console.log('  1-N = select interface option (for crafting/fletching menus)');
@@ -773,7 +773,7 @@ async function main() {
                 }
 
                 case 'wait': {
-                    const ticks = parseInt(args[2]) || 1;
+                    const ticks = parseInt(args[2] ?? '') || 1;
                     action = { type: 'wait', ticks, reason };
                     break;
                 }
@@ -785,8 +785,8 @@ async function main() {
 
                 case 'shop-buy':
                 case 'buy': {
-                    const slot = parseInt(args[2]);
-                    const amount = parseInt(args[3]) || 1;
+                    const slot = parseInt(args[2] ?? '');
+                    const amount = parseInt(args[3] ?? '') || 1;
                     if (isNaN(slot)) {
                         console.log('Usage: rsbot action shop-buy <slot> [amount]');
                         console.log('  amount: 1, 5, or 10 (default: 1)');
@@ -798,8 +798,8 @@ async function main() {
 
                 case 'shop-sell':
                 case 'sell': {
-                    const slot = parseInt(args[2]);
-                    const amount = parseInt(args[3]) || 1;
+                    const slot = parseInt(args[2] ?? '');
+                    const amount = parseInt(args[3] ?? '') || 1;
                     if (isNaN(slot)) {
                         console.log('Usage: rsbot action shop-sell <slot> [amount]');
                         console.log('  amount: 1, 5, or 10 (default: 1)');
@@ -812,7 +812,7 @@ async function main() {
                 case 'set-combat-style':
                 case 'combat-style':
                 case 'style': {
-                    const style = parseInt(args[2]);
+                    const style = parseInt(args[2] ?? '');
                     if (isNaN(style) || style < 0 || style > 3) {
                         console.log('Usage: rsbot action set-combat-style <style>');
                         console.log('  style: 0 = Accurate (Attack), 1 = Aggressive (Strength), 2 = Defensive (Defence), 3 = Controlled (Shared)');

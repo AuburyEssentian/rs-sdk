@@ -88,7 +88,7 @@ export async function skipTutorial(rsbot: (...args: string[]) => Promise<string>
 
     const inTutorial = async () => {
         const m = (await rsbot('player')).match(/Position:\s*\((\d+)/);
-        return !m || parseInt(m[1]) < 3200;
+        return !m?.[1] || parseInt(m[1]) < 3200;
     };
 
     let n = 0;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Shop Test - buy a hammer from the general store
 
-import { setupBotWithTutorialSkip, sleep, BotSession } from './utils/skip_tutorial';
+import { setupBotWithTutorialSkip, sleep, type BotSession } from './utils/skip_tutorial';
 
 const BOT_NAME = process.env.BOT_NAME;
 const SHOP_LOCATION = { x: 3212, z: 3246 };
@@ -11,7 +11,7 @@ let rsbot: (...args: string[]) => Promise<{ stdout: string; stderr: string; exit
 async function getPosition(): Promise<{ x: number; z: number } | null> {
     const result = await rsbot('player');
     const match = result.stdout.match(/Position:\s*\((\d+),\s*(\d+)\)/);
-    return match ? { x: parseInt(match[1]), z: parseInt(match[2]) } : null;
+    return match?.[1] && match[2] ? { x: parseInt(match[1]), z: parseInt(match[2]) } : null;
 }
 
 async function getInventory(): Promise<any[]> {
@@ -19,7 +19,9 @@ async function getInventory(): Promise<any[]> {
     const items: any[] = [];
     for (const line of result.stdout.split('\n')) {
         const match = line.match(/^\s*\[(\d+)\]\s*(.+?)\s*x(\d+)\s*\(id:\s*(\d+)\)/);
-        if (match) items.push({ slot: parseInt(match[1]), name: match[2].trim(), id: parseInt(match[4]) });
+        if (match?.[1] && match[2] && match[4]) {
+            items.push({ slot: parseInt(match[1]), name: match[2].trim(), id: parseInt(match[4]) });
+        }
     }
     return items;
 }
@@ -29,7 +31,9 @@ async function getNpcs(): Promise<any[]> {
     const npcs: any[] = [];
     for (const line of result.stdout.split('\n')) {
         const match = line.match(/^\s*\[(\d+)\]\s*(.+?)\s+at.*?-\s*(\d+)\s*tiles/);
-        if (match) npcs.push({ index: parseInt(match[1]), name: match[2].trim(), distance: parseInt(match[3]) });
+        if (match?.[1] && match[2] && match[3]) {
+            npcs.push({ index: parseInt(match[1]), name: match[2].trim(), distance: parseInt(match[3]) });
+        }
     }
     return npcs;
 }

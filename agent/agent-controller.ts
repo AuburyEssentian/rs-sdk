@@ -210,46 +210,54 @@ async function startAgentForBot(username: string, goal: string) {
     });
 
     const agentProcess = session.process;
+    const stdout = agentProcess.stdout;
+    const stderr = agentProcess.stderr;
 
     // Read stdout
-    (async () => {
-        const reader = agentProcess!.stdout.getReader();
-        const decoder = new TextDecoder();
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const text = decoder.decode(value);
-                parseAgentOutputForBot(username, text);
-            }
-        } catch (e: any) {
-            // Process ended or stream closed - this is expected
-            if (e?.name !== 'AbortError') {
-                console.error(`[Controller] [${username}] stdout reader error:`, e?.message || e);
-            }
-        }
-    })().catch(() => {}); // Ensure unhandled rejections don't crash
-
-    // Read stderr
-    (async () => {
-        const reader = agentProcess!.stderr.getReader();
-        const decoder = new TextDecoder();
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const text = decoder.decode(value);
-                if (text.trim()) {
-                    addLogEntryForBot(username, 'error', text.trim());
+    if (stdout && typeof stdout !== 'number') {
+        (async () => {
+            const reader = stdout.getReader();
+            const decoder = new TextDecoder();
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const text = decoder.decode(value);
+                    parseAgentOutputForBot(username, text);
+                }
+            } catch (e: unknown) {
+                // Process ended or stream closed - this is expected
+                const err = e as { name?: string; message?: string };
+                if (err?.name !== 'AbortError') {
+                    console.error(`[Controller] [${username}] stdout reader error:`, err?.message || e);
                 }
             }
-        } catch (e: any) {
-            // Process ended or stream closed - this is expected
-            if (e?.name !== 'AbortError') {
-                console.error(`[Controller] [${username}] stderr reader error:`, e?.message || e);
+        })().catch(() => {}); // Ensure unhandled rejections don't crash
+    }
+
+    // Read stderr
+    if (stderr && typeof stderr !== 'number') {
+        (async () => {
+            const reader = stderr.getReader();
+            const decoder = new TextDecoder();
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const text = decoder.decode(value);
+                    if (text.trim()) {
+                        addLogEntryForBot(username, 'error', text.trim());
+                    }
+                }
+            } catch (e: unknown) {
+                // Process ended or stream closed - this is expected
+                const err = e as { name?: string; message?: string };
+                if (err?.name !== 'AbortError') {
+                    console.error(`[Controller] [${username}] stderr reader error:`, err?.message || e);
+                }
             }
-        }
-    })().catch(() => {}); // Ensure unhandled rejections don't crash
+        })().catch(() => {}); // Ensure unhandled rejections don't crash
+    }
 
     console.log(`[Controller] [${username}] Spawned agent process in ${botStateDir}, pid: ${agentProcess.pid}`);
 
@@ -461,7 +469,7 @@ const server = Bun.serve({
 
         if (url.pathname === '/start' && req.method === 'POST') {
             try {
-                const body = await req.json();
+                const body = await req.json() as { goal?: string };
                 console.log(`[Controller] [${botUsername}] POST /start received:`, body);
                 if (body.goal) {
                     startAgentForBot(botUsername, body.goal);

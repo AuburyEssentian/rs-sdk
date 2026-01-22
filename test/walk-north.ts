@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Walk North Test - walk at least 100 tiles north
 
-import { setupBotWithTutorialSkip, sleep, BotSession } from './utils/skip_tutorial';
+import { setupBotWithTutorialSkip, sleep, type BotSession } from './utils/skip_tutorial';
 
 const BOT_NAME = process.env.BOT_NAME;
 const MIN_NORTH_DISTANCE = 100;
@@ -12,7 +12,7 @@ let rsbot: (...args: string[]) => Promise<string>;
 async function getPosition(): Promise<{ x: number; z: number } | null> {
     const result = await rsbot('player');
     const match = result.match(/Position:\s*\((\d+),\s*(\d+)\)/);
-    return match ? { x: parseInt(match[1]), z: parseInt(match[2]) } : null;
+    return match?.[1] && match[2] ? { x: parseInt(match[1]), z: parseInt(match[2]) } : null;
 }
 
 async function runTest(): Promise<boolean> {

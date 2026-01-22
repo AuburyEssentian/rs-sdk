@@ -19,7 +19,7 @@ import { Page } from 'puppeteer';
 import { mkdir, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { setupBotWithTutorialSkip, sleep, BotSession } from './utils/skip_tutorial';
+import { setupBotWithTutorialSkip, sleep, type BotSession } from './utils/skip_tutorial';
 
 // Configuration
 const TURN_DELAY_MS = 600;
@@ -29,7 +29,7 @@ const STYLE_SWITCH_INTERVAL = 10; // Switch combat styles every N turns
 const DEFENCE_WEIGHT = 1.5; // Defence needs to be this much lower to be trained
 
 // Training style: auto-balance trains lowest stat with 2:1 preference for Atk/Str over Def
-const TRAIN_STYLE = 'auto';
+const TRAIN_STYLE: string = 'auto';
 
 // Combat style indices
 const COMBAT_STYLES = {
@@ -113,7 +113,7 @@ async function getPlayerPosition(): Promise<{ x: number; z: number } | null> {
         return null;
     }
     const match = result.stdout.match(/Position:\s*\((\d+),\s*(\d+)\)/);
-    if (match) {
+    if (match?.[1] && match[2]) {
         return { x: parseInt(match[1]), z: parseInt(match[2]) };
     }
     return null;
@@ -127,7 +127,7 @@ async function getPlayerHealth(): Promise<{ current: number; max: number } | nul
     }
     // Parse output like "Health: 10/10" or "HP: 10/10"
     const match = result.stdout.match(/(?:Health|HP):\s*(\d+)\/(\d+)/i);
-    if (match) {
+    if (match?.[1] && match[2]) {
         return { current: parseInt(match[1]), max: parseInt(match[2]) };
     }
     return null;
@@ -192,7 +192,7 @@ async function getInventory(): Promise<any[]> {
     for (const line of lines) {
         // [0] Bronze dagger x1 (id: 1205)
         const match = line.match(/^\s*\[(\d+)\]\s*(.+?)\s*x(\d+)\s*\(id:\s*(\d+)\)/);
-        if (match) {
+        if (match?.[1] && match[2] && match[3] && match[4]) {
             items.push({
                 slot: parseInt(match[1]),
                 name: match[2].trim(),
@@ -212,8 +212,8 @@ async function getNearbyNpcs(): Promise<any[]> {
     for (const line of lines) {
         // #1234: Rat (Lvl 1) - 3 tiles [1:Attack]
         const match = line.match(/^\s*#(\d+):\s*(.+?)(?:\s*\(Lvl (\d+)\))?\s*-\s*(\d+) tiles(?:\s*\[(.+)\])?/);
-        if (match) {
-            const optionsWithIndex = parseOptionsWithIndex(match[5] || '');
+        if (match?.[1] && match[2] && match[4]) {
+            const optionsWithIndex = parseOptionsWithIndex(match[5] ?? '');
             npcs.push({
                 index: parseInt(match[1]),
                 name: match[2].trim(),
@@ -254,7 +254,7 @@ async function getCombatStyle(): Promise<{ currentStyle: number; styles: any[] }
 
     // Parse current style
     const styleMatch = result.stdout.match(/Current Style:\s*(\d+)/);
-    const currentStyle = styleMatch ? parseInt(styleMatch[1]) : 0;
+    const currentStyle = styleMatch?.[1] ? parseInt(styleMatch[1]) : 0;
 
     // Parse available styles
     const styles: any[] = [];
@@ -262,7 +262,7 @@ async function getCombatStyle(): Promise<{ currentStyle: number; styles: any[] }
     for (const line of lines) {
         // [0] Punch (Accurate) - Trains: Attack
         const match = line.match(/^\s*\[(\d+)\]\s*(.+?)\s*\((.+?)\)\s*-\s*Trains:\s*(.+?)(?:\s*<--)?/);
-        if (match) {
+        if (match?.[1] && match[2] && match[3] && match[4]) {
             styles.push({
                 index: parseInt(match[1]),
                 name: match[2].trim(),
@@ -294,7 +294,7 @@ async function getCombatStats(): Promise<{ attack: number; strength: number; def
     for (const line of lines) {
         // Parse lines like "  Attack: 10/10 (1,154 xp)"
         const match = line.match(/^\s*(Attack|Strength|Defence):\s*(\d+)\/(\d+)/i);
-        if (match) {
+        if (match?.[1] && match[3]) {
             const skill = match[1].toLowerCase();
             const baseLevel = parseInt(match[3]); // Use base level, not boosted
             if (skill === 'attack') stats.attack = baseLevel;
@@ -495,7 +495,7 @@ async function getGroundItems(): Promise<any[]> {
     for (const line of lines) {
         // Format: "  Bones x1 at (3222, 3218) - 2 tiles (id: 526)"
         const match = line.match(/^\s*(.+?)\s+x(\d+)\s+at\s+\((\d+),\s*(\d+)\)\s+-\s+(\d+)\s+tiles\s+\(id:\s*(\d+)\)/);
-        if (match) {
+        if (match?.[1] && match[2] && match[3] && match[4] && match[5] && match[6]) {
             items.push({
                 name: match[1].trim(),
                 count: parseInt(match[2]),
@@ -974,15 +974,6 @@ async function runCombatTraining(): Promise<boolean> {
         return false;
     }
 
-    result.endTime = new Date().toISOString();
-
-    // Save results
-    const resultPath = join(RUN_DIR, 'result.json');
-    await writeFile(resultPath, JSON.stringify(result, null, 2));
-    console.log(`\nResults saved to: ${resultPath}`);
-
-    if (session) await session.cleanup();
-    return result.success;
 }
 
 // Run the test

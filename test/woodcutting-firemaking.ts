@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Woodcutting & Firemaking Test - gain 1 level in each, then exit immediately
 
-import { setupBotWithTutorialSkip, sleep, BotSession } from './utils/skip_tutorial';
+import { setupBotWithTutorialSkip, sleep, type BotSession } from './utils/skip_tutorial';
 
 const BOT_NAME = process.env.BOT_NAME;
 
@@ -10,19 +10,20 @@ let rsbot: (...args: string[]) => Promise<{ stdout: string; stderr: string; exit
 async function getLevel(skill: string): Promise<number> {
     const result = await rsbot('skills');
     const match = result.stdout.match(new RegExp(`${skill}:\\s*(\\d+)\\/(\\d+)`, 'i'));
-    return match ? parseInt(match[2]) : 1;
+    return match?.[2] ? parseInt(match[2]) : 1;
 }
 
 async function getInventory(): Promise<{ slot: number; name: string }[]> {
     const result = await rsbot('inventory');
     return [...result.stdout.matchAll(/^\s*\[(\d+)\]\s*(.+?)\s*x\d+/gm)]
-        .map(m => ({ slot: parseInt(m[1]), name: m[2].trim() }));
+        .filter(m => m[1] && m[2])
+        .map(m => ({ slot: parseInt(m[1]!), name: m[2]!.trim() }));
 }
 
 async function findTree(): Promise<{ x: number; z: number; id: number } | null> {
     const result = await rsbot('locations');
     const match = result.stdout.match(/^\s*Tree\s+at\s+\((\d+),\s*(\d+)\).*id:\s*(\d+)/m);
-    return match ? { x: parseInt(match[1]), z: parseInt(match[2]), id: parseInt(match[3]) } : null;
+    return match?.[1] && match[2] && match[3] ? { x: parseInt(match[1]), z: parseInt(match[2]), id: parseInt(match[3]) } : null;
 }
 
 async function getGroundItems(): Promise<{ name: string; x: number; z: number; id: number }[]> {
@@ -30,7 +31,9 @@ async function getGroundItems(): Promise<{ name: string; x: number; z: number; i
     const items: { name: string; x: number; z: number; id: number }[] = [];
     for (const line of result.stdout.split('\n')) {
         const match = line.match(/^\s*(.+?)\s*x\d+\s+at\s+\((\d+),\s*(\d+)\).*\(id:\s*(\d+)\)/);
-        if (match) items.push({ name: match[1].trim(), x: parseInt(match[2]), z: parseInt(match[3]), id: parseInt(match[4]) });
+        if (match?.[1] && match[2] && match[3] && match[4]) {
+            items.push({ name: match[1].trim(), x: parseInt(match[2]), z: parseInt(match[3]), id: parseInt(match[4]) });
+        }
     }
     return items;
 }

@@ -2,7 +2,7 @@
 // rsbot Agent - Claude Agent SDK integration for RuneScape bot
 // Uses rsbot CLI via Bash to interact with the game
 
-import { query, ClaudeAgentOptions } from '@anthropic-ai/claude-agent-sdk';
+import { query, type Options, type SDKResultSuccess } from '@anthropic-ai/claude-agent-sdk';
 import { readFileSync, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
 import { $ } from 'bun';
@@ -299,7 +299,7 @@ Check the current state with \`./rsbot state\` and continue working toward your 
             allowedTools: ['Bash', 'TodoRead', 'TodoWrite'],
             permissionMode: 'bypassPermissions',
             cwd: process.cwd()  // Use bot's state directory (set by agent-controller)
-        } as ClaudeAgentOptions
+        } satisfies Options
     })) {
         if ('type' in message) {
             switch (message.type) {
@@ -341,7 +341,7 @@ Check the current state with \`./rsbot state\` and continue working toward your 
                 case 'user':
                     if (message.message?.content) {
                         for (const block of message.message.content) {
-                            if (block.type === 'tool_result') {
+                            if (typeof block !== 'string' && block.type === 'tool_result') {
                                 const content = block.content;
                                 if (typeof content === 'string' && content.length > 0) {
                                     const output = content.length > 500
@@ -355,9 +355,10 @@ Check the current state with \`./rsbot state\` and continue working toward your 
                     break;
 
                 case 'result':
-                    if (message.result) {
-                        console.log(`[Iteration ${iterationNum} complete]: ${message.result}`);
-                        lastResult = message.result;
+                    if (message.subtype === 'success') {
+                        const successMsg = message as SDKResultSuccess;
+                        console.log(`[Iteration ${iterationNum} complete]: ${successMsg.result}`);
+                        lastResult = successMsg.result;
                     }
                     break;
             }
