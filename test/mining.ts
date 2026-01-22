@@ -3,33 +3,23 @@
  * Mining Test (SDK)
  * Mine rocks until gaining a Mining level.
  *
- * NOTE: This test requires navigation from Lumbridge to SE Varrock mine,
- * which involves complex pathing through buildings and gates.
- * May fail if the path is blocked. See fishing.ts for a simpler test.
+ * Uses a pre-configured save file that spawns the bot at SE Varrock mine,
+ * avoiding the need for complex navigation from Lumbridge.
  */
 
 import { launchBotWithSDK, sleep, type SDKSession } from './utils/browser';
+import { generateSave, TestPresets } from './utils/save-generator';
 
-const BOT_NAME = process.env.BOT_NAME;
+const BOT_NAME = process.env.BOT_NAME ?? `miner${Math.random().toString(36).slice(2, 5)}`;
 const MAX_TURNS = 300;
-
-// SE Varrock mine (copper/tin rocks)
-// Waypoints: follow main road from Lumbridge to Varrock, staying west of buildings
-const WAYPOINTS = [
-    { x: 3220, z: 3220, name: 'West of Lumbridge' },       // Start position
-    { x: 3214, z: 3250, name: 'Road north 1' },            // Follow road
-    { x: 3214, z: 3280, name: 'Road north 2' },            // Continue
-    { x: 3214, z: 3310, name: 'Road north 3' },            // Continue
-    { x: 3214, z: 3340, name: 'Road north 4' },            // Continue
-    { x: 3230, z: 3360, name: 'East toward mine' },        // Turn east
-    { x: 3260, z: 3365, name: 'Approaching mine' },        // Continue east
-    { x: 3283, z: 3367, name: 'SE Varrock mine' },         // The mine
-];
-const MINING_AREA = { x: 3283, z: 3367 };
 
 async function runTest(): Promise<boolean> {
     console.log('=== Mining Test (SDK) ===');
     console.log('Goal: Gain 1 Mining level');
+
+    // Generate save file that starts at the mine
+    console.log(`Creating save file for '${BOT_NAME}' at SE Varrock mine...`);
+    await generateSave(BOT_NAME, TestPresets.MINER_AT_VARROCK);
 
     let session: SDKSession | null = null;
 
@@ -37,6 +27,9 @@ async function runTest(): Promise<boolean> {
         session = await launchBotWithSDK(BOT_NAME, { headless: false });
         const { sdk, bot } = session;
         console.log(`Bot '${session.botName}' ready!`);
+
+        const state = sdk.getState();
+        console.log(`Position: (${state?.player?.worldX}, ${state?.player?.worldZ})`);
 
         const initialLevel = sdk.getSkill('Mining')?.baseLevel ?? 1;
         const initialXp = sdk.getSkill('Mining')?.experience ?? 0;
@@ -49,24 +42,6 @@ async function runTest(): Promise<boolean> {
             return false;
         }
         console.log(`Equipment: ${pickaxe.name}`);
-
-        // Walk to mining area via waypoints
-        console.log(`Walking to SE Varrock mine via waypoints...`);
-        for (const waypoint of WAYPOINTS) {
-            const walkResult = await bot.walkTo(waypoint.x, waypoint.z, 10);
-            if (!walkResult.success) {
-                // Continue trying next waypoint
-            }
-        }
-
-        const afterState = sdk.getState();
-        const dx = Math.abs((afterState?.player?.worldX ?? 0) - MINING_AREA.x);
-        const dz = Math.abs((afterState?.player?.worldZ ?? 0) - MINING_AREA.z);
-        console.log(`Position: (${afterState?.player?.worldX}, ${afterState?.player?.worldZ})`);
-        if (dx > 20 || dz > 20) {
-            console.log(`ERROR: Too far from mining area (need clear path through Lumbridge to Varrock)`);
-            return false;
-        }
 
         let oresMined = 0;
 
@@ -87,8 +62,8 @@ async function runTest(): Promise<boolean> {
             }
 
             // Handle dialogs
-            const state = sdk.getState();
-            if (state?.dialog.isOpen) {
+            const currentState = sdk.getState();
+            if (currentState?.dialog.isOpen) {
                 await sdk.sendClickDialog(0);
                 await sleep(300);
                 continue;
@@ -97,7 +72,6 @@ async function runTest(): Promise<boolean> {
             // Debug nearby locations
             const allLocs = sdk.getNearbyLocs();
             if (turn === 1 || turn % 50 === 0) {
-                // Show all unique location names
                 const uniqueNames = [...new Set(allLocs.map(l => l.name))].slice(0, 15);
                 console.log(`Turn ${turn}: Nearby locs: ${uniqueNames.join(', ')}`);
             }
@@ -106,15 +80,6 @@ async function runTest(): Promise<boolean> {
             const rock = allLocs.find(loc =>
                 loc.optionsWithIndex.some(o => /mine/i.test(o.text))
             );
-
-            // Also try finding by name if Mine option search fails
-            const rockByName = !rock ? allLocs.find(loc =>
-                /^rocks$/i.test(loc.name)
-            ) : null;
-
-            if (rockByName && turn % 30 === 1) {
-                console.log(`Found by name: ${rockByName.name} options: ${rockByName.optionsWithIndex.map(o => o.text).join(', ')}`);
-            }
 
             if (rock) {
                 const mineOption = rock.optionsWithIndex.find(o => /mine/i.test(o.text));
@@ -152,8 +117,8 @@ async function runTest(): Promise<boolean> {
                 // No rock found, walk around
                 if (turn % 10 === 0) {
                     console.log(`Turn ${turn}: Looking for rocks...`);
-                    const px = state?.player?.worldX ?? MINING_AREA.x;
-                    const pz = state?.player?.worldZ ?? MINING_AREA.z;
+                    const px = currentState?.player?.worldX ?? 3285;
+                    const pz = currentState?.player?.worldZ ?? 3365;
                     const dx = Math.floor(Math.random() * 10) - 5;
                     const dz = Math.floor(Math.random() * 10) - 5;
                     await bot.walkTo(px + dx, pz + dz, 2);
