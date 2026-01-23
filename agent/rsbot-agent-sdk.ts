@@ -43,7 +43,6 @@ interface StateDelta {
     itemsLost: Array<{ name: string; count: number }>;
     equipmentChanged: Array<{ slot: string; from?: string; to?: string }>;
     hpChanged?: { from: number; to: number };
-    runEnergyChanged?: { from: number; to: number };
     positionChanged?: { distance: number; to: { x: number; z: number } };
     dialogOpened: boolean;
     dialogClosed: boolean;
@@ -143,17 +142,6 @@ function computeStateDelta(prev: BotWorldState, curr: BotWorldState): StateDelta
         delta.hpChanged = { from: prevHp.level, to: currHp.level };
     }
 
-    // Run energy changes (threshold: >= 10%)
-    if (prev.player && curr.player) {
-        const energyDiff = Math.abs(curr.player.runEnergy - prev.player.runEnergy);
-        if (energyDiff >= 10) {
-            delta.runEnergyChanged = {
-                from: Math.round(prev.player.runEnergy),
-                to: Math.round(curr.player.runEnergy)
-            };
-        }
-    }
-
     // Position changes (threshold: > 2 tiles)
     if (prev.player && curr.player) {
         const dx = curr.player.worldX - prev.player.worldX;
@@ -238,11 +226,6 @@ function formatDelta(delta: StateDelta): string | null {
         const diff = delta.hpChanged.to - delta.hpChanged.from;
         const sign = diff > 0 ? '+' : '';
         lines.push(`HP: ${delta.hpChanged.from} -> ${delta.hpChanged.to} (${sign}${diff})`);
-    }
-
-    // Run energy
-    if (delta.runEnergyChanged) {
-        lines.push(`Run: ${delta.runEnergyChanged.from}% -> ${delta.runEnergyChanged.to}%`);
     }
 
     // Equipment changes
@@ -470,6 +453,8 @@ await bot.pickupItem(/coins/i)    // Pick up item, wait for inventory
 await bot.equipItem(/sword/i)     // Equip item from inventory
 await bot.eatFood(/bread/i)       // Eat food item
 await bot.attackNpc(/chicken/i)   // Attack NPC (doesn't wait for kill)
+await bot.openDoor()              // Open nearest closed door/gate
+await bot.openDoor(/gate/i)       // Open door/gate matching pattern
 await bot.openShop()              // Open shop (finds shopkeeper)
 await bot.openShop(/shop keeper/i)   // Open shop by NPC name
 await bot.openShop(npc)           // Open shop with NPC object
@@ -483,8 +468,6 @@ await bot.dismissBlockingUI()     // Close level-up dialogs etc.
 ## Low-Level Actions (acknowledge only)
 Use these for custom sequences or when porcelain doesn't fit:
 \`\`\`typescript
-await sdk.sendWalk(x, z)                    // Walk to coordinates
-await sdk.sendWalk(x, z, true)              // Run to coordinates
 await sdk.sendInteractLoc(x, z, locId, 1)   // Interact with location (option 1-5)
 await sdk.sendInteractNpc(npcIndex, 1)      // Interact with NPC
 await sdk.sendTalkToNpc(npcIndex)           // Talk to NPC
@@ -564,7 +547,8 @@ return { success: true, message: 'Gear equipped' };
 7. **NEVER ask for clarification** - you are in full autonomous mode. Make your best judgment and act. If something fails, try a different approach. The user cannot respond to questions.
 
 ## Troubleshooting
-- **"I can't reach that!"** - This usually means there's a door or gate blocking the path. Look for nearby doors (\`sdk.findNearbyLoc(/door/i)\`) and open them before retrying. Don't give up on the first failure - solve the pathing problem!
+- When you see msg **"I can't reach that!"** - A door/gate is usually blocking the path. Use \`await bot.openDoor()\` to open it, then retry. The method handles walking to the door and opening it.
+- **Understanding door state**: A door with "Open" option is CLOSED (you can open it). A door with "Close" option is already OPEN. Check \`door.options\` to see current state.
 
 ## Be Opportunistic
 Don't just blindly follow the main goal - notice opportunities as they arise:

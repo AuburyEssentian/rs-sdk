@@ -32,6 +32,7 @@ export interface PickupResult {
     success: boolean;
     item?: InventoryItem;
     message: string;
+    reason?: 'item_not_found' | 'cant_reach' | 'inventory_full' | 'timeout';
 }
 
 export interface TalkResult {
@@ -70,6 +71,14 @@ export interface EatResult {
 export interface AttackResult {
     success: boolean;
     message: string;
+    reason?: 'npc_not_found' | 'no_attack_option' | 'out_of_reach' | 'already_in_combat' | 'timeout';
+}
+
+export interface OpenDoorResult {
+    success: boolean;
+    message: string;
+    reason?: 'door_not_found' | 'no_open_option' | 'already_open' | 'walk_failed' | 'open_failed' | 'timeout';
+    door?: NearbyLoc;
 }
 
 export class BotActions {
@@ -103,6 +112,197 @@ export class BotActions {
 
     // ============ Porcelain: Smart Actions ============
     // These encode domain knowledge about "when is this done?"
+
+    /**
+     * Opens a door or gate. Automatically walks to the door if too far.
+     *
+     * @param target - Door to open (can be NearbyLoc, name string, or RegExp pattern)
+     *                 Defaults to finding nearest door with "Open" option
+     *
+     * Success signals:
+     * - Door now has "Close" option (was "Open" before)
+     * - Door no longer visible at same location (some doors disappear when opened)
+     *
+     * Failure modes:
+     * - door_not_found: No door matching the pattern was found
+     * - no_open_option: Door exists but has no "Open" option (might already be open)
+     * - already_open: Door has "Close" option (already open)
+     * - walk_failed: Could not walk to the door
+     * - open_failed: Clicked open but door didn't change state
+     * - timeout: Waited too long for door to open
+     */
+    async openDoor(target?: NearbyLoc | string | RegExp): Promise<OpenDoorResult> {
+        // Find door
+        const door = this.resolveLocation(target, /door|gate/i);
+        if (!door) {
+            return {
+                success: false,
+                message: 'No door found nearby',
+                reason: 'door_not_found'
+            };
+        }
+
+        // Check if door has "Open" option
+        const openOpt = door.optionsWithIndex.find(o => /^open$/i.test(o.text));
+        if (!openOpt) {
+            // Check if it's already open (has "Close" option)
+            const closeOpt = door.optionsWithIndex.find(o => /^close$/i.test(o.text));
+            if (closeOpt) {
+                return {
+                    success: true,
+                    message: `${door.name} is already open`,
+                    reason: 'already_open',
+                    door
+                };
+            }
+            return {
+                success: false,
+                message: `${door.name} has no Open option (options: ${door.options.join(', ')})`,
+                reason: 'no_open_option',
+                door
+            };
+        }
+
+        // If door is too far, walk to it first
+        // Most doors require being within 1-2 tiles to interact
+        if (door.distance > 2) {
+            const walkResult = await this.walkTo(door.x, door.z, 1);
+            if (!walkResult.success) {
+                return {
+                    success: false,
+                    message: `Could not walk to ${door.name}: ${walkResult.message}`,
+                    reason: 'walk_failed',
+                    door
+                };
+            }
+
+            // Re-find the door after walking (our NearbyLoc might be stale)
+            const doorsNow = this.sdk.getNearbyLocs().filter(l =>
+                l.x === door.x && l.z === door.z && /door|gate/i.test(l.name)
+            );
+            const refreshedDoor = doorsNow[0];
+            if (!refreshedDoor) {
+                // Door not visible anymore - might have been opened by someone else
+                return {
+                    success: true,
+                    message: `${door.name} is no longer visible (may have been opened)`,
+                    door
+                };
+            }
+
+            // Check if still has Open option
+            const refreshedOpenOpt = refreshedDoor.optionsWithIndex.find(o => /^open$/i.test(o.text));
+            if (!refreshedOpenOpt) {
+                const hasClose = refreshedDoor.optionsWithIndex.some(o => /^close$/i.test(o.text));
+                if (hasClose) {
+                    return {
+                        success: true,
+                        message: `${door.name} is already open`,
+                        reason: 'already_open',
+                        door: refreshedDoor
+                    };
+                }
+                return {
+                    success: false,
+                    message: `${door.name} no longer has Open option`,
+                    reason: 'no_open_option',
+                    door: refreshedDoor
+                };
+            }
+
+            // Use refreshed door for interaction
+            await this.sdk.sendInteractLoc(refreshedDoor.x, refreshedDoor.z, refreshedDoor.id, refreshedOpenOpt.opIndex);
+        } else {
+            // Door is close enough, open it directly
+            await this.sdk.sendInteractLoc(door.x, door.z, door.id, openOpt.opIndex);
+        }
+
+        // Wait for door to change state
+        const doorX = door.x;
+        const doorZ = door.z;
+        const startTick = this.sdk.getState()?.tick || 0;
+
+        try {
+            await this.sdk.waitForCondition(state => {
+                // Check for failure messages
+                for (const msg of state.gameMessages) {
+                    if (msg.tick > startTick) {
+                        const text = msg.text.toLowerCase();
+                        if (text.includes("can't reach") || text.includes("cannot reach")) {
+                            return true; // Will check below
+                        }
+                    }
+                }
+
+                // Check if door at same location now has "Close" option (opened)
+                const doorNow = state.nearbyLocs.find(l =>
+                    l.x === doorX && l.z === doorZ && /door|gate/i.test(l.name)
+                );
+                if (!doorNow) {
+                    return true; // Door gone (some doors disappear when opened)
+                }
+                // Check if it now has Close option instead of Open
+                const hasClose = doorNow.optionsWithIndex.some(o => /^close$/i.test(o.text));
+                const hasOpen = doorNow.optionsWithIndex.some(o => /^open$/i.test(o.text));
+                return hasClose && !hasOpen;
+            }, 5000);
+
+            // Check what happened
+            const finalState = this.sdk.getState();
+
+            // Check for "can't reach" message
+            for (const msg of finalState?.gameMessages ?? []) {
+                if (msg.tick > startTick) {
+                    const text = msg.text.toLowerCase();
+                    if (text.includes("can't reach") || text.includes("cannot reach")) {
+                        return {
+                            success: false,
+                            message: `Cannot reach ${door.name} - still blocked`,
+                            reason: 'open_failed',
+                            door
+                        };
+                    }
+                }
+            }
+
+            // Verify door is open
+            const doorAfter = finalState?.nearbyLocs.find(l =>
+                l.x === doorX && l.z === doorZ && /door|gate/i.test(l.name)
+            );
+
+            if (!doorAfter) {
+                return {
+                    success: true,
+                    message: `Opened ${door.name}`,
+                    door
+                };
+            }
+
+            const hasCloseNow = doorAfter.optionsWithIndex.some(o => /^close$/i.test(o.text));
+            if (hasCloseNow) {
+                return {
+                    success: true,
+                    message: `Opened ${door.name}`,
+                    door: doorAfter
+                };
+            }
+
+            return {
+                success: false,
+                message: `${door.name} did not open`,
+                reason: 'open_failed',
+                door: doorAfter
+            };
+
+        } catch {
+            return {
+                success: false,
+                message: `Timeout waiting for ${door.name} to open`,
+                reason: 'timeout',
+                door
+            };
+        }
+    }
 
     /**
      * Chops a tree and waits for logs to appear in inventory.
@@ -237,14 +437,25 @@ export class BotActions {
 
     /**
      * Picks up a ground item and waits for it to appear in inventory.
+     *
+     * Failure modes:
+     * - item_not_found: No item matching the pattern was found on ground
+     * - cant_reach: Path to item is blocked (door, wall, obstacle)
+     * - inventory_full: Inventory is full
+     * - timeout: Waited too long for item to appear in inventory
      */
     async pickupItem(target: GroundItem | string | RegExp): Promise<PickupResult> {
         const item = this.resolveGroundItem(target);
         if (!item) {
-            return { success: false, message: 'Item not found on ground' };
+            return {
+                success: false,
+                message: 'Item not found on ground',
+                reason: 'item_not_found'
+            };
         }
 
         const invCountBefore = this.sdk.getInventory().length;
+        const startTick = this.sdk.getState()?.tick || 0;
         const result = await this.sdk.sendPickup(item.x, item.z, item.id);
 
         if (!result.success) {
@@ -252,13 +463,47 @@ export class BotActions {
         }
 
         try {
-            // Wait for inventory count to increase
-            await this.sdk.waitForCondition(state =>
-                state.inventory.length > invCountBefore,
-                10000
-            );
+            // Wait for: inventory count increases OR failure message
+            const finalState = await this.sdk.waitForCondition(state => {
+                // Check for failure messages (arrived after we started)
+                for (const msg of state.gameMessages) {
+                    if (msg.tick > startTick) {
+                        const text = msg.text.toLowerCase();
+                        if (text.includes("can't reach") || text.includes("cannot reach")) {
+                            return true; // Will check below
+                        }
+                        if (text.includes("inventory") && text.includes("full")) {
+                            return true; // Will check below
+                        }
+                    }
+                }
 
-            // Find the item that was just picked up
+                // Check for success - item in inventory
+                return state.inventory.length > invCountBefore;
+            }, 10000);
+
+            // Check what caused us to exit
+            for (const msg of finalState.gameMessages) {
+                if (msg.tick > startTick) {
+                    const text = msg.text.toLowerCase();
+                    if (text.includes("can't reach") || text.includes("cannot reach")) {
+                        return {
+                            success: false,
+                            message: `Cannot reach ${item.name} at (${item.x}, ${item.z}) - path blocked`,
+                            reason: 'cant_reach'
+                        };
+                    }
+                    if (text.includes("inventory") && text.includes("full")) {
+                        return {
+                            success: false,
+                            message: 'Inventory is full',
+                            reason: 'inventory_full'
+                        };
+                    }
+                }
+            }
+
+            // Success - find the item that was just picked up
             const pickedUp = this.sdk.getInventory().find(i =>
                 i.id === item.id
             );
@@ -269,7 +514,11 @@ export class BotActions {
                 message: `Picked up ${item.name}`
             };
         } catch {
-            return { success: false, message: 'Timed out waiting for pickup' };
+            return {
+                success: false,
+                message: 'Timed out waiting for pickup',
+                reason: 'timeout'
+            };
         }
     }
 
@@ -737,26 +986,106 @@ export class BotActions {
 
     /**
      * Attacks an NPC.
-     * Sends the attack command (doesn't wait for kill - that would take too long).
+     *
+     * @param target - NPC to attack (can be NearbyNpc object, name string, or RegExp pattern)
+     * @param options - Optional settings:
+     *   - waitForCombat: If true, waits to confirm combat started or detect failure (default: false)
+     *   - timeout: How long to wait for combat confirmation in ms (default: 5000)
+     *
+     * When waitForCombat is true, detects these failure modes:
+     * - "I can't reach that!" - obstacle between player and NPC (e.g., fence, wall)
+     * - "Someone else is fighting that" - NPC already in combat with another player
      */
-    async attackNpc(target: NearbyNpc | string | RegExp): Promise<AttackResult> {
+    async attackNpc(
+        target: NearbyNpc | string | RegExp,
+        options?: { waitForCombat?: boolean; timeout?: number }
+    ): Promise<AttackResult> {
+        const waitForCombat = options?.waitForCombat ?? false;
+        const timeout = options?.timeout ?? 5000;
+
         const npc = this.resolveNpc(target);
         if (!npc) {
-            return { success: false, message: `NPC not found: ${target}` };
+            return { success: false, message: `NPC not found: ${target}`, reason: 'npc_not_found' };
         }
 
         // Find "Attack" option
         const attackOpt = npc.optionsWithIndex.find(o => /attack/i.test(o.text));
         if (!attackOpt) {
-            return { success: false, message: `No attack option on ${npc.name}` };
+            return { success: false, message: `No attack option on ${npc.name}`, reason: 'no_attack_option' };
         }
 
+        const startTick = this.sdk.getState()?.tick || 0;
         const result = await this.sdk.sendInteractNpc(npc.index, attackOpt.opIndex);
         if (!result.success) {
             return { success: false, message: result.message };
         }
 
-        return { success: true, message: `Attacking ${npc.name}` };
+        // If not waiting for combat, return immediately (original behavior)
+        if (!waitForCombat) {
+            return { success: true, message: `Attacking ${npc.name}` };
+        }
+
+        // Wait for combat to start or failure message
+        try {
+            const finalState = await this.sdk.waitForCondition(state => {
+                // Check for failure messages (arrived after we sent the attack command)
+                for (const msg of state.gameMessages) {
+                    if (msg.tick > startTick) {
+                        const text = msg.text.toLowerCase();
+                        if (text.includes("can't reach") || text.includes("cannot reach")) {
+                            return true; // Out of reach - exit early
+                        }
+                        if (text.includes("someone else is fighting") || text.includes("already under attack")) {
+                            return true; // Already in combat - exit early
+                        }
+                    }
+                }
+
+                // Check if NPC has disappeared (likely we're fighting it or it died)
+                const targetNpc = state.nearbyNpcs.find(n => n.index === npc.index);
+                if (!targetNpc) {
+                    return true; // NPC gone - combat likely started or it died
+                }
+
+                // Check if we've moved closer to the NPC (walking to attack)
+                // and NPC distance is very close (within melee range)
+                if (targetNpc.distance <= 2) {
+                    return true; // Close enough - combat should be starting
+                }
+
+                return false;
+            }, timeout);
+
+            // Check what caused us to exit the wait
+            for (const msg of finalState.gameMessages) {
+                if (msg.tick > startTick) {
+                    const text = msg.text.toLowerCase();
+                    if (text.includes("can't reach") || text.includes("cannot reach")) {
+                        return {
+                            success: false,
+                            message: `Cannot reach ${npc.name} - obstacle in the way`,
+                            reason: 'out_of_reach'
+                        };
+                    }
+                    if (text.includes("someone else is fighting") || text.includes("already under attack")) {
+                        return {
+                            success: false,
+                            message: `${npc.name} is already in combat`,
+                            reason: 'already_in_combat'
+                        };
+                    }
+                }
+            }
+
+            // No failure message found - combat likely started
+            return { success: true, message: `Attacking ${npc.name}` };
+        } catch {
+            return {
+                success: false,
+                message: `Timeout waiting to attack ${npc.name}`,
+                reason: 'timeout'
+            };
+        }
     }
 
     // ============ Porcelain: Condition Helpers ============
