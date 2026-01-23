@@ -116,7 +116,7 @@ export async function launchBotBrowser(
     const page = await browser.newPage();
 
     // Optimize page for lower resource usage
-    await page.setViewport({ width: 400, height: 300 });  // Minimal viewport
+    await page.setViewport({ width: 800, height: 600 });  // Minimal viewport
     page.setDefaultTimeout(60000);  // 60s timeout for all operations
 
     // Navigate to bot URL with all params - page handles auto-login, fps, etc.

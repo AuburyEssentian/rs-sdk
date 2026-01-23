@@ -201,15 +201,21 @@
 
         // Auto-initialize based on URL params (called after client is ready)
         async function autoInitFromUrlParams() {
-            const params = window.urlParams;
-            if (!params) return;
+            // Read URL params directly (loadSettings may not have run yet)
+            const urlParams = new URLSearchParams(window.location.search);
+            const params = {
+                password: urlParams.get('password'),
+                agentMode: urlParams.get('agentMode') === 'true',
+                fps: urlParams.has('fps') ? parseInt(urlParams.get('fps'), 10) : null
+            };
 
             const client = window.gameClient;
             if (!client) return;
 
             // If password param provided, auto-login
             if (params.password) {
-                const username = document.getElementById('bot-username').value;
+                // Get username from URL or generate random
+                const username = urlParams.get('bot') || 'b' + Math.random().toString(36).substring(2, 7);
                 document.getElementById('bot-status').textContent = 'Auto-logging in as ' + username + '...';
 
                 // Wait for autoLogin to be available
