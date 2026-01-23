@@ -12,6 +12,55 @@ const BOT_URL = process.env.BOT_URL || 'http://localhost:8888/bot';
 
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Shared browser instance for multi-bot scenarios
+let sharedBrowser: Browser | null = null;
+let sharedBrowserRefCount = 0;
+
+// Chrome args optimized for lower resource usage
+const LIGHTWEIGHT_CHROME_ARGS = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--mute-audio',
+    '--disable-gpu',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
+    '--disable-ipc-flooding-protection',
+    '--js-flags=--max-old-space-size=128',  // Limit JS heap per page
+];
+
+/**
+ * Get or create a shared browser instance.
+ * Use this for load tests to avoid spawning many browser processes.
+ */
+export async function getSharedBrowser(headless: boolean = true): Promise<Browser> {
+    if (!sharedBrowser || !sharedBrowser.connected) {
+        sharedBrowser = await puppeteer.launch({
+            headless,
+            args: LIGHTWEIGHT_CHROME_ARGS
+        });
+    }
+    sharedBrowserRefCount++;
+    return sharedBrowser;
+}
+
+/**
+ * Release a reference to the shared browser.
+ * Closes the browser when all references are released.
+ */
+export async function releaseSharedBrowser(): Promise<void> {
+    sharedBrowserRefCount--;
+    if (sharedBrowserRefCount <= 0 && sharedBrowser) {
+        await sharedBrowser.close();
+        sharedBrowser = null;
+        sharedBrowserRefCount = 0;
+    }
+}
+
 export interface BrowserSession {
     browser: Browser;
     page: Page;
@@ -27,24 +76,32 @@ export interface SDKSession extends BrowserSession {
 /**
  * Launches a browser with the game client and waits for login.
  * Does NOT skip tutorial - use launchBotWithSDK for that.
+ *
+ * @param useSharedBrowser - If true, uses a shared browser instance (for load tests)
  */
 export async function launchBotBrowser(
     botName?: string,
-    options: { headless?: boolean } = {}
+    options: { headless?: boolean; useSharedBrowser?: boolean } = {}
 ): Promise<BrowserSession> {
     const name = botName || 'bot' + Math.random().toString(36).substring(2, 5);
     const headless = options.headless ?? true;
+    const useShared = options.useSharedBrowser ?? false;
 
-    const browser = await puppeteer.launch({
-        headless,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--mute-audio'  // Mute all audio
-        ]
-    });
+    let browser: Browser;
+    if (useShared) {
+        browser = await getSharedBrowser(headless);
+    } else {
+        browser = await puppeteer.launch({
+            headless,
+            args: LIGHTWEIGHT_CHROME_ARGS
+        });
+    }
 
     const page = await browser.newPage();
+
+    // Optimize page for lower resource usage
+    await page.setViewport({ width: 800, height: 600 });
+    await page.setCacheEnabled(false);  // Reduce memory usage
 
     // Navigate to bot URL with bot name
     await page.goto(`${BOT_URL}?bot=${name}`, { waitUntil: 'networkidle2' });
@@ -84,8 +141,13 @@ export async function launchBotBrowser(
         page,
         botName: name,
         cleanup: async () => {
-            console.log(`[Browser] Closing browser for '${name}'`);
-            await browser.close();
+            console.log(`[Browser] Closing page for '${name}'`);
+            await page.close();
+            if (useShared) {
+                await releaseSharedBrowser();
+            } else {
+                await browser.close();
+            }
         }
     };
 }
@@ -121,15 +183,20 @@ export async function skipTutorial(sdk: BotSDK, maxAttempts: number = 30): Promi
 /**
  * Launches browser, connects SDK, and skips tutorial.
  * This is the main entry point for most tests.
+ *
+ * @param useSharedBrowser - If true, uses a shared browser instance (for load tests)
  */
 export async function launchBotWithSDK(
     botName?: string,
-    options: { headless?: boolean; skipTutorial?: boolean } = {}
+    options: { headless?: boolean; skipTutorial?: boolean; useSharedBrowser?: boolean } = {}
 ): Promise<SDKSession> {
     const shouldSkipTutorial = options.skipTutorial ?? true;
 
     // Launch browser
-    const browser = await launchBotBrowser(botName, options);
+    const browser = await launchBotBrowser(botName, {
+        headless: options.headless,
+        useSharedBrowser: options.useSharedBrowser
+    });
 
     // Connect SDK
     const sdk = new BotSDK({ botUsername: browser.botName });
