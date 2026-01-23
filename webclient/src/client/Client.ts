@@ -3204,6 +3204,7 @@ export class Client extends GameShell {
                 this.macroMinimapAngle = ((Math.random() * 120.0) | 0) - 60;
                 this.macroMinimapZoom = ((Math.random() * 30.0) | 0) - 20;
                 this.orbitCameraYaw = (((Math.random() * 20.0) | 0) - 10) & 0x7ff;
+                this.orbitCameraPitch = 383; // max pitch for overhead view
 
                 this.minimapLevel = -1;
                 this.flagSceneTileX = 0;

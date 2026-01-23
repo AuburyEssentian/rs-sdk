@@ -46,6 +46,16 @@ export interface ShopResult {
     message: string;
 }
 
+export interface ShopSellResult {
+    success: boolean;
+    message: string;
+    amountSold?: number;
+    rejected?: boolean;  // True if shop refused to buy this item
+}
+
+// Valid sell amounts - maps to shop interface buttons
+export type SellAmount = 1 | 5 | 10 | 'all';
+
 export interface EquipResult {
     success: boolean;
     message: string;
@@ -449,8 +459,16 @@ export class BotActions {
      * Sells an item to an open shop.
      * Waits for the item to leave inventory (or count to decrease).
      * Accepts InventoryItem, ShopItem (from shop.playerItems), or a pattern.
+     *
+     * @param target - Item to sell (InventoryItem, ShopItem, string pattern, or RegExp)
+     * @param amount - Amount to sell: 1, 5, 10, or 'all' (default: 1)
+     *
+     * Error detection:
+     * - "You can't sell this item to a shop." - item is coins
+     * - "You can't sell this item." - item is untradeable
+     * - "You can't sell this item to this shop." - shop doesn't buy this item type
      */
-    async sellToShop(target: InventoryItem | ShopItem | string | RegExp, amount: number = 1): Promise<ShopResult> {
+    async sellToShop(target: InventoryItem | ShopItem | string | RegExp, amount: SellAmount = 1): Promise<ShopSellResult> {
         const shop = this.sdk.getState()?.shop;
         if (!shop?.isOpen) {
             return { success: false, message: 'Shop is not open' };
@@ -463,27 +481,179 @@ export class BotActions {
         }
 
         const countBefore = sellItem.count;
+        const startTick = this.sdk.getState()?.tick || 0;
 
-        const result = await this.sdk.sendShopSell(sellItem.slot, amount);
+        // For 'all', we need to sell in batches of 10 until done
+        if (amount === 'all') {
+            return this.sellAllToShop(sellItem, startTick);
+        }
+
+        // Valid amounts are 1, 5, 10
+        const validAmount = [1, 5, 10].includes(amount) ? amount : 1;
+
+        const result = await this.sdk.sendShopSell(sellItem.slot, validAmount);
         if (!result.success) {
             return { success: false, message: result.message };
         }
 
+        // Check for rejection messages or successful sale
         try {
-            // Wait for item count to decrease or item to disappear
-            await this.sdk.waitForCondition(state => {
+            const finalState = await this.sdk.waitForCondition(state => {
+                // Check for rejection messages (arrived after we started)
+                for (const msg of state.gameMessages) {
+                    if (msg.tick > startTick) {
+                        const text = msg.text.toLowerCase();
+                        if (text.includes("can't sell this item")) {
+                            return true; // Rejected - exit early
+                        }
+                    }
+                }
+
+                // Check for successful sale (item count decreased)
                 const item = state.shop.playerItems.find(i => i.id === sellItem.id);
-                if (!item) return true;  // Item gone
+                if (!item) return true;  // Item gone completely
                 return item.count < countBefore;  // Count decreased
             }, 5000);
 
+            // Check if it was a rejection
+            for (const msg of finalState.gameMessages) {
+                if (msg.tick > startTick) {
+                    const text = msg.text.toLowerCase();
+                    if (text.includes("can't sell this item to this shop")) {
+                        return {
+                            success: false,
+                            message: `Shop doesn't buy ${sellItem.name}`,
+                            rejected: true
+                        };
+                    }
+                    if (text.includes("can't sell this item to a shop")) {
+                        return {
+                            success: false,
+                            message: `Cannot sell ${sellItem.name} to any shop`,
+                            rejected: true
+                        };
+                    }
+                    if (text.includes("can't sell this item")) {
+                        return {
+                            success: false,
+                            message: `${sellItem.name} is not tradeable`,
+                            rejected: true
+                        };
+                    }
+                }
+            }
+
+            // Calculate actual amount sold
+            const itemAfter = finalState.shop.playerItems.find(i => i.id === sellItem.id);
+            const countAfter = itemAfter?.count ?? 0;
+            const amountSold = countBefore - countAfter;
+
             return {
                 success: true,
-                message: `Sold ${sellItem.name} x${amount}`
+                message: `Sold ${sellItem.name} x${amountSold}`,
+                amountSold
             };
         } catch {
-            return { success: false, message: `Failed to sell ${sellItem.name}` };
+            return { success: false, message: `Failed to sell ${sellItem.name} (timeout)` };
         }
+    }
+
+    /**
+     * Sells all of an item to the shop by repeatedly selling 10 at a time.
+     * Stops if the shop rejects the item or we run out.
+     */
+    private async sellAllToShop(sellItem: ShopItem, startTick: number): Promise<ShopSellResult> {
+        let totalSold = 0;
+
+        while (true) {
+            const state = this.sdk.getState();
+            if (!state?.shop.isOpen) {
+                break;
+            }
+
+            const currentItem = state.shop.playerItems.find(i => i.id === sellItem.id);
+            if (!currentItem || currentItem.count === 0) {
+                break; // All sold
+            }
+
+            const countBefore = currentItem.count;
+            const sellAmount = Math.min(10, countBefore);
+
+            const result = await this.sdk.sendShopSell(sellItem.slot, sellAmount);
+            if (!result.success) {
+                break;
+            }
+
+            // Wait for sale to complete or rejection
+            try {
+                const finalState = await this.sdk.waitForCondition(s => {
+                    // Check for rejection
+                    for (const msg of s.gameMessages) {
+                        if (msg.tick > startTick) {
+                            if (msg.text.toLowerCase().includes("can't sell this item")) {
+                                return true;
+                            }
+                        }
+                    }
+
+                    // Check for count decrease
+                    const item = s.shop.playerItems.find(i => i.id === sellItem.id);
+                    if (!item) return true;
+                    return item.count < countBefore;
+                }, 3000);
+
+                // Check for rejection
+                for (const msg of finalState.gameMessages) {
+                    if (msg.tick > startTick) {
+                        const text = msg.text.toLowerCase();
+                        if (text.includes("can't sell this item to this shop")) {
+                            return {
+                                success: totalSold > 0,
+                                message: totalSold > 0
+                                    ? `Sold ${sellItem.name} x${totalSold}, then shop stopped buying`
+                                    : `Shop doesn't buy ${sellItem.name}`,
+                                amountSold: totalSold,
+                                rejected: true
+                            };
+                        }
+                        if (text.includes("can't sell this item")) {
+                            return {
+                                success: false,
+                                message: `${sellItem.name} cannot be sold`,
+                                amountSold: totalSold,
+                                rejected: true
+                            };
+                        }
+                    }
+                }
+
+                // Count what was sold
+                const itemAfter = finalState.shop.playerItems.find(i => i.id === sellItem.id);
+                const countAfter = itemAfter?.count ?? 0;
+                totalSold += (countBefore - countAfter);
+
+                // If nothing sold, exit
+                if (countBefore === countAfter) {
+                    break;
+                }
+
+            } catch {
+                break; // Timeout
+            }
+        }
+
+        if (totalSold === 0) {
+            return {
+                success: false,
+                message: `Failed to sell any ${sellItem.name}`
+            };
+        }
+
+        return {
+            success: true,
+            message: `Sold ${sellItem.name} x${totalSold}`,
+            amountSold: totalSold
+        };
     }
 
     // ============ Porcelain: Equipment & Combat ============

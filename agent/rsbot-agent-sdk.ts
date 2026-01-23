@@ -441,7 +441,20 @@ sdk.getNearbyNpcs()               // All nearby NPCs
 sdk.getNearbyLocs()               // All nearby locations
 sdk.getGroundItems()              // All ground items
 sdk.getDialog()                   // Current dialog state
+
+// Player position includes floor level:
+const state = sdk.getState();
+state.player.worldX               // X coordinate
+state.player.worldZ               // Z coordinate
+state.player.level                // Floor: 0=ground, 1=upstairs, 2=2nd floor, 3=3rd floor
 \`\`\`
+
+## Navigation Tips
+- If you can't walk somewhere, check \`player.level\` - you may need stairs/ladders!
+- Look for locs with names like: "Staircase", "Ladder", "Trapdoor"
+- Stairs options: "Climb-up", "Climb-down", "Climb"
+- Ladder options: "Climb-up", "Climb-down", "Climb"
+- Buildings often have shops/NPCs on upper floors
 
 ## Smart Actions (wait for completion)
 These handle dialogs, wait for XP/items, and return \`{success, message}\`.

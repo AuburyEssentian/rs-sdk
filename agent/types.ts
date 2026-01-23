@@ -10,6 +10,7 @@ export interface PlayerState {
     z: number;
     worldX: number;
     worldZ: number;
+    /** Map plane/floor: 0=ground, 1=first floor (upstairs), 2=second floor, 3=third floor. Check this when stuck - you may need stairs/ladders! */
     level: number;
     runEnergy: number;
     runWeight: number;
