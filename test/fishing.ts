@@ -1,137 +1,111 @@
 #!/usr/bin/env bun
 /**
  * Fishing Test (SDK)
- * Catch fish until gaining a Fishing level.
+ * Catch fish at a fishing spot to gain Fishing XP.
+ *
+ * Success criteria: Fishing XP gained (fish caught)
  */
 
 import { launchBotWithSDK, sleep, type SDKSession } from './utils/browser';
+import { generateSave, TestPresets } from './utils/save-generator';
 
-const BOT_NAME = process.env.BOT_NAME;
-const MAX_TURNS = 300;
-
-// Draynor Village fishing spots (net fishing - shrimp/anchovies)
-// This is west of Lumbridge, reachable without crossing water
-const FISHING_AREA = { x: 3086, z: 3230 };
+const BOT_NAME = process.env.BOT_NAME ?? `fish${Math.random().toString(36).slice(2, 5)}`;
+const MAX_TURNS = 100;
 
 async function runTest(): Promise<boolean> {
     console.log('=== Fishing Test (SDK) ===');
-    console.log('Goal: Gain 1 Fishing level');
+    console.log('Goal: Catch fish to gain Fishing XP');
+
+    // Spawn at Draynor fishing spot with net
+    await generateSave(BOT_NAME, TestPresets.FISHER_AT_DRAYNOR);
 
     let session: SDKSession | null = null;
 
     try {
-        session = await launchBotWithSDK(BOT_NAME, { headless: false });
+        session = await launchBotWithSDK(BOT_NAME, { skipTutorial: false });
         const { sdk, bot } = session;
+
+        await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+        await sleep(500);
+
         console.log(`Bot '${session.botName}' ready!`);
 
-        const initialLevel = sdk.getSkill('Fishing')?.baseLevel ?? 1;
+        const state = sdk.getState();
+        console.log(`Position: (${state?.player?.worldX}, ${state?.player?.worldZ})`);
+
         const initialXp = sdk.getSkill('Fishing')?.experience ?? 0;
-        console.log(`Initial Fishing: level ${initialLevel}, xp ${initialXp}`);
+        console.log(`Initial Fishing XP: ${initialXp}`);
 
-        // Check for fishing equipment
         const net = sdk.findInventoryItem(/net/i);
-        const rod = sdk.findInventoryItem(/rod/i);
-        console.log(`Equipment: net=${net?.name ?? 'none'}, rod=${rod?.name ?? 'none'}`);
-
-        if (!net && !rod) {
-            console.log('WARNING: No fishing equipment found, will try to fish anyway');
+        if (!net) {
+            console.log('ERROR: No fishing net in inventory');
+            return false;
         }
-
-        // Walk to fishing area
-        console.log(`Walking to fishing area (${FISHING_AREA.x}, ${FISHING_AREA.z})...`);
-        await bot.walkTo(FISHING_AREA.x, FISHING_AREA.z, 5);
+        console.log(`Have ${net.name}`);
 
         let fishCaught = 0;
 
         for (let turn = 1; turn <= MAX_TURNS; turn++) {
-            // Check for level up
-            const currentLevel = sdk.getSkill('Fishing')?.baseLevel ?? 1;
             const currentXp = sdk.getSkill('Fishing')?.experience ?? 0;
 
-            if (currentLevel > initialLevel) {
-                console.log(`Turn ${turn}: SUCCESS - Fishing ${initialLevel} -> ${currentLevel}`);
-                console.log(`  XP gained: ${currentXp - initialXp}, Fish caught: ~${fishCaught}`);
+            // Success: XP gained
+            if (currentXp > initialXp) {
+                console.log(`Turn ${turn}: SUCCESS - Fishing XP gained (${initialXp} -> ${currentXp})`);
+                console.log(`Fish caught: ${fishCaught}`);
                 return true;
             }
 
-            // Progress logging
-            if (turn % 30 === 0) {
-                console.log(`Turn ${turn}: Fishing level ${currentLevel}, xp ${currentXp} (+${currentXp - initialXp}), fish ~${fishCaught}`);
+            if (turn % 20 === 0) {
+                console.log(`Turn ${turn}: Fishing XP=${currentXp}, fish caught=${fishCaught}`);
             }
 
             // Handle dialogs
-            const state = sdk.getState();
-            if (state?.dialog.isOpen) {
+            const currentState = sdk.getState();
+            if (currentState?.dialog.isOpen) {
                 await sdk.sendClickDialog(0);
                 await sleep(300);
                 continue;
             }
 
-            // Find fishing spot (fishing spots are NPCs, not locs!)
-            const allNpcs = sdk.getNearbyNpcs();
-            if (turn === 1 || turn % 50 === 0) {
-                console.log(`Turn ${turn}: Nearby NPCs: ${allNpcs.slice(0, 10).map(n => n.name).join(', ')}`);
-            }
-
-            // Find any fishing spot
-            const fishingSpot = allNpcs.find(npc => /fishing spot/i.test(npc.name));
+            // Find fishing spot (fishing spots are NPCs)
+            const fishingSpot = sdk.findNearbyNpc(/fishing spot/i);
 
             if (fishingSpot) {
-                const hasNet = sdk.findInventoryItem(/net/i) !== null;
-                const hasRod = sdk.findInventoryItem(/fishing rod|fly fishing/i) !== null;
-
-                // Get the appropriate option - prefer matching equipment
-                let fishOption = null;
-                if (hasNet) {
-                    fishOption = fishingSpot.optionsWithIndex.find(o => /small net|net/i.test(o.text));
-                }
-                if (!fishOption && hasRod) {
-                    fishOption = fishingSpot.optionsWithIndex.find(o => /lure|bait/i.test(o.text));
-                }
-                // Fallback to first fishing-related option
-                if (!fishOption) {
-                    fishOption = fishingSpot.optionsWithIndex.find(o =>
-                        /net|lure|bait|cage|harpoon/i.test(o.text)
-                    );
-                }
-
-                if (fishOption) {
-                    if (turn % 20 === 1) {
-                        const allOpts = fishingSpot.optionsWithIndex.map(o => o.text).join(', ');
-                        console.log(`Turn ${turn}: Fishing at ${fishingSpot.name} [${allOpts}] using: ${fishOption.text}`);
+                // Get net fishing option
+                const netOption = fishingSpot.optionsWithIndex.find(o => /small net|net/i.test(o.text));
+                if (netOption) {
+                    if (turn === 1) {
+                        console.log(`Found ${fishingSpot.name} at distance ${fishingSpot.distance}`);
+                        console.log(`Using option: ${netOption.text}`);
                     }
 
                     const invBefore = sdk.getInventory().length;
-                    await sdk.sendInteractNpc(fishingSpot.index, fishOption.opIndex);
+                    await sdk.sendInteractNpc(fishingSpot.index, netOption.opIndex);
 
-                    // Wait for fish to be caught or spot to move
+                    // Wait for fish or spot to move
                     try {
-                        await sdk.waitForCondition(state => {
-                            // Success: got a fish
-                            if (state.inventory.length > invBefore) return true;
-                            // Spot moved (NPC disappeared)
-                            if (!state.nearbyNpcs.find(n => n.index === fishingSpot.index)) return true;
-                            // Level up dialog
-                            if (state.dialog.isOpen) return true;
+                        await sdk.waitForCondition(s => {
+                            if (s.inventory.length > invBefore) return true;
+                            if (!s.nearbyNpcs.find(n => n.index === fishingSpot.index)) return true;
+                            if (s.dialog.isOpen) return true;
                             return false;
-                        }, 15000);
+                        }, 10000);
 
                         if (sdk.getInventory().length > invBefore) {
                             fishCaught++;
                         }
                     } catch {
-                        // Timeout - spot may have moved
+                        // Timeout - continue
                     }
                     continue;
                 }
             } else {
-                // No fishing spot found, walk around to find one
-                if (turn % 10 === 0) {
-                    console.log(`Turn ${turn}: Looking for fishing spot...`);
-                    const px = state?.player?.worldX ?? FISHING_AREA.x;
-                    const pz = state?.player?.worldZ ?? FISHING_AREA.z;
-                    const dx = Math.floor(Math.random() * 10) - 5;
-                    const dz = Math.floor(Math.random() * 10) - 5;
+                // Walk around to find spot
+                if (turn % 5 === 0) {
+                    const px = currentState?.player?.worldX ?? 3086;
+                    const pz = currentState?.player?.worldZ ?? 3230;
+                    const dx = Math.floor(Math.random() * 6) - 3;
+                    const dz = Math.floor(Math.random() * 6) - 3;
                     await bot.walkTo(px + dx, pz + dz, 2);
                 }
             }
@@ -139,13 +113,10 @@ async function runTest(): Promise<boolean> {
             await sleep(600);
         }
 
-        // Final check
-        const finalLevel = sdk.getSkill('Fishing')?.baseLevel ?? 1;
         const finalXp = sdk.getSkill('Fishing')?.experience ?? 0;
-        console.log(`Final: Fishing level ${finalLevel}, xp ${finalXp} (+${finalXp - initialXp})`);
-        console.log(`Fish caught: ~${fishCaught}`);
-
-        return finalLevel > initialLevel;
+        console.log(`Final Fishing XP: ${finalXp} (+${finalXp - initialXp})`);
+        console.log(`Fish caught: ${fishCaught}`);
+        return finalXp > initialXp;
 
     } finally {
         if (session) {

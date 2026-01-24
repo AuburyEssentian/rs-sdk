@@ -15,7 +15,7 @@ async function runTest(): Promise<boolean> {
 
     try {
         // launchBotWithSDK handles everything: browser, SDK, tutorial skip
-        session = await launchBotWithSDK(BOT_NAME, { headless: false });
+        session = await launchBotWithSDK(BOT_NAME);
         console.log(`Bot '${session.botName}' ready in Lumbridge!`);
 
         // Verify we're out of tutorial

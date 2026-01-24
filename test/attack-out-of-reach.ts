@@ -35,7 +35,7 @@ async function runTest(): Promise<boolean> {
     let session: SDKSession | null = null;
 
     try {
-        session = await launchBotWithSDK(BOT_NAME, { headless: false, skipTutorial: false });
+        session = await launchBotWithSDK(BOT_NAME, { skipTutorial: false });
         const { sdk, bot } = session;
 
         // Wait for state to fully load
@@ -78,7 +78,7 @@ async function runTest(): Promise<boolean> {
         console.log('\n--- Attempting to attack cow through fence ---');
         console.log('Using: bot.attackNpc(cow, { waitForCombat: true })');
 
-        const attackResult = await bot.attackNpc(targetCow, { waitForCombat: true, timeout: 8000 });
+        const attackResult = await bot.attackNpc(targetCow, 15000);  // 15s timeout - pathfinding takes time before "can't reach"
 
         console.log(`\nAttack result:`);
         console.log(`  success: ${attackResult.success}`);

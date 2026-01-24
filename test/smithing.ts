@@ -34,7 +34,7 @@ async function runTest(): Promise<boolean> {
     let session: SDKSession | null = null;
 
     try {
-        session = await launchBotWithSDK(BOT_NAME, { headless: false });
+        session = await launchBotWithSDK(BOT_NAME);
         const { sdk, bot } = session;
         console.log(`Bot '${session.botName}' ready!`);
 

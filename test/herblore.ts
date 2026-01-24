@@ -38,7 +38,7 @@ async function runTest(): Promise<boolean> {
     let session: SDKSession | null = null;
 
     try {
-        session = await launchBotWithSDK(BOT_NAME, { headless: false, skipTutorial: false });
+        session = await launchBotWithSDK(BOT_NAME, { skipTutorial: false });
         const { sdk } = session;
 
         // Wait for state to fully load

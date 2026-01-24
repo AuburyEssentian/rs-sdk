@@ -24,7 +24,7 @@ async function runTest(): Promise<boolean> {
     console.log(`Creating save file for '${BOT_NAME}'...`);
     await generateSave(BOT_NAME, {
         position: ALKHARID_RANGE,
-        skills: { Cooking: 1 },
+        skills: { Cooking: 35 },  // High enough to not burn shrimp
         inventory: [
             { id: Items.RAW_SHRIMPS, count: 1 },
         ],
@@ -33,7 +33,7 @@ async function runTest(): Promise<boolean> {
     let session: SDKSession | null = null;
 
     try {
-        session = await launchBotWithSDK(BOT_NAME, { headless: false, skipTutorial: false });
+        session = await launchBotWithSDK(BOT_NAME, { skipTutorial: false });
         const { sdk, bot } = session;
 
         // Wait for state to fully load

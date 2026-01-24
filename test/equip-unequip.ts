@@ -51,7 +51,7 @@ async function runTest(): Promise<boolean> {
     let session: SDKSession | null = null;
 
     try {
-        session = await launchBotWithSDK(BOT_NAME, { headless: false, skipTutorial: false });
+        session = await launchBotWithSDK(BOT_NAME, { skipTutorial: false });
         const { sdk } = session;
 
         // Wait for state to fully load
@@ -78,14 +78,18 @@ async function runTest(): Promise<boolean> {
         }
 
         await sdk.sendUseItem(sword.slot, swordWield.opIndex);
-        await sleep(600);
 
-        // Verify sword left inventory
-        if (sdk.findInventoryItem(/bronze sword/i)) {
+        // Wait for sword to leave inventory
+        try {
+            await sdk.waitForCondition(s =>
+                !s.inventory.some(i => /bronze sword/i.test(i.name)),
+                5000
+            );
+            console.log('PASS: Sword equipped (left inventory)');
+        } catch {
             console.log('ERROR: Sword still in inventory after equipping');
             return false;
         }
-        console.log('PASS: Sword equipped (left inventory)');
 
         // --- Test 2: Equip Shield ---
         console.log(`\n--- Test 2: Equip Wooden Shield ---`);
@@ -102,13 +106,18 @@ async function runTest(): Promise<boolean> {
         }
 
         await sdk.sendUseItem(shield.slot, shieldWield.opIndex);
-        await sleep(600);
 
-        if (sdk.findInventoryItem(/wooden shield/i)) {
+        // Wait for shield to leave inventory
+        try {
+            await sdk.waitForCondition(s =>
+                !s.inventory.some(i => /wooden shield/i.test(i.name)),
+                5000
+            );
+            console.log('PASS: Shield equipped (left inventory)');
+        } catch {
             console.log('ERROR: Shield still in inventory after equipping');
             return false;
         }
-        console.log('PASS: Shield equipped (left inventory)');
 
         // --- Test 3: Swap Weapon (Sword -> Dagger) ---
         console.log(`\n--- Test 3: Swap Weapon (equip dagger, sword returns) ---`);

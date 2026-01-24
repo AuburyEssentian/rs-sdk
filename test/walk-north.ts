@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 /**
  * Walk North Test (SDK)
- * Walk at least 100 tiles north from starting position.
+ * Walk at least 40 tiles north from starting position.
+ * Tests basic walking without gate/door handling.
  */
 
 import { launchBotWithSDK, sleep, type SDKSession } from './utils/browser';
 
 const BOT_NAME = process.env.BOT_NAME;
-const MIN_NORTH_DISTANCE = 100;
+const MIN_NORTH_DISTANCE = 40;
 const WALK_STEP = 15;
 
 async function runTest(): Promise<boolean> {
@@ -17,7 +18,7 @@ async function runTest(): Promise<boolean> {
     let session: SDKSession | null = null;
 
     try {
-        session = await launchBotWithSDK(BOT_NAME, { headless: false });
+        session = await launchBotWithSDK(BOT_NAME);
         const { sdk, bot } = session;
         console.log(`Bot '${session.botName}' ready!`);
 

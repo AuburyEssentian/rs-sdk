@@ -48,7 +48,7 @@ async function runTest(): Promise<boolean> {
     try {
         // Launch browser with game client
         console.log('Launching browser...');
-        browser = await launchBotBrowser(BOT_NAME, { headless: false });
+        browser = await launchBotBrowser(BOT_NAME);
         console.log(`Bot '${browser.botName}' ready`);
 
         // Connect SDK to sync server

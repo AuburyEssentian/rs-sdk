@@ -480,34 +480,97 @@ export async function startWeb() {
                     return `${days}d ago`;
                 };
 
+                const formatDuration = (ms: number): string => {
+                    const seconds = Math.floor(ms / 1000);
+                    if (seconds < 60) return `${seconds}s`;
+                    const minutes = Math.floor(seconds / 60);
+                    const remainingSecs = seconds % 60;
+                    if (minutes < 60) return `${minutes}m ${remainingSecs}s`;
+                    const hours = Math.floor(minutes / 60);
+                    const remainingMins = minutes % 60;
+                    return `${hours}h ${remainingMins}m`;
+                };
+
                 const runs = fs.readdirSync(runsDir)
                     .filter(f => fs.statSync(path.join(runsDir, f)).isDirectory())
                     .map(f => {
                         const stat = fs.statSync(path.join(runsDir, f));
                         const summaryPath = path.join(runsDir, f, 'summary.json');
+                        const metadataPath = path.join(runsDir, f, 'metadata.json');
+                        const eventsPath = path.join(runsDir, f, 'events.jsonl');
+                        const screenshotsDir = path.join(runsDir, f, 'screenshots');
+
                         let summary = null;
+                        let metadata = null;
+                        let turnCount = 0;
+                        let duration = '';
+                        let lastScreenshot: string | null = null;
+
+                        // Try to load summary.json (old format)
                         if (fs.existsSync(summaryPath)) {
                             try {
                                 summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
                             } catch {}
                         }
-                        return { name: f, mtime: stat.mtimeMs, summary };
+
+                        // Try to load metadata.json (new format)
+                        if (fs.existsSync(metadataPath)) {
+                            try {
+                                metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
+                                // Calculate duration if we have start and end time
+                                if (metadata.startTime && metadata.endTime) {
+                                    duration = formatDuration(metadata.endTime - metadata.startTime);
+                                }
+                            } catch {}
+                        }
+
+                        // Count turns from events.jsonl (count 'code' events as turns)
+                        if (fs.existsSync(eventsPath)) {
+                            try {
+                                const eventsRaw = fs.readFileSync(eventsPath, 'utf-8').split('\n').filter(Boolean);
+                                turnCount = eventsRaw.filter(line => {
+                                    try {
+                                        const event = JSON.parse(line);
+                                        return event.type === 'code';
+                                    } catch { return false; }
+                                }).length;
+                            } catch {}
+                        }
+
+                        // Get last screenshot
+                        if (fs.existsSync(screenshotsDir)) {
+                            try {
+                                const screenshots = fs.readdirSync(screenshotsDir)
+                                    .filter(s => s.endsWith('.png'))
+                                    .sort();
+                                if (screenshots.length > 0) {
+                                    lastScreenshot = screenshots[screenshots.length - 1];
+                                }
+                            } catch {}
+                        }
+
+                        return { name: f, mtime: stat.mtimeMs, summary, metadata, turnCount, duration, lastScreenshot };
                     })
                     .sort((a, b) => b.mtime - a.mtime);
 
                 const html = `<!DOCTYPE html>
 <html><head><title>Agent Test Runs</title>
 <style>
-body{background:#fff;color:#333;font-family:system-ui,-apple-system,sans-serif;padding:24px;margin:0;max-width:900px}
+body{background:#fff;color:#333;font-family:system-ui,-apple-system,sans-serif;padding:24px;margin:0;max-width:1100px}
 h1{font-weight:500;font-size:18px;margin-bottom:20px}
 .runs{display:flex;flex-direction:column;gap:8px}
-.run{border:1px solid #e0e0e0;border-radius:6px;padding:12px 16px;transition:border-color 0.15s}
+.run{border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;transition:border-color 0.15s}
 .run:hover{border-color:#999}
-.run a{color:inherit;text-decoration:none;display:block}
+.run a{color:inherit;text-decoration:none;display:flex;gap:12px;align-items:stretch}
+.run-thumb-wrap{width:120px;height:80px;overflow:hidden;background:#f5f5f5;flex-shrink:0}
+.run-thumb{width:180px;height:120px;object-fit:cover;object-position:0 0}
+.run-thumb-placeholder{width:120px;height:80px;background:#f0f0f0;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#999;font-size:11px}
+.run-content{flex:1;min-width:0;padding:10px 12px 10px 0}
 .run-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.run-name{font-weight:500;font-size:14px;color:#0066cc}
-.run-time{color:#888;font-size:12px}
-.run-meta{display:flex;gap:12px;font-size:12px;color:#666}
+.run-name{font-weight:500;font-size:14px;color:#0066cc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.run-time{color:#888;font-size:14px;flex-shrink:0;margin-left:8px}
+.run-meta{display:flex;gap:16px;font-size:14px;color:#555}
+.run-meta span{display:flex;align-items:center;gap:4px}
 .outcome{padding:2px 6px;border-radius:3px;font-size:11px;font-weight:500}
 .outcome.success{background:#e6f4ea;color:#1e7e34}
 .outcome.timeout{background:#fff3e0;color:#e65100}
@@ -519,14 +582,19 @@ h1{font-weight:500;font-size:18px;margin-bottom:20px}
 <div class="runs">
 ${runs.map(r => `<div class="run">
 <a href="/runs/${r.name}/">
+${r.lastScreenshot
+    ? `<div class="run-thumb-wrap"><img class="run-thumb" src="/runs/${r.name}/screenshots/${r.lastScreenshot}" alt=""></div>`
+    : `<div class="run-thumb-placeholder">No screenshot</div>`}
+<div class="run-content">
 <div class="run-header">
 <span class="run-name">${r.name}</span>
 <span class="run-time">${timeAgo(r.mtime)}</span>
 </div>
 <div class="run-meta">
-${r.summary ? `<span class="outcome ${r.summary.outcome}">${r.summary.outcome}</span>
-<span>Turns: ${r.summary.totalTurns}</span>
-<span>${r.summary.duration || ''}</span>` : '<span>No summary</span>'}
+${r.summary ? `<span class="outcome ${r.summary.outcome}">${r.summary.outcome}</span>` : ''}
+<span>${r.turnCount || r.summary?.totalTurns || 0} turns</span>
+<span>${r.duration || r.summary?.duration || 'N/A'}</span>
+</div>
 </div>
 </a>
 </div>`).join('')}

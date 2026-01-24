@@ -415,6 +415,14 @@ export class BotSDK {
         });
     }
 
+    async sendSetTab(tabIndex: number): Promise<ActionResult> {
+        return this.sendAction({
+            type: 'setTab',
+            tabIndex,
+            reason: 'SDK'
+        });
+    }
+
     async sendSay(message: string): Promise<ActionResult> {
         return this.sendAction({
             type: 'say',

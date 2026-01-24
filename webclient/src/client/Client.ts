@@ -2044,6 +2044,23 @@ export class Client extends GameShell {
     }
 
     /**
+     * Switch to a specific tab (0-13)
+     * Tab 6 = Magic/Spellbook
+     */
+    setTab(tabIndex: number): boolean {
+        if (!this.ingame || tabIndex < 0 || tabIndex > 13) {
+            return false;
+        }
+        if (this.tabInterfaceId[tabIndex] === -1) {
+            return false; // Tab not available
+        }
+        this.selectedTab = tabIndex;
+        this.redrawSidebar = true;
+        this.redrawSideicons = true;
+        return true;
+    }
+
+    /**
      * Click on an interface component with iop (inventory operations) like smithing menu
      * componentId: the component ID (e.g., 1119 for first smithing item)
      * optionIndex: 1-based index (1=Make, 2=Make 5, 3=Make 10 typically)
