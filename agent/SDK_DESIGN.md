@@ -16,7 +16,7 @@ await sdk.sendInteractLoc(tree.x, tree.z, tree.id, 1);
 await sdk.sendUseItemOnItem(tinderbox.slot, logs.slot);
 ```
 
-### Porcelain (`sdk-porcelain.ts`)
+### Porcelain (`bot-actions.ts`)
 - **High-level, domain-aware API** that wraps plumbing with game knowledge
 - Actions resolve when the **effect is complete** (slower, but reliable)
 - Encodes domain knowledge learned through testing
@@ -268,10 +268,11 @@ varps[281] = 1000;  // Tutorial complete
 
 | File | Purpose |
 |------|---------|
-| `agent/types.ts` | Shared types for SDK and sync server |
+| `agent/types.ts` | Shared types for SDK and gateway |
 | `agent/sdk.ts` | Plumbing layer - low-level WebSocket API |
-| `agent/sdk-porcelain.ts` | Porcelain layer - high-level domain-aware actions |
-| `agent/sync.ts` | WebSocket message router (no file I/O) |
+| `agent/bot-actions.ts` | Porcelain layer - high-level domain-aware actions |
+| `agent/gateway.ts` | Unified WebSocket router (sync + controller) |
+| `agent/agent-service.ts` | Claude Agent SDK service |
 | `webclient/src/bot/AgentPanel.ts` | Client-side action handling |
 | `webclient/src/client/Client.ts` | Low-level client methods (clickInterfaceIop, etc.) |
 | `test/utils/save-generator.ts` | Generate pre-configured save files for tests |

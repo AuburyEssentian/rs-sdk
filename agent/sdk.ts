@@ -18,7 +18,8 @@ import type {
 export interface SDKConfig {
     botUsername: string;
     host?: string;           // Default: 'localhost'
-    port?: number;           // Default: 7780
+    port?: number;           // Default: 7780 (gateway port)
+    webPort?: number;        // Default: 80 (game server web API port)
     actionTimeout?: number;  // Default: 30000ms
 }
 
@@ -42,6 +43,7 @@ export class BotSDK {
             botUsername: config.botUsername,
             host: config.host || 'localhost',
             port: config.port || 7780,
+            webPort: config.webPort || 80,
             actionTimeout: config.actionTimeout || 30000
         };
         this.sdkClientId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -455,6 +457,31 @@ export class BotSDK {
             amount,
             reason: 'SDK'
         });
+    }
+
+    // ============ Server-Side Pathfinding ============
+    // Uses the rsmod WASM pathfinder on the server for long-distance navigation
+
+    async sendFindPath(
+        destX: number,
+        destZ: number,
+        maxWaypoints: number = 500
+    ): Promise<{ success: boolean; waypoints: Array<{ x: number; z: number; level: number }>; reachedDestination?: boolean; error?: string }> {
+        const state = this.getState();
+        if (!state?.player) {
+            return { success: false, waypoints: [], error: 'No player state available' };
+        }
+
+        const { worldX: srcX, worldZ: srcZ, level } = state.player;
+        const url = `http://${this.config.host}:${this.config.webPort}/api/findPath?srcX=${srcX}&srcZ=${srcZ}&destX=${destX}&destZ=${destZ}&level=${level}&maxWaypoints=${maxWaypoints}`;
+
+        try {
+            const response = await fetch(url);
+            const result = await response.json();
+            return result;
+        } catch (e: any) {
+            return { success: false, waypoints: [], error: e.message };
+        }
     }
 
     // ============ Plumbing: State Waiting ============

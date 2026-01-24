@@ -13,6 +13,7 @@ import Environment from '#/util/Environment.js';
 import OnDemand from '#/engine/OnDemand.js';
 import { tryParseInt } from '#/util/TryParse.js';
 import { getPublicPerDeploymentToken } from '#/io/PemUtil.js';
+import { findLongPath, isZoneAllocated } from '#/engine/GameMap.js';
 
 function getIp(req: Request) {
     // todo: environment flag to respect cf-connecting-ip (NOT safe if origin is exposed publicly by IP + proxied)
@@ -458,6 +459,77 @@ export async function startWeb() {
                     });
                 } catch (e: any) {
                     return new Response(JSON.stringify({ success: false, error: e.message }), {
+                        status: 500,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+            } else if (url.pathname === '/api/findPath') {
+                // Server-side pathfinding API for bots/agents
+                // Uses the rsmod WASM pathfinder with the full collision map
+                try {
+                    const srcX = tryParseInt(url.searchParams.get('srcX'), -1);
+                    const srcZ = tryParseInt(url.searchParams.get('srcZ'), -1);
+                    const destX = tryParseInt(url.searchParams.get('destX'), -1);
+                    const destZ = tryParseInt(url.searchParams.get('destZ'), -1);
+                    const level = tryParseInt(url.searchParams.get('level'), 0);
+                    const maxWaypoints = tryParseInt(url.searchParams.get('maxWaypoints'), 500);
+
+                    if (srcX < 0 || srcZ < 0 || destX < 0 || destZ < 0) {
+                        return new Response(JSON.stringify({
+                            success: false,
+                            error: 'Missing required parameters: srcX, srcZ, destX, destZ'
+                        }), {
+                            status: 400,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    // Check if zones are allocated (collision data is loaded)
+                    const srcZoneAllocated = isZoneAllocated(level, srcX, srcZ);
+                    const destZoneAllocated = isZoneAllocated(level, destX, destZ);
+
+                    if (!srcZoneAllocated || !destZoneAllocated) {
+                        return new Response(JSON.stringify({
+                            success: false,
+                            error: 'Zone not allocated (collision data not loaded)',
+                            srcZoneAllocated,
+                            destZoneAllocated
+                        }), {
+                            status: 400,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    // Find path using rsmod pathfinder
+                    const waypointsRaw = findLongPath(level, srcX, srcZ, destX, destZ, maxWaypoints);
+
+                    // Convert packed waypoints to coordinate objects
+                    // Waypoints are packed as: x | (z << 14) | (level << 28)
+                    const waypoints: Array<{ x: number; z: number; level: number }> = [];
+                    for (let i = 0; i < waypointsRaw.length; i++) {
+                        const packed = waypointsRaw[i];
+                        waypoints.push({
+                            x: packed & 0x3FFF,
+                            z: (packed >> 14) & 0x3FFF,
+                            level: (packed >> 28) & 0x3
+                        });
+                    }
+
+                    return new Response(JSON.stringify({
+                        success: true,
+                        waypoints,
+                        waypointCount: waypoints.length,
+                        reachedDestination: waypoints.length > 0 &&
+                            waypoints[waypoints.length - 1].x === destX &&
+                            waypoints[waypoints.length - 1].z === destZ
+                    }), {
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                } catch (e: any) {
+                    return new Response(JSON.stringify({
+                        success: false,
+                        error: e.message
+                    }), {
                         status: 500,
                         headers: { 'Content-Type': 'application/json' }
                     });

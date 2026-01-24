@@ -77,12 +77,13 @@ AI agent system using Claude Agent SDK for autonomous bot control.
 
 ```
 agent/
-├── agent-state/   # Live state files (JSON/MD) for agent consumption
-├── sync.ts        # WebSocket bridge - syncs game state to files
-├── cli.ts         # rsbot CLI - read state, queue actions
-├── rsbot-agent.ts # Claude Agent SDK wrapper
-├── agent-controller.ts # Manages agent lifecycle
-└── login.ts       # Automated login helper
+├── agent-state/       # Live state files (JSON/MD) for agent consumption
+├── gateway.ts         # Unified WebSocket router (sync + controller)
+├── sdk.ts             # Low-level protocol API (plumbing)
+├── bot-actions.ts     # High-level domain API (porcelain)
+├── agent-service.ts   # Claude Agent SDK service
+├── cli.ts             # CLI for launching/controlling agents
+└── login.ts           # Automated login helper
 ```
 
 
@@ -94,36 +95,35 @@ agent/
 ┌──────────────────┐                    ┌──────────────────┐
 │   Game Engine    │◄──── TCP/WS ─────► │   Bot Client     │
 │  (engine/)       │                    │  (webclient/)    │
-│                  │                    │                  │
+│  :8888           │                    │                  │
 │ - Game server    │                    │ - Browser-based  │
 │ - World state    │                    │ - Renders game   │
-│ - Player logic   │                    │ - BotSDK exports │
+│ - Player logic   │                    │ - AgentPanel UI  │
 └──────────────────┘                    └────────┬─────────┘
                                                  │
                                                  │ WebSocket
                                                  ▼
 ┌──────────────────────────────────────────────────────────┐
-│                    Agent System (agent/)                  │
-├──────────────────┬───────────────────┬───────────────────┤
-│  Sync Service    │   CLI (rsbot)     │  Claude Agent     │
-│  (sync.ts)       │   (cli.ts)        │  (rsbot-agent.ts) │
-│                  │                   │                   │
-│ - WS connection  │ - rsbot state     │ - Agent SDK       │
-│ - Write state    │ - rsbot action    │ - Bash tools      │
-│   to files       │ - rsbot wait      │ - Goal-driven     │
-│ - Execute        │                   │                   │
-│   actions        │                   │                   │
-└────────┬─────────┴─────────┬─────────┴───────────────────┘
-         │                   │
-         │     File I/O      │
-         ▼                   ▼
-┌──────────────────────────────────────┐
-│         State Files                  │
-│       (agent-state/)                 │
-│                                      │
-│  world.md, player.json, npcs.json,  │
-│  inventory.json, actions.json, etc.  │
-└──────────────────────────────────────┘
+│                    Gateway (agent/gateway.ts)            │
+│                           :7780                          │
+├──────────────────────────────────────────────────────────┤
+│  SyncModule              │  ControllerModule             │
+│  - Bot ↔ SDK routing     │  - UI connections             │
+│  - State sync            │  - Agent lifecycle            │
+│  - Action relay          │  - Start/stop/logs            │
+└────────────────────────────────────────────────────────┬─┘
+                                                         │
+                                                         │ WebSocket
+                                                         ▼
+┌──────────────────────────────────────────────────────────┐
+│               Agent Service (agent/agent-service.ts)     │
+│                           :7782                          │
+├──────────────────────────────────────────────────────────┤
+│  - Claude Agent SDK                                      │
+│  - MCP tools (code, bash)                                │
+│  - BotSDK + BotActions                                   │
+│  - Goal-driven execution                                 │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -182,14 +182,13 @@ cp out/bot/client.js ../engine/public/bot/
 
 | Command | Description |
 |---------|-------------|
-| `bun run sync` | Start sync service (game state → files) |
-| `bun run sync:dev` | Sync service with hot-reload |
-| `bun run cli` | Run rsbot CLI |
-| `./rsbot state` | View current game state |
-| `./rsbot action <cmd>` | Queue an action |
-| `./rsbot wait` | Wait for action completion |
-| `bun run rsbot-agent` | Run Claude Agent |
-| `bun run controller` | Run agent controller |
+| `bun run gateway` | Start gateway (unified sync + controller) |
+| `bun run gateway:dev` | Gateway with hot-reload |
+| `bun run agent` | Start Claude Agent service |
+| `bun run agent:dev` | Agent service with hot-reload |
+| `bun run cli` | Run agent CLI |
+| `bun cli.ts launch <bot> "goal"` | Launch browser + start agent |
+| `bun cli.ts status` | View connected bots |
 | `bun run login` | Automated login helper |
 
 ### Java Client (`cd javaclient`)
@@ -222,12 +221,13 @@ cd engine && bun run dev
 # Terminal 1: Start server
 cd engine && bun start
 
-# Terminal 2: Start sync service
-cd agent && bun run sync
+# Terminal 2: Start gateway + agent
+cd agent && bun run gateway:dev
+cd agent && bun run agent:dev
 
-# Terminal 3: Use CLI or run agent
-cd agent && ./rsbot state
-cd agent && bun run rsbot-agent
+# Terminal 3: Use CLI
+cd agent && bun cli.ts launch mybot "chop trees"
+cd agent && bun cli.ts status
 ```
 
 ---
