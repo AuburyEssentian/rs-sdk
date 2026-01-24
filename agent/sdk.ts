@@ -139,6 +139,15 @@ export class BotSDK {
         ) || null;
     }
 
+    getSkillXp(name: string): number | null {
+        const skill = this.getSkill(name);
+        return skill?.experience ?? null;
+    }
+
+    getSkills(): SkillState[] {
+        return this.state?.skills || [];
+    }
+
     getInventoryItem(slot: number): InventoryItem | null {
         if (!this.state) return null;
         return this.state.inventory.find(i => i.slot === slot) || null;
@@ -154,6 +163,25 @@ export class BotSDK {
 
     getInventory(): InventoryItem[] {
         return this.state?.inventory || [];
+    }
+
+    // ============ Equipment Access ============
+
+    getEquipmentItem(slot: number): InventoryItem | null {
+        if (!this.state) return null;
+        return this.state.equipment.find(i => i.slot === slot) || null;
+    }
+
+    findEquipmentItem(pattern: string | RegExp): InventoryItem | null {
+        if (!this.state) return null;
+        const regex = typeof pattern === 'string'
+            ? new RegExp(pattern, 'i')
+            : pattern;
+        return this.state.equipment.find(i => regex.test(i.name)) || null;
+    }
+
+    getEquipment(): InventoryItem[] {
+        return this.state?.equipment || [];
     }
 
     getNearbyNpc(index: number): NearbyNpc | null {
@@ -293,6 +321,15 @@ export class BotSDK {
     async sendUseItem(slot: number, option: number = 1): Promise<ActionResult> {
         return this.sendAction({
             type: 'useInventoryItem',
+            slot,
+            optionIndex: option,
+            reason: 'SDK'
+        });
+    }
+
+    async sendUseEquipmentItem(slot: number, option: number = 1): Promise<ActionResult> {
+        return this.sendAction({
+            type: 'useEquipmentItem',
             slot,
             optionIndex: option,
             reason: 'SDK'

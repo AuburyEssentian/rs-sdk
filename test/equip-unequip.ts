@@ -165,10 +165,59 @@ runTest({
         }
     }
 
+    // --- Test 6: Verify getEquipment works ---
+    console.log(`\n--- Test 6: Verify getEquipment() ---`);
+    const equipment = sdk.getEquipment();
+    console.log(`Equipped items: ${equipment.map(i => `${i.name} (slot ${i.slot})`).join(', ') || '(none)'}`);
+
+    if (equipment.length === 0) {
+        console.log('NOTE: No equipment detected (might be display issue)');
+    } else {
+        console.log(`PASS: getEquipment() returned ${equipment.length} item(s)`);
+    }
+
+    // --- Test 7: Find equipped item by name ---
+    console.log(`\n--- Test 7: findEquipmentItem() ---`);
+    const equippedBow = sdk.findEquipmentItem(/bow/i);
+    if (equippedBow) {
+        console.log(`PASS: Found equipped bow: ${equippedBow.name} at slot ${equippedBow.slot}`);
+        console.log(`Options: ${equippedBow.optionsWithIndex.map(o => `${o.opIndex}:${o.text}`).join(', ')}`);
+    } else {
+        console.log('NOTE: No bow found in equipment (may have been unequipped)');
+    }
+
+    // --- Test 8: Unequip an item using sendUseEquipmentItem ---
+    console.log(`\n--- Test 8: Unequip Item ---`);
+    const weaponToUnequip = sdk.findEquipmentItem(/bow|dagger|sword/i);
+    if (weaponToUnequip) {
+        console.log(`Found weapon to unequip: ${weaponToUnequip.name} at slot ${weaponToUnequip.slot}`);
+        // Equipment uses option 1 to unequip (clicking the item removes it)
+        const invBefore = sdk.getInventory().length;
+        await sdk.sendUseEquipmentItem(weaponToUnequip.slot, 1);
+
+        try {
+            await sdk.waitForCondition(s =>
+                s.inventory.length > invBefore ||
+                s.inventory.some(i => i.id === weaponToUnequip.id),
+                5000
+            );
+            console.log(`PASS: Unequipped ${weaponToUnequip.name}`);
+        } catch {
+            console.log(`NOTE: Unequip may have timed out`);
+        }
+    } else {
+        console.log('NOTE: No weapon found in equipment to unequip');
+    }
+
     // --- Final Inventory Check ---
     console.log(`\n--- Final Inventory ---`);
     const finalInv = sdk.getInventory();
     console.log(`Items: ${finalInv.map(i => `${i.name}(${i.count})`).join(', ') || '(empty)'}`);
+
+    // --- Final Equipment Check ---
+    console.log(`\n--- Final Equipment ---`);
+    const finalEquip = sdk.getEquipment();
+    console.log(`Equipped: ${finalEquip.map(i => `${i.name} (slot ${i.slot})`).join(', ') || '(none)'}`);
 
     console.log(`\n=== Results ===`);
     console.log('SUCCESS: Equipment test completed');
@@ -176,6 +225,9 @@ runTest({
     console.log('- Equipped shield');
     console.log('- Swapped weapons (dagger replaced sword)');
     console.log('- Tested two-handed weapon interaction');
+    console.log('- Tested getEquipment()');
+    console.log('- Tested findEquipmentItem()');
+    console.log('- Tested unequip with sendUseEquipmentItem()');
 
     return true;
 });

@@ -1086,6 +1086,55 @@ export class Client extends GameShell {
     }
 
     /**
+     * Click on an equipment slot (unequip item)
+     * Uses INV_BUTTON1 packet which triggers inv_button1 script (unequip)
+     * Equipment interface ID: 1688 (wornitems:wear)
+     */
+    clickEquipmentSlot(slot: number, optionIndex: number = 1): boolean {
+        console.log(`[Client] clickEquipmentSlot called - slot: ${slot}, optionIndex: ${optionIndex}`);
+
+        if (!this.ingame || !this.out || optionIndex < 1 || optionIndex > 5) {
+            console.log(`[Client] clickEquipmentSlot REJECTED - ingame: ${this.ingame}, out: ${!!this.out}, optionIndex: ${optionIndex}`);
+            return false;
+        }
+
+        const EQUIPMENT_INTERFACE_ID = 1688;
+        const component = Component.types[EQUIPMENT_INTERFACE_ID];
+        if (!component || !component.invSlotObjId) {
+            console.log(`[Client] clickEquipmentSlot FAILED - component not found`);
+            return false;
+        }
+
+        const rawItemId = component.invSlotObjId[slot];
+        if (!rawItemId || rawItemId <= 0) {
+            console.log(`[Client] clickEquipmentSlot FAILED - no item at slot ${slot}`);
+            return false;
+        }
+
+        const obj = ObjType.get(rawItemId - 1);
+        const itemId = obj.id;
+
+        // INV_BUTTON opcodes (for interface-defined options like "Remove")
+        const opcodes = [
+            ClientProt.INV_BUTTON1,
+            ClientProt.INV_BUTTON2,
+            ClientProt.INV_BUTTON3,
+            ClientProt.INV_BUTTON4,
+            ClientProt.INV_BUTTON5
+        ];
+
+        console.log(`[Client] clickEquipmentSlot SENDING packet - item: ${obj.name} (id:${itemId}), slot: ${slot}`);
+
+        this.writePacketOpcode(opcodes[optionIndex - 1]);
+        this.out.p2(itemId);
+        this.out.p2(slot);
+        this.out.p2(EQUIPMENT_INTERFACE_ID);
+
+        console.log(`[Client] clickEquipmentSlot SUCCESS - packet sent`);
+        return true;
+    }
+
+    /**
      * Check if shop is currently open
      */
     isShopOpen(): boolean {

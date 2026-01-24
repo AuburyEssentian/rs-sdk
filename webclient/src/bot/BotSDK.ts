@@ -64,6 +64,8 @@ export interface NearbyNpc {
     x: number;
     z: number;
     distance: number;
+    hp: number;
+    maxHp: number;
     options: string[];           // Display-only list of option texts
     optionsWithIndex: NpcOption[];  // Options with their actual op index
 }
@@ -444,6 +446,8 @@ export class BotStateCollector {
                 x: npc.x || 0,
                 z: npc.z || 0,
                 distance,
+                hp: npc.health || 0,
+                maxHp: npc.totalHealth || 0,
                 options,
                 optionsWithIndex
             });
@@ -895,8 +899,9 @@ export function formatBotState(state: BotState): string {
         for (let i = 0; i < Math.min(5, state.nearbyNpcs.length); i++) {
             const npc = state.nearbyNpcs[i];
             const lvlStr = npc.combatLevel > 0 ? ` (Lvl ${npc.combatLevel})` : '';
+            const hpStr = npc.maxHp > 0 ? ` HP: ${npc.hp}/${npc.maxHp}` : '';
             const opStr = npc.options.length > 0 ? ` [${npc.options.join(', ')}]` : '';
-            lines.push(`${npc.name}${lvlStr} - ${npc.distance} tiles${opStr}`);
+            lines.push(`${npc.name}${lvlStr}${hpStr} - ${npc.distance} tiles${opStr}`);
         }
         if (state.nearbyNpcs.length > 5) {
             lines.push(`... and ${state.nearbyNpcs.length - 5} more`);
@@ -1119,8 +1124,9 @@ export function formatWorldStateForAgent(state: BotWorldState, goal: string): st
         lines.push('### Nearby NPCs');
         for (const npc of state.nearbyNpcs.slice(0, 8)) {
             const lvl = npc.combatLevel > 0 ? ` (Lvl ${npc.combatLevel})` : '';
+            const hp = npc.maxHp > 0 ? ` HP: ${npc.hp}/${npc.maxHp}` : '';
             const opts = npc.options.length > 0 ? ` [${npc.options.join(', ')}]` : '';
-            lines.push(`- ${npc.name}${lvl} - ${npc.distance} tiles away, index: ${npc.index}${opts}`);
+            lines.push(`- ${npc.name}${lvl}${hp} - ${npc.distance} tiles away, index: ${npc.index}${opts}`);
         }
     }
 
