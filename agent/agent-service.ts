@@ -5,7 +5,7 @@
 import { query, createSdkMcpServer, tool, type Query, type SDKMessage, type SDKResultSuccess } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { BotSDK } from './sdk';
-import { BotActions } from './sdk-porcelain';
+import { BotActions } from './bot-actions';
 import type { BotWorldState } from './types';
 
 // ============ Types ============

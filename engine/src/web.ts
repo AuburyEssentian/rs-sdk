@@ -878,11 +878,11 @@ ${files.length === 0 ? '<p>No screenshots yet</p>' : ''}
                     return;
                 }
 
-                // Handle agent controller proxy connections
+                // Handle agent controller proxy connections (now via gateway)
                 if (ws.data.isAgentControllerProxy) {
-                    // Connect to internal agent controller service with bot username
+                    // Connect to gateway service with bot username (UI connection)
                     const botUsername = ws.data.botUsername || 'default';
-                    const agentWs = new WebSocket(`ws://localhost:7781?bot=${botUsername}`);
+                    const agentWs = new WebSocket(`ws://localhost:7780?bot=${botUsername}`);
                     ws.data.agentWs = agentWs;
                     ws.data.agentReady = false;
                     ws.data.agentQueue = [];

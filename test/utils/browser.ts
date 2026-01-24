@@ -6,7 +6,7 @@
 
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { BotSDK } from '../../agent/sdk';
-import { BotActions } from '../../agent/sdk-porcelain';
+import { BotActions } from '../../agent/bot-actions';
 
 const BOT_URL = process.env.BOT_URL || 'http://localhost:8888/bot';
 

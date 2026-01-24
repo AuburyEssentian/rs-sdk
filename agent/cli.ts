@@ -1,876 +1,409 @@
 #!/usr/bin/env bun
-// rsbot CLI - Command line tool for controlling the RuneScape bot
-// Reads state from files, queues actions via actions.json
-// Supports multiple bots via BOT_USERNAME env var or --bot flag
+// CLI - Control agents from the command line
+// Usage: bun cli.ts <command> [options]
 
-import { readFile, writeFile, readdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import { join } from 'path';
+import puppeteer, { Browser, Page } from 'puppeteer';
 
-// Get state directory - uses current working directory by default
-// Can be overridden with --bot flag or BOT_USERNAME env var
-function getStateDir(): { dir: string; botName: string | null } {
-    const args = process.argv.slice(2);
-    const botFlagIndex = args.indexOf('--bot');
+const CONTROLLER_URL = process.env.CONTROLLER_URL || 'http://localhost:7780';
+const BOT_URL = process.env.BOT_URL || 'http://localhost:8888/bot';
+const DEFAULT_HEADLESS = process.env.HEADLESS === 'true' || process.env.HEADLESS === '1';
 
-    // If --bot flag provided, use agent-state/<bot>/
-    if (botFlagIndex !== -1 && args[botFlagIndex + 1]) {
-        const botName = args[botFlagIndex + 1]!;
-        return {
-            dir: join(import.meta.dir, 'agent-state', botName),
-            botName
-        };
-    }
-
-    // If BOT_USERNAME env var set, use agent-state/<BOT_USERNAME>/
-    if (process.env.BOT_USERNAME) {
-        return {
-            dir: join(import.meta.dir, 'agent-state', process.env.BOT_USERNAME),
-            botName: process.env.BOT_USERNAME
-        };
-    }
-
-    // Default: use current working directory (for when agent runs from bot's state dir)
-    return { dir: process.cwd(), botName: null };
+interface AgentStatus {
+    bot: string;
+    running: boolean;
+    goal: string | null;
+    logCount: number;
+    agentServiceConnected: boolean;
 }
 
-const { dir: STATE_DIR, botName: BOT_USERNAME } = getStateDir();
-const STATE_BASE_DIR = join(import.meta.dir, 'agent-state');
-
-// Generate unique action ID
-function generateId(): string {
-    return Math.random().toString(36).substring(2, 10);
-}
-
-// Read JSON file
-async function readJson<T>(filename: string): Promise<T | null> {
-    const filepath = join(STATE_DIR, filename);
-    if (!existsSync(filepath)) {
-        return null;
-    }
-    try {
-        const data = await readFile(filepath, 'utf-8');
-        return JSON.parse(data);
-    } catch (error) {
-        console.error(`Error reading ${filename}:`, error);
-        return null;
-    }
-}
-
-// Read text file
-async function readText(filename: string): Promise<string | null> {
-    const filepath = join(STATE_DIR, filename);
-    if (!existsSync(filepath)) {
-        return null;
-    }
-    try {
-        return await readFile(filepath, 'utf-8');
-    } catch (error) {
-        console.error(`Error reading ${filename}:`, error);
-        return null;
-    }
-}
-
-// Action queue types
-interface QueuedAction {
-    id: string;
-    action: any;
+interface LogEntry {
     timestamp: number;
-    status: 'pending' | 'sent' | 'completed' | 'failed';
-    result?: { success: boolean; message: string };
-    completedAt?: number;
+    type: 'thinking' | 'action' | 'result' | 'error' | 'system' | 'user_message' | 'code';
+    content: string;
 }
 
-interface ActionQueue {
-    pending: QueuedAction[];
-    current: QueuedAction | null;
-    completed: QueuedAction[];
+// ANSI color codes
+const colors = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    dim: '\x1b[2m',
+    red: '\x1b[31m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    magenta: '\x1b[35m',
+    cyan: '\x1b[36m',
+    white: '\x1b[37m',
+};
+
+function formatTime(ts: number): string {
+    return new Date(ts).toLocaleTimeString('en-US', {
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
 }
 
-// Queue an action
-async function queueAction(action: any): Promise<string> {
-    const filepath = join(STATE_DIR, 'actions.json');
+function formatLogEntry(entry: LogEntry): string {
+    const time = `${colors.dim}${formatTime(entry.timestamp)}${colors.reset}`;
 
-    let queue: ActionQueue = { pending: [], current: null, completed: [] };
-    if (existsSync(filepath)) {
+    switch (entry.type) {
+        case 'thinking':
+            return `${time} ${colors.cyan}[THINKING]${colors.reset} ${entry.content}`;
+        case 'action':
+            return `${time} ${colors.yellow}[ACTION]${colors.reset} ${entry.content}`;
+        case 'code':
+            const codeLines = entry.content.split('\n');
+            const codeFormatted = codeLines.map(l => `  ${colors.yellow}${l}${colors.reset}`).join('\n');
+            return `${time} ${colors.yellow}[CODE]${colors.reset}\n${codeFormatted}`;
+        case 'result':
+            return `${time} ${colors.green}[RESULT]${colors.reset} ${entry.content}`;
+        case 'error':
+            return `${time} ${colors.red}[ERROR]${colors.reset} ${entry.content}`;
+        case 'system':
+            return `${time} ${colors.blue}[SYSTEM]${colors.reset} ${entry.content}`;
+        case 'user_message':
+            return `${time} ${colors.magenta}[USER]${colors.reset} ${entry.content}`;
+        default:
+            return `${time} [${entry.type}] ${entry.content}`;
+    }
+}
+
+async function getStatus(botUsername: string): Promise<AgentStatus | null> {
+    try {
+        const response = await fetch(`${CONTROLLER_URL}/status?bot=${botUsername}`);
+        return await response.json() as AgentStatus;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function getLog(botUsername: string): Promise<LogEntry[]> {
+    try {
+        const response = await fetch(`${CONTROLLER_URL}/log?bot=${botUsername}`);
+        return await response.json() as LogEntry[];
+    } catch (e) {
+        return [];
+    }
+}
+
+async function startAgent(botUsername: string, goal: string): Promise<boolean> {
+    try {
+        const response = await fetch(`${CONTROLLER_URL}/start?bot=${botUsername}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ goal })
+        });
+        const result = await response.json() as { ok: boolean };
+        return result.ok;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function stopAgent(botUsername: string): Promise<boolean> {
+    try {
+        const response = await fetch(`${CONTROLLER_URL}/stop?bot=${botUsername}`, {
+            method: 'POST'
+        });
+        const result = await response.json() as { ok: boolean };
+        return result.ok;
+    } catch (e) {
+        return false;
+    }
+}
+
+// Browser launch helper
+async function launchBrowser(botName: string, headless: boolean = DEFAULT_HEADLESS): Promise<{ browser: Browser; page: Page }> {
+    const browser = await puppeteer.launch({
+        headless,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--mute-audio',
+        ]
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1024, height: 768 });
+    page.setDefaultTimeout(60000);
+
+    // Navigate to bot URL - NO tst=1 so agent panel is visible
+    const url = `${BOT_URL}?bot=${botName}&password=test&fps=20`;
+    console.log(`${colors.dim}Opening ${url}${colors.reset}`);
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    return { browser, page };
+}
+
+// Wait for bot to connect to gateway
+async function waitForBotConnection(botName: string, maxWaitMs: number = 60000): Promise<boolean> {
+    const startTime = Date.now();
+    while (Date.now() - startTime < maxWaitMs) {
         try {
-            const data = await readFile(filepath, 'utf-8');
-            queue = JSON.parse(data);
-        } catch { }
+            const response = await fetch(`${CONTROLLER_URL}/status`);
+            const status = await response.json() as any;
+            if (status.bots?.[botName]?.connected) {
+                return true;
+            }
+        } catch {}
+        await Bun.sleep(500);
     }
-
-    const id = generateId();
-    const queuedAction: QueuedAction = {
-        id,
-        action,
-        timestamp: Date.now(),
-        status: 'pending'
-    };
-
-    queue.pending.push(queuedAction);
-    await writeFile(filepath, JSON.stringify(queue, null, 2));
-
-    return id;
+    return false;
 }
 
-// Wait for action to complete
-async function waitForAction(actionId: string, timeout: number = 30000): Promise<QueuedAction | null> {
-    const start = Date.now();
+async function streamLogs(botUsername: string, onComplete?: () => void): Promise<void> {
+    let lastLogCount = 0;
+    let wasRunning = true;
+    let checkCount = 0;
+    const maxIdleChecks = 10;  // Stop after 10 checks of no activity (~10 seconds)
 
-    while (Date.now() - start < timeout) {
-        const queue = await readJson<ActionQueue>('actions.json');
-        if (!queue) {
-            await Bun.sleep(100);
-            continue;
+    console.log(`${colors.dim}Streaming logs for ${botUsername}...${colors.reset}`);
+    console.log(`${colors.dim}Press Ctrl+C to stop${colors.reset}\n`);
+
+    while (true) {
+        const status = await getStatus(botUsername);
+        if (!status) {
+            console.log(`${colors.red}Failed to get status - controller not available?${colors.reset}`);
+            break;
         }
 
-        // Check if it's the current action and completed
-        if (queue.current?.id === actionId && (queue.current.status === 'completed' || queue.current.status === 'failed')) {
-            return queue.current;
+        const log = await getLog(botUsername);
+
+        // Print new entries
+        if (log.length > lastLogCount) {
+            for (let i = lastLogCount; i < log.length; i++) {
+                console.log(formatLogEntry(log[i]));
+            }
+            lastLogCount = log.length;
+            checkCount = 0;  // Reset idle counter on activity
         }
 
-        // Check completed list
-        const completed = queue.completed.find(a => a.id === actionId);
-        if (completed) {
-            return completed;
+        // Check if agent stopped
+        if (wasRunning && !status.running) {
+            console.log(`\n${colors.green}${colors.bold}Agent completed!${colors.reset}`);
+            console.log(`${colors.dim}Logs: ${log.length} entries${colors.reset}`);
+            console.log(`${colors.dim}Run recorded to ./runs/ folder${colors.reset}`);
+            onComplete?.();
+            break;
         }
 
-        await Bun.sleep(100);
-    }
-
-    return null;
-}
-
-// Format inventory items nicely
-function formatInventory(items: any[]): string {
-    if (!items || items.length === 0) {
-        return 'Inventory is empty';
-    }
-
-    const lines: string[] = ['Inventory:'];
-    for (const item of items) {
-        // Format options with their indices like [1:Use, 2:Wield, 5:Drop]
-        let opts = '';
-        if (item.optionsWithIndex && item.optionsWithIndex.length > 0) {
-            const optStrs = item.optionsWithIndex.map((o: any) => `${o.opIndex}:${o.text}`);
-            opts = ` [${optStrs.join(', ')}]`;
-        } else if (item.options && item.options.length > 0) {
-            // Fallback to old format if optionsWithIndex not available
-            opts = ` [${item.options.join(', ')}]`;
+        // Check for idle timeout when not running
+        if (!status.running) {
+            checkCount++;
+            if (checkCount >= maxIdleChecks) {
+                console.log(`\n${colors.yellow}Agent not running and no activity. Exiting.${colors.reset}`);
+                break;
+            }
         }
-        lines.push(`  [${item.slot}] ${item.name} x${item.count} (id: ${item.id})${opts}`);
+
+        wasRunning = status.running;
+        await Bun.sleep(1000);
     }
-    return lines.join('\n');
 }
 
-// Format NPCs nicely
-function formatNpcs(npcs: any[]): string {
-    if (!npcs || npcs.length === 0) {
-        return 'No NPCs nearby';
-    }
-
-    const lines: string[] = ['Nearby NPCs:'];
-    for (const npc of npcs) {
-        const lvl = npc.combatLevel > 0 ? ` (Lvl ${npc.combatLevel})` : '';
-        // Use optionsWithIndex to show actual op indices (1-5)
-        // Format: [1:Talk-to, 3:Trade] so consumers can use the correct index
-        let opts = '';
-        if (npc.optionsWithIndex && npc.optionsWithIndex.length > 0) {
-            const optStrs = npc.optionsWithIndex.map((o: any) => `${o.opIndex}:${o.text}`);
-            opts = ` [${optStrs.join(', ')}]`;
-        } else if (npc.options && npc.options.length > 0) {
-            // Fallback to old format if optionsWithIndex not available
-            opts = ` [${npc.options.join(', ')}]`;
-        }
-        lines.push(`  #${npc.index}: ${npc.name}${lvl} - ${npc.distance} tiles${opts}`);
-    }
-    return lines.join('\n');
-}
-
-// Format locations nicely
-function formatLocations(locs: any[]): string {
-    if (!locs || locs.length === 0) {
-        return 'No interactable objects nearby';
-    }
-
-    const lines: string[] = ['Nearby Objects:'];
-    for (const loc of locs) {
-        // Use optionsWithIndex to show actual op indices (1-5)
-        // Format: [1:Open, 2:Close] so consumers can use the correct index
-        let opts = '';
-        if (loc.optionsWithIndex && loc.optionsWithIndex.length > 0) {
-            const optStrs = loc.optionsWithIndex.map((o: any) => `${o.opIndex}:${o.text}`);
-            opts = ` [${optStrs.join(', ')}]`;
-        } else if (loc.options && loc.options.length > 0) {
-            // Fallback to old format if optionsWithIndex not available
-            opts = ` [${loc.options.join(', ')}]`;
-        }
-        lines.push(`  ${loc.name} at (${loc.x}, ${loc.z}) - ${loc.distance} tiles, id: ${loc.id}${opts}`);
-    }
-    return lines.join('\n');
-}
-
-// Format ground items nicely
-function formatGroundItems(items: any[]): string {
-    if (!items || items.length === 0) {
-        return 'No ground items nearby';
-    }
-
-    const lines: string[] = ['Ground Items:'];
-    for (const item of items) {
-        lines.push(`  ${item.name} x${item.count} at (${item.x}, ${item.z}) - ${item.distance} tiles (id: ${item.id})`);
-    }
-    return lines.join('\n');
-}
-
-// Format status nicely
-function formatStatus(status: any): string {
-    const botLabel = BOT_USERNAME || 'current directory';
-    if (!status) {
-        return `Status for '${botLabel}': Unknown (sync service may not be running or bot not connected)`;
-    }
-
-    const lines: string[] = [
-        `Status (${botLabel}):`,
-        `  Connected: ${status.connected ? 'Yes' : 'No'}`,
-        `  Client ID: ${status.clientId || 'N/A'}`,
-        `  In Game: ${status.inGame ? 'Yes' : 'No'}`,
-        `  Player: ${status.playerName || 'N/A'}`,
-        `  Tick: ${status.tick}`,
-        `  Last Update: ${new Date(status.lastUpdate).toLocaleTimeString()}`
-    ];
-
-    if (status.lastActionId) {
-        lines.push(`  Last Action: ${status.lastActionId}`);
-        if (status.lastActionResult) {
-            lines.push(`  Result: ${status.lastActionResult.success ? 'Success' : 'Failed'} - ${status.lastActionResult.message}`);
-        }
-    }
-
-    return lines.join('\n');
-}
-
-// Format player info
-function formatPlayer(player: any): string {
-    if (!player) {
-        return 'Player: Not logged in';
-    }
-
-    return [
-        `Player: ${player.name}`,
-        `  Combat Level: ${player.combatLevel}`,
-        `  Position: (${player.worldX}, ${player.worldZ})`,
-        `  Map Level: ${player.level}`,
-        `  Run Energy: ${player.runEnergy}%`,
-        `  Weight: ${player.runWeight}kg`
-    ].join('\n');
-}
-
-// Format dialog state
-function formatDialog(dialog: any): string {
-    if (!dialog) {
-        return 'Dialog: None';
-    }
-
-    if (!dialog.isOpen) {
-        return 'Dialog: Closed';
-    }
-
-    const lines: string[] = ['Dialog: OPEN'];
-    if (dialog.isWaiting) {
-        lines.push('  (Waiting for server response...)');
-    } else if (dialog.options && dialog.options.length > 0) {
-        lines.push('  Options:');
-        for (const opt of dialog.options) {
-            lines.push(`    ${opt.index}. ${opt.text}`);
-        }
-    } else {
-        lines.push('  (Click to continue - use: rsbot action dialog 0)');
-    }
-
-    return lines.join('\n');
-}
-
-// Print help
-function printHelp() {
-    console.log(`
-rsbot - RuneScape Bot CLI (Multi-Bot Support)
-
-USAGE:
-  rsbot [--bot <name>] <command> [args...]
-
-  By default, reads state from current working directory.
-  Use --bot <name> or BOT_USERNAME env var to specify a bot by name.
-
-MULTI-BOT COMMANDS:
-  rsbot bots               List all available bots
-  rsbot --bot mybot state  Get state for bot named 'mybot'
-
-STATE COMMANDS:
-  rsbot state              Full world state (markdown)
-  rsbot status             Connection and sync status
-  rsbot player             Player info
-  rsbot inventory          Inventory contents with slots
-  rsbot npcs               Nearby NPCs with indices
-  rsbot locations          Nearby interactable objects
-  rsbot ground             Ground items
-  rsbot dialog             Current dialog state
-  rsbot messages           Recent game messages
-  rsbot skills             Skill levels
-  rsbot shop               Shop state (if open)
-
-ACTION COMMANDS:
-  rsbot action walk <x> <z> [--run]           Walk to coordinates
-  rsbot action talk <npc_index>               Talk to NPC (option 1)
-  rsbot action interact-npc <index> <option>  Interact with NPC
-  rsbot action interact-loc <x> <z> <id> <option>  Interact with object
-  rsbot action pickup <x> <z> <item_id>       Pick up ground item
-  rsbot action use-item <slot> <option>       Use inventory item
-  rsbot action item-on-item <src> <tgt>       Use item on another item
-  rsbot action item-on-loc <slot> <x> <z> <id>  Use item on world object
-  rsbot action drop <slot>                    Drop item from inventory
-  rsbot action dialog <option>                Click dialog (0=continue, 1-5=choice)
-  rsbot action shop-buy <slot> [amount]       Buy item from shop (amount: 1/5/10)
-  rsbot action shop-sell <slot> [amount]      Sell inventory item (amount: 1/5/10)
-  rsbot action design                         Accept character design
-  rsbot action skip-tutorial                  Skip tutorial (talk to guide/click dialogs)
-  rsbot action wait [ticks]                   Wait (do nothing)
-  rsbot action say <message>                  Send public chat message
-
-UTILITY COMMANDS:
-  rsbot wait [action_id]   Wait for action to complete
-  rsbot queue              Show action queue
-  rsbot clear              Clear pending actions
-  rsbot help               Show this help
-
-EXAMPLES:
-  rsbot bots                                  # List all bots
-  rsbot --bot bot1 npcs                       # List NPCs for bot1
-  rsbot status                                # Status from current directory
-  cd agent-state/mybot && rsbot state         # Run from bot's directory
-
-Current state directory: ${STATE_DIR}
-`);
-}
-
-// Main CLI handler
 async function main() {
-    let args = process.argv.slice(2);
+    const args = process.argv.slice(2);
 
-    // Filter out --bot and its value from args for command processing
-    const botFlagIndex = args.indexOf('--bot');
-    if (botFlagIndex !== -1) {
-        args = [...args.slice(0, botFlagIndex), ...args.slice(botFlagIndex + 2)];
-    }
+    if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
+        console.log(`
+${colors.bold}Agent CLI${colors.reset} - Trigger agent runs from the command line
 
-    if (args.length === 0 || args[0] === 'help' || args[0] === '--help' || args[0] === '-h') {
-        printHelp();
+${colors.bold}Usage:${colors.reset}
+  bun cli.ts <command> [options]
+
+${colors.bold}Commands:${colors.reset}
+  launch <bot> "<goal>"  Launch browser, start agent, stream logs
+  start <bot> "<goal>"   Start agent for bot (bot must already be connected)
+  stop <bot>             Stop running agent
+  status [bot]           Get status (all bots if no bot specified)
+  logs <bot>             Stream logs for bot
+  run <bot> "<goal>"     Start agent and stream logs (bot must already be connected)
+
+${colors.bold}Examples:${colors.reset}
+  bun cli.ts launch mybot "Get 100 coins"
+  bun cli.ts start shopper1 "Walk to the bank"
+  bun cli.ts status
+  bun cli.ts logs shopper1
+  bun cli.ts stop shopper1
+
+${colors.bold}Environment:${colors.reset}
+  CONTROLLER_URL   Gateway URL (default: http://localhost:7780)
+  BOT_URL          Bot webclient URL (default: http://localhost:8888/bot)
+  HEADLESS         Run browser headless (default: false)
+`);
         return;
     }
 
     const command = args[0];
 
-    // List all available bots
-    if (command === 'bots') {
-        if (!existsSync(STATE_BASE_DIR)) {
-            console.log('No bots found. State directory does not exist yet.');
-            return;
-        }
-        try {
-            const entries = await readdir(STATE_BASE_DIR, { withFileTypes: true });
-            const bots = entries.filter(e => e.isDirectory()).map(e => e.name);
-            if (bots.length === 0) {
-                console.log('No bots found.');
-            } else {
-                console.log(`Available bots (${bots.length}):`);
-                for (const bot of bots) {
-                    const statusPath = join(STATE_BASE_DIR, bot, 'status.json');
-                    let status = 'unknown';
-                    let player = 'N/A';
-                    if (existsSync(statusPath)) {
-                        try {
-                            const data = JSON.parse(await readFile(statusPath, 'utf-8'));
-                            status = data.connected ? 'connected' : 'disconnected';
-                            player = data.playerName || 'N/A';
-                        } catch {}
-                    }
-                    console.log(`  ${bot}: ${status} (player: ${player})`);
-                }
-            }
-        } catch (e) {
-            console.error('Error listing bots:', e);
-        }
-        return;
-    }
-
-    // State reading commands
     switch (command) {
-        case 'state': {
-            const state = await readText('world.md');
-            console.log(state || 'No state available. Is the sync service running?');
-            return;
+        case 'launch': {
+            const bot = args[1];
+            const goal = args[2];
+            if (!bot || !goal) {
+                console.log(`${colors.red}Usage: launch <bot> "<goal>"${colors.reset}`);
+                process.exit(1);
+            }
+
+            let browser: Browser | null = null;
+
+            // Handle cleanup on Ctrl+C
+            const cleanup = async () => {
+                console.log(`\n${colors.dim}Cleaning up...${colors.reset}`);
+                await stopAgent(bot);
+                if (browser) {
+                    await browser.close();
+                }
+                process.exit(0);
+            };
+            process.removeAllListeners('SIGINT');
+            process.on('SIGINT', cleanup);
+
+            try {
+                // Launch browser
+                console.log(`${colors.cyan}Launching browser for ${bot}...${colors.reset}`);
+                const session = await launchBrowser(bot);
+                browser = session.browser;
+
+                // Wait for bot to connect to gateway
+                console.log(`${colors.dim}Waiting for bot to connect to gateway...${colors.reset}`);
+                const connected = await waitForBotConnection(bot);
+                if (!connected) {
+                    console.log(`${colors.red}Timeout waiting for bot to connect${colors.reset}`);
+                    await browser.close();
+                    process.exit(1);
+                }
+                console.log(`${colors.green}Bot connected!${colors.reset}`);
+
+                // Wait a moment for everything to settle
+                await Bun.sleep(2000);
+
+                // Start agent
+                console.log(`${colors.cyan}Starting agent...${colors.reset}`);
+                console.log(`${colors.dim}Goal: ${goal}${colors.reset}\n`);
+                const ok = await startAgent(bot, goal);
+                if (!ok) {
+                    console.log(`${colors.red}Failed to start agent${colors.reset}`);
+                    await browser.close();
+                    process.exit(1);
+                }
+
+                // Stream logs until completion
+                await streamLogs(bot, async () => {
+                    // Keep browser open briefly for inspection
+                    console.log(`${colors.dim}Keeping browser open for 5s...${colors.reset}`);
+                    await Bun.sleep(5000);
+                    await browser?.close();
+                });
+
+            } catch (e: any) {
+                console.log(`${colors.red}Error: ${e.message}${colors.reset}`);
+                if (browser) await browser.close();
+                process.exit(1);
+            }
+            break;
+        }
+
+        case 'start': {
+            const bot = args[1];
+            const goal = args[2];
+            if (!bot || !goal) {
+                console.log(`${colors.red}Usage: start <bot> "<goal>"${colors.reset}`);
+                process.exit(1);
+            }
+            console.log(`${colors.cyan}Starting agent for ${bot}...${colors.reset}`);
+            console.log(`${colors.dim}Goal: ${goal}${colors.reset}\n`);
+            const ok = await startAgent(bot, goal);
+            if (ok) {
+                console.log(`${colors.green}Agent started!${colors.reset}`);
+                console.log(`${colors.dim}Run: bun cli.ts logs ${bot}  to stream logs${colors.reset}`);
+            } else {
+                console.log(`${colors.red}Failed to start agent. Is the controller running?${colors.reset}`);
+                process.exit(1);
+            }
+            break;
+        }
+
+        case 'stop': {
+            const bot = args[1];
+            if (!bot) {
+                console.log(`${colors.red}Usage: stop <bot>${colors.reset}`);
+                process.exit(1);
+            }
+            console.log(`${colors.cyan}Stopping agent for ${bot}...${colors.reset}`);
+            const ok = await stopAgent(bot);
+            if (ok) {
+                console.log(`${colors.green}Agent stopped!${colors.reset}`);
+            } else {
+                console.log(`${colors.red}Failed to stop agent${colors.reset}`);
+                process.exit(1);
+            }
+            break;
         }
 
         case 'status': {
-            const status = await readJson('status.json');
-            console.log(formatStatus(status));
-            return;
+            const bot = args[1] || 'all';
+            const response = await fetch(`${CONTROLLER_URL}/status?bot=${bot}`);
+            const status = await response.json();
+            console.log(JSON.stringify(status, null, 2));
+            break;
         }
 
-        case 'player': {
-            const player = await readJson('player.json');
-            console.log(formatPlayer(player));
-            return;
+        case 'logs': {
+            const bot = args[1];
+            if (!bot) {
+                console.log(`${colors.red}Usage: logs <bot>${colors.reset}`);
+                process.exit(1);
+            }
+            await streamLogs(bot);
+            break;
         }
 
-        case 'inventory': {
-            const items = await readJson<any[]>('inventory.json');
-            console.log(formatInventory(items || []));
-            return;
-        }
+        case 'run': {
+            const bot = args[1];
+            const goal = args[2];
+            if (!bot || !goal) {
+                console.log(`${colors.red}Usage: run <bot> "<goal>"${colors.reset}`);
+                process.exit(1);
+            }
 
-        case 'npcs': {
-            const npcs = await readJson<any[]>('npcs.json');
-            console.log(formatNpcs(npcs || []));
-            return;
-        }
-
-        case 'locations':
-        case 'locs':
-        case 'objects': {
-            const locs = await readJson<any[]>('locations.json');
-            console.log(formatLocations(locs || []));
-            return;
-        }
-
-        case 'ground':
-        case 'items': {
-            const items = await readJson<any[]>('ground-items.json');
-            console.log(formatGroundItems(items || []));
-            return;
-        }
-
-        case 'dialog': {
-            const dialog = await readJson('dialog.json');
-            console.log(formatDialog(dialog));
-            return;
-        }
-
-        case 'messages': {
-            const messages = await readJson<any[]>('messages.json');
-            if (!messages || messages.length === 0) {
-                console.log('No recent messages');
+            // Check if bot is already running
+            const status = await getStatus(bot);
+            if (status?.running) {
+                console.log(`${colors.yellow}Agent already running for ${bot}${colors.reset}`);
+                console.log(`${colors.dim}Streaming existing session...${colors.reset}\n`);
             } else {
-                console.log('Recent Messages:');
-                for (const msg of messages) {
-                    const cleanText = msg.text.replace(/@\w+@/g, '');
-                    if (msg.sender) {
-                        console.log(`  ${msg.sender}: ${cleanText}`);
-                    } else {
-                        console.log(`  ${cleanText}`);
-                    }
+                console.log(`${colors.cyan}Starting agent for ${bot}...${colors.reset}`);
+                console.log(`${colors.dim}Goal: ${goal}${colors.reset}\n`);
+                const ok = await startAgent(bot, goal);
+                if (!ok) {
+                    console.log(`${colors.red}Failed to start agent. Is the controller running?${colors.reset}`);
+                    process.exit(1);
                 }
-            }
-            return;
-        }
-
-        case 'skills': {
-            const skills = await readJson<any[]>('skills.json');
-            if (!skills) {
-                console.log('Skills: Not available');
-            } else {
-                console.log('Skills:');
-                for (const skill of skills) {
-                    console.log(`  ${skill.name}: ${skill.level}/${skill.baseLevel} (${skill.experience.toLocaleString()} xp)`);
-                }
-            }
-            return;
-        }
-
-        case 'shop': {
-            const shop = await readJson<any>('shop.json');
-            if (!shop || !shop.isOpen) {
-                console.log('Shop: Not open');
-            } else {
-                console.log(`Shop: ${shop.title || 'Open'}`);
-                console.log('');
-                console.log('Shop Items (to buy):');
-                if (!shop.shopItems || shop.shopItems.length === 0) {
-                    console.log('  (Empty)');
-                } else {
-                    for (const item of shop.shopItems) {
-                        console.log(`  [${item.slot}] ${item.name} x${item.count} (id: ${item.id})`);
-                    }
-                }
-                console.log('');
-                console.log('Your Items (to sell):');
-                if (!shop.playerItems || shop.playerItems.length === 0) {
-                    console.log('  (Empty)');
-                } else {
-                    for (const item of shop.playerItems) {
-                        console.log(`  [${item.slot}] ${item.name} x${item.count} (id: ${item.id})`);
-                    }
-                }
-            }
-            return;
-        }
-
-        case 'combat':
-        case 'combat-style':
-        case 'style': {
-            const combatStyle = await readJson<any>('combatStyle.json');
-            if (!combatStyle) {
-                console.log('Combat Style: Not available');
-            } else {
-                console.log(`Weapon: ${combatStyle.weaponName || 'Unarmed'}`);
-                console.log(`Current Style: ${combatStyle.currentStyle}`);
-                console.log('');
-                console.log('Available Styles:');
-                if (combatStyle.styles && combatStyle.styles.length > 0) {
-                    for (const style of combatStyle.styles) {
-                        const selected = style.index === combatStyle.currentStyle ? ' <-- SELECTED' : '';
-                        console.log(`  [${style.index}] ${style.name} (${style.type}) - Trains: ${style.trainedSkill}${selected}`);
-                    }
-                } else {
-                    console.log('  (None available)');
-                }
-            }
-            return;
-        }
-
-        case 'queue': {
-            const queue = await readJson<ActionQueue>('actions.json');
-            if (!queue) {
-                console.log('Action queue: Empty');
-                return;
+                // Give it a moment to start
+                await Bun.sleep(500);
             }
 
-            console.log('Action Queue:');
-            if (queue.current) {
-                console.log(`  Current: ${queue.current.action.type} (${queue.current.id}) - ${queue.current.status}`);
-            } else {
-                console.log('  Current: None');
-            }
-            console.log(`  Pending: ${queue.pending.length}`);
-            for (const a of queue.pending) {
-                console.log(`    - ${a.action.type} (${a.id})`);
-            }
-            console.log(`  Completed: ${queue.completed.length} (last 5):`);
-            for (const a of queue.completed.slice(-5)) {
-                const result = a.result ? (a.result.success ? 'OK' : 'FAIL') : '?';
-                console.log(`    - ${a.action.type} (${a.id}): ${result}`);
-            }
-            return;
-        }
-
-        case 'clear': {
-            const filepath = join(STATE_DIR, 'actions.json');
-            const queue: ActionQueue = { pending: [], current: null, completed: [] };
-            await writeFile(filepath, JSON.stringify(queue, null, 2));
-            console.log('Action queue cleared');
-            return;
-        }
-
-        case 'wait': {
-            // Wait for last action or specific action
-            const actionId = args[1];
-            if (actionId) {
-                console.log(`Waiting for action ${actionId}...`);
-                const result = await waitForAction(actionId);
-                if (result) {
-                    console.log(`Action ${result.id}: ${result.status}`);
-                    if (result.result) {
-                        console.log(`  ${result.result.success ? 'Success' : 'Failed'}: ${result.result.message}`);
-                    }
-                } else {
-                    console.log('Action not found or timed out');
-                }
-            } else {
-                // Wait for any current/recent action
-                const queue = await readJson<ActionQueue>('actions.json');
-                if (queue?.current) {
-                    console.log(`Waiting for current action ${queue.current.id}...`);
-                    const result = await waitForAction(queue.current.id);
-                    if (result) {
-                        console.log(`Action ${result.id}: ${result.status}`);
-                        if (result.result) {
-                            console.log(`  ${result.result.success ? 'Success' : 'Failed'}: ${result.result.message}`);
-                        }
-                    } else {
-                        console.log('Timed out waiting for action');
-                    }
-                } else {
-                    console.log('No action in progress');
-                }
-            }
-            return;
-        }
-
-        case 'action': {
-            const actionType = args[1];
-            if (!actionType) {
-                console.log('Usage: rsbot action <type> [args...]');
-                console.log('Run "rsbot help" for available action types');
-                return;
-            }
-
-            let action: any;
-            const reason = `CLI action: ${args.slice(1).join(' ')}`;
-
-            switch (actionType) {
-                case 'walk': {
-                    const x = parseInt(args[2] ?? '');
-                    const z = parseInt(args[3] ?? '');
-                    const running = args.includes('--run') || args.includes('-r');
-                    if (isNaN(x) || isNaN(z)) {
-                        console.log('Usage: rsbot action walk <x> <z> [--run]');
-                        return;
-                    }
-                    action = { type: 'walkTo', x, z, running, reason };
-                    break;
-                }
-
-                case 'talk': {
-                    const npcIndex = parseInt(args[2] ?? '');
-                    if (isNaN(npcIndex)) {
-                        console.log('Usage: rsbot action talk <npc_index>');
-                        return;
-                    }
-                    action = { type: 'talkToNpc', npcIndex, reason };
-                    break;
-                }
-
-                case 'interact-npc': {
-                    const npcIndex = parseInt(args[2] ?? '');
-                    const optionIndex = parseInt(args[3] ?? '');
-                    if (isNaN(npcIndex) || isNaN(optionIndex)) {
-                        console.log('Usage: rsbot action interact-npc <npc_index> <option_index>');
-                        return;
-                    }
-                    action = { type: 'interactNpc', npcIndex, optionIndex, reason };
-                    break;
-                }
-
-                case 'interact-loc':
-                case 'loc': {
-                    const x = parseInt(args[2] ?? '');
-                    const z = parseInt(args[3] ?? '');
-                    const locId = parseInt(args[4] ?? '');
-                    const optionIndex = parseInt(args[5] ?? '') || 1;
-                    if (isNaN(x) || isNaN(z) || isNaN(locId)) {
-                        console.log('Usage: rsbot action interact-loc <x> <z> <loc_id> [option_index]');
-                        return;
-                    }
-                    action = { type: 'interactLoc', x, z, locId, optionIndex, reason };
-                    break;
-                }
-
-                case 'pickup': {
-                    const x = parseInt(args[2] ?? '');
-                    const z = parseInt(args[3] ?? '');
-                    const itemId = parseInt(args[4] ?? '');
-                    if (isNaN(x) || isNaN(z) || isNaN(itemId)) {
-                        console.log('Usage: rsbot action pickup <x> <z> <item_id>');
-                        return;
-                    }
-                    action = { type: 'pickupItem', x, z, itemId, reason };
-                    break;
-                }
-
-                case 'use-item':
-                case 'use': {
-                    const slot = parseInt(args[2] ?? '');
-                    const optionIndex = parseInt(args[3] ?? '') || 1;
-                    if (isNaN(slot)) {
-                        console.log('Usage: rsbot action use-item <slot> [option_index]');
-                        return;
-                    }
-                    action = { type: 'useInventoryItem', slot, optionIndex, reason };
-                    break;
-                }
-
-                case 'use-item-on-item':
-                case 'item-on-item': {
-                    const sourceSlot = parseInt(args[2] ?? '');
-                    const targetSlot = parseInt(args[3] ?? '');
-                    if (isNaN(sourceSlot) || isNaN(targetSlot)) {
-                        console.log('Usage: rsbot action use-item-on-item <source_slot> <target_slot>');
-                        console.log('  source_slot: the item being used (e.g., tinderbox)');
-                        console.log('  target_slot: the item being used on (e.g., logs)');
-                        console.log('');
-                        console.log('Example:');
-                        console.log('  rsbot action item-on-item 0 1    # Use item in slot 0 on item in slot 1');
-                        return;
-                    }
-                    action = { type: 'useItemOnItem', sourceSlot, targetSlot, reason };
-                    break;
-                }
-
-                case 'use-item-on-loc':
-                case 'item-on-loc': {
-                    const itemSlot = parseInt(args[2] ?? '');
-                    const x = parseInt(args[3] ?? '');
-                    const z = parseInt(args[4] ?? '');
-                    const locId = parseInt(args[5] ?? '');
-                    if (isNaN(itemSlot) || isNaN(x) || isNaN(z) || isNaN(locId)) {
-                        console.log('Usage: rsbot action use-item-on-loc <item_slot> <x> <z> <loc_id>');
-                        console.log('  item_slot: the inventory slot of the item to use');
-                        console.log('  x, z: world coordinates of the location');
-                        console.log('  loc_id: the ID of the location/object');
-                        console.log('');
-                        console.log('Example:');
-                        console.log('  rsbot action item-on-loc 0 3200 3200 1234');
-                        return;
-                    }
-                    action = { type: 'useItemOnLoc', itemSlot, x, z, locId, reason };
-                    break;
-                }
-
-                case 'drop': {
-                    const slot = parseInt(args[2] ?? '');
-                    if (isNaN(slot)) {
-                        console.log('Usage: rsbot action drop <slot>');
-                        return;
-                    }
-                    action = { type: 'dropItem', slot, reason };
-                    break;
-                }
-
-                case 'dialog': {
-                    const optionIndex = parseInt(args[2] ?? '');
-                    if (isNaN(optionIndex)) {
-                        console.log('Usage: rsbot action dialog <option_index>');
-                        console.log('  0 = click continue');
-                        console.log('  1-5 = select dialog choice');
-                        return;
-                    }
-                    action = { type: 'clickDialogOption', optionIndex, reason };
-                    break;
-                }
-
-                case 'interface':
-                case 'iface': {
-                    const optionIndex = parseInt(args[2] ?? '');
-                    if (isNaN(optionIndex) || optionIndex < 1) {
-                        console.log('Usage: rsbot action interface <option_index>');
-                        console.log('  1-N = select interface option (for crafting/fletching menus)');
-                        console.log('  Use "rsbot state" to see available interface options');
-                        return;
-                    }
-                    action = { type: 'clickInterfaceOption', optionIndex, reason };
-                    break;
-                }
-
-                case 'design': {
-                    action = { type: 'acceptCharacterDesign', reason };
-                    break;
-                }
-
-                case 'skip-tutorial':
-                case 'tutorial': {
-                    action = { type: 'skipTutorial', reason };
-                    break;
-                }
-
-                case 'wait': {
-                    const ticks = parseInt(args[2] ?? '') || 1;
-                    action = { type: 'wait', ticks, reason };
-                    break;
-                }
-
-                case 'none': {
-                    action = { type: 'none', reason };
-                    break;
-                }
-
-                case 'shop-buy':
-                case 'buy': {
-                    const slot = parseInt(args[2] ?? '');
-                    const amount = parseInt(args[3] ?? '') || 1;
-                    if (isNaN(slot)) {
-                        console.log('Usage: rsbot action shop-buy <slot> [amount]');
-                        console.log('  amount: 1, 5, or 10 (default: 1)');
-                        return;
-                    }
-                    action = { type: 'shopBuy', slot, amount, reason };
-                    break;
-                }
-
-                case 'shop-sell':
-                case 'sell': {
-                    const slot = parseInt(args[2] ?? '');
-                    const amount = parseInt(args[3] ?? '') || 1;
-                    if (isNaN(slot)) {
-                        console.log('Usage: rsbot action shop-sell <slot> [amount]');
-                        console.log('  amount: 1, 5, or 10 (default: 1)');
-                        return;
-                    }
-                    action = { type: 'shopSell', slot, amount, reason };
-                    break;
-                }
-
-                case 'set-combat-style':
-                case 'combat-style':
-                case 'style': {
-                    const style = parseInt(args[2] ?? '');
-                    if (isNaN(style) || style < 0 || style > 3) {
-                        console.log('Usage: rsbot action set-combat-style <style>');
-                        console.log('  style: 0 = Accurate (Attack), 1 = Aggressive (Strength), 2 = Defensive (Defence), 3 = Controlled (Shared)');
-                        console.log('');
-                        console.log('Example:');
-                        console.log('  rsbot action style 0    # Train Attack');
-                        console.log('  rsbot action style 1    # Train Strength');
-                        console.log('  rsbot action style 2    # Train Defence');
-                        return;
-                    }
-                    action = { type: 'setCombatStyle', style, reason };
-                    break;
-                }
-
-                case 'say':
-                case 'chat': {
-                    // Join remaining args as the message
-                    const message = args.slice(2).join(' ');
-                    if (!message) {
-                        console.log('Usage: rsbot action say <message>');
-                        console.log('');
-                        console.log('Example:');
-                        console.log('  rsbot action say Hello everyone!');
-                        return;
-                    }
-                    action = { type: 'say', message, reason };
-                    break;
-                }
-
-                default:
-                    console.log(`Unknown action type: ${actionType}`);
-                    console.log('Run "rsbot help" for available action types');
-                    return;
-            }
-
-            const id = await queueAction(action);
-            console.log(`Queued: ${action.type} (${id})`);
-
-            // If --wait flag, wait for result
-            if (args.includes('--wait') || args.includes('-w')) {
-                console.log('Waiting for result...');
-                const result = await waitForAction(id);
-                if (result) {
-                    console.log(`Result: ${result.status}`);
-                    if (result.result) {
-                        console.log(`  ${result.result.success ? 'Success' : 'Failed'}: ${result.result.message}`);
-                    }
-                } else {
-                    console.log('Timed out waiting for action');
-                }
-            }
-            return;
+            await streamLogs(bot);
+            break;
         }
 
         default:
-            console.log(`Unknown command: ${command}`);
-            console.log('Run "rsbot help" for available commands');
+            console.log(`${colors.red}Unknown command: ${command}${colors.reset}`);
+            console.log(`${colors.dim}Run: bun cli.ts --help  for usage${colors.reset}`);
+            process.exit(1);
     }
 }
 
-main().catch(console.error);
+// Handle Ctrl+C gracefully
+process.on('SIGINT', () => {
+    console.log(`\n${colors.dim}Interrupted.${colors.reset}`);
+    process.exit(0);
+});
+
+main().catch(e => {
+    console.error(`${colors.red}Error: ${e.message}${colors.reset}`);
+    process.exit(1);
+});

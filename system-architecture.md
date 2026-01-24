@@ -6,9 +6,9 @@ RS-Agent is a multi-layered bot automation framework. The architecture separates
 
 ```mermaid
 flowchart TB
-    subgraph UI["UI Layer"]
-        Controller["Agent Controller :7781"]
+    subgraph Clients["Clients"]
         WebClient["Web Client :8888"]
+        UI["UI Panel"]
     end
 
     subgraph Agent["Agent Layer"]
@@ -16,8 +16,9 @@ flowchart TB
         MCP["MCP Tools"]
     end
 
-    subgraph Core["Core Layer"]
-        Sync["Sync Service :7780"]
+    subgraph Core["Gateway :7780"]
+        SyncMod["SyncModule"]
+        CtrlMod["ControllerModule"]
         Porcelain["BotActions"]
         SDK["BotSDK"]
     end
@@ -27,14 +28,14 @@ flowchart TB
         Runs["runs/*.jsonl"]
     end
 
-    Controller <-->|"screenshot_request"| Sync
+    UI <-->|"start / stop / log"| CtrlMod
     Claude -->|"tool_use: code"| MCP
     MCP -->|"bot.chopTree()"| Porcelain
     Porcelain -->|"sendInteractLoc()"| SDK
-    SDK <-->|"sdk_action / sdk_state"| Sync
-    Sync <-->|"action / actionResult"| WebClient
-    Sync -->|"player.json"| Files
-    Claude -->|"events.jsonl"| Runs
+    SDK <-->|"sdk_action / sdk_state"| SyncMod
+    SyncMod <-->|"action / actionResult"| WebClient
+    CtrlMod -->|"events.jsonl"| Runs
+    SyncMod -->|"player.json"| Files
 ```
 
 ---
@@ -46,7 +47,7 @@ The SDK follows Git's two-layer model:
 | Layer | File | Resolves When | Use Case |
 |-------|------|---------------|----------|
 | **Plumbing** | `sdk.ts` | Game acknowledges action | Fast, low-level protocol |
-| **Porcelain** | `sdk-porcelain.ts` | Effect is verified | Reliable, domain-aware |
+| **Porcelain** | `bot-actions.ts` | Effect is verified | Reliable, domain-aware |
 
 ### Plumbing Layer
 
@@ -173,11 +174,10 @@ flowchart LR
 
 | Component | Path | Purpose |
 |-----------|------|---------|
-| **Sync** | `agent/sync.ts` | WebSocket router, state cache |
+| **Gateway** | `agent/gateway.ts` | Unified WebSocket router (sync + controller) |
 | **SDK** | `agent/sdk.ts` | Low-level protocol mapping |
-| **Porcelain** | `agent/sdk-porcelain.ts` | Domain-aware API |
-| **Agent** | `agent/rsbot-agent-sdk.ts` | Claude integration |
-| **Controller** | `agent/agent-controller.ts` | UI routing, lifecycle |
+| **BotActions** | `agent/bot-actions.ts` | Domain-aware API |
+| **Agent Service** | `agent/agent-service.ts` | Claude integration |
 | **CLI** | `agent/cli.ts` | Command-line interface |
 | **Types** | `agent/types.ts` | Shared type definitions |
 | **Recorder** | `agent/run-recorder.ts` | Conversation logging |
@@ -232,8 +232,7 @@ flowchart TB
 
 | Port | Service | Protocol |
 |------|---------|----------|
-| 7780 | Sync | WebSocket |
-| 7781 | Controller | WebSocket |
+| 7780 | Gateway | WebSocket (bot/SDK/UI) |
 | 7782 | Agent SDK | WebSocket |
 | 8888 | Engine | HTTP/WS |
 
@@ -291,14 +290,13 @@ await bot.someAction()
 
 ```
 agent/
-├── rsbot-agent-sdk.ts    # Claude agent service (1,369 LOC)
-├── sdk-porcelain.ts      # Domain API (1,246 LOC)
-├── sdk.ts                # Protocol layer (546 LOC)
-├── sync.ts               # Message router (453 LOC)
-├── agent-controller.ts   # Lifecycle (651 LOC)
-├── cli.ts                # CLI tool (876 LOC)
-├── types.ts              # Shared types (231 LOC)
-├── run-recorder.ts       # Logging (218 LOC)
+├── agent-service.ts      # Claude agent service
+├── gateway.ts            # Unified WebSocket router
+├── bot-actions.ts        # Domain API (porcelain)
+├── sdk.ts                # Protocol layer (plumbing)
+├── cli.ts                # CLI tool
+├── types.ts              # Shared types
+├── run-recorder.ts       # Logging
 └── agent-state/          # Per-bot state files
     └── <botname>/
         ├── player.json

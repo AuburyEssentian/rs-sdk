@@ -41,12 +41,15 @@ function isRunningViaTest(): boolean {
 
 const BOT_USERNAME = getBotUsername();
 
+// Controller URL uses /agent-controller which proxies to gateway WITH ?bot= param (UI connection)
 const CONTROLLER_URL = typeof window !== 'undefined'
     ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/agent-controller?bot=${BOT_USERNAME}`
-    : 'ws://localhost:7781';
+    : `ws://localhost:7780?bot=${BOT_USERNAME}`;
 
+// Sync URL uses /agent which proxies to gateway WITHOUT ?bot= param (bot connection)
+// Bot identifies itself via 'connected' message with username
 const SYNC_URL = typeof window !== 'undefined'
-    ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/agent?bot=${BOT_USERNAME}`
+    ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/agent`
     : 'ws://localhost:7780';
 
 // Action types from sync service

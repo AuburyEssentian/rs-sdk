@@ -10,7 +10,7 @@
  */
 
 import { BotSDK } from '../agent/sdk';
-import { BotActions } from '../agent/sdk-porcelain';
+import { BotActions } from '../agent/bot-actions';
 import { launchBotBrowser, sleep, type BrowserSession } from './utils/browser';
 
 const BOT_NAME = process.env.BOT_NAME;
