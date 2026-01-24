@@ -50,10 +50,10 @@ runTest({
             // Look for "Bronze" option in smelting interface
             const options = currentState.dialog.options;
             if (turn === 1 || turn % 20 === 0) {
-                console.log(`Turn ${turn}: Dialog options: ${options.join(', ')}`);
+                console.log(`Turn ${turn}: Dialog options: ${options.map(o => o.text).join(', ')}`);
             }
 
-            const bronzeOpt = options.findIndex(o => /bronze/i.test(o));
+            const bronzeOpt = options.findIndex(o => /bronze/i.test(o.text));
             if (bronzeOpt >= 0) {
                 console.log(`Turn ${turn}: Selecting Bronze bar option (index ${bronzeOpt})`);
                 await sdk.sendClickDialog(bronzeOpt);

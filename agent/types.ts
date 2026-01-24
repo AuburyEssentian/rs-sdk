@@ -49,6 +49,8 @@ export interface NearbyNpc {
     x: number;
     z: number;
     distance: number;
+    hp: number;
+    maxHp: number;
     options: string[];
     optionsWithIndex: NpcOption[];
 }
@@ -97,6 +99,7 @@ export interface DialogState {
     isOpen: boolean;
     options: Array<{ index: number; text: string }>;
     isWaiting: boolean;
+    text?: string;  // Optional dialog text (e.g., NPC speech)
 }
 
 export interface InterfaceState {
@@ -166,6 +169,7 @@ export type BotAction =
     | { type: 'skipTutorial'; reason: string }
     | { type: 'walkTo'; x: number; z: number; running?: boolean; reason: string }
     | { type: 'useInventoryItem'; slot: number; optionIndex: number; reason: string }
+    | { type: 'useEquipmentItem'; slot: number; optionIndex: number; reason: string }
     | { type: 'dropItem'; slot: number; reason: string }
     | { type: 'pickupItem'; x: number; z: number; itemId: number; reason: string }
     | { type: 'interactGroundItem'; x: number; z: number; itemId: number; optionIndex: number; reason: string }
@@ -192,7 +196,7 @@ export interface ActionResult {
 
 // Messages from Bot Client → Sync Server
 export interface BotClientMessage {
-    type: 'state' | 'actionResult' | 'setGoal' | 'connected';
+    type: 'state' | 'actionResult' | 'setGoal' | 'connected' | 'screenshot_response';
     state?: BotWorldState;
     formattedState?: string;
     result?: ActionResult;
@@ -200,6 +204,7 @@ export interface BotClientMessage {
     goal?: string;
     clientId?: string;
     username?: string;
+    dataUrl?: string;  // For screenshot_response
 }
 
 // Messages from Sync Server → Bot Client

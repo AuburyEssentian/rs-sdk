@@ -62,6 +62,12 @@ export interface EquipResult {
     message: string;
 }
 
+export interface UnequipResult {
+    success: boolean;
+    message: string;
+    item?: InventoryItem;  // The unequipped item now in inventory
+}
+
 export interface EatResult {
     success: boolean;
     hpGained: number;
@@ -83,6 +89,98 @@ export interface OpenDoorResult {
 
 export class BotActions {
     constructor(private sdk: BotSDK) {}
+
+    // ============ Private Helpers ============
+
+    /**
+     * Intelligently waits for movement to complete.
+     * Instead of a fixed timeout, this:
+     * 1. Calculates expected time based on distance
+     * 2. Detects when player stops moving (stuck detection)
+     * 3. Returns early when arrived OR stopped moving
+     *
+     * @param targetX - Target X coordinate
+     * @param targetZ - Target Z coordinate
+     * @param tolerance - How close is "arrived" (default 3 tiles)
+     * @returns Object with arrived status and final position
+     */
+    private async waitForMovementComplete(
+        targetX: number,
+        targetZ: number,
+        tolerance: number = 3
+    ): Promise<{ arrived: boolean; stoppedMoving: boolean; x: number; z: number }> {
+        const POLL_INTERVAL = 150;        // Check position every 150ms
+        const STUCK_THRESHOLD = 600;      // Consider stuck if no movement for 600ms
+        const MIN_TIMEOUT = 2000;         // Minimum wait time
+        const TILES_PER_SECOND = 4.5;     // Conservative running speed estimate
+
+        const startState = this.sdk.getState();
+        if (!startState?.player) {
+            return { arrived: false, stoppedMoving: true, x: 0, z: 0 };
+        }
+
+        const startX = startState.player.worldX;
+        const startZ = startState.player.worldZ;
+
+        // Calculate distance-based timeout
+        const distance = Math.sqrt(
+            Math.pow(targetX - startX, 2) + Math.pow(targetZ - startZ, 2)
+        );
+        const expectedTime = (distance / TILES_PER_SECOND) * 1000;
+        const maxTimeout = Math.max(MIN_TIMEOUT, expectedTime * 1.5); // 50% buffer
+
+        let lastX = startX;
+        let lastZ = startZ;
+        let lastMoveTime = Date.now();
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxTimeout) {
+            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+
+            const state = this.sdk.getState();
+            if (!state?.player) {
+                return { arrived: false, stoppedMoving: true, x: lastX, z: lastZ };
+            }
+
+            const currentX = state.player.worldX;
+            const currentZ = state.player.worldZ;
+
+            // Check if arrived
+            const distToTarget = Math.sqrt(
+                Math.pow(targetX - currentX, 2) + Math.pow(targetZ - currentZ, 2)
+            );
+            if (distToTarget <= tolerance) {
+                return { arrived: true, stoppedMoving: false, x: currentX, z: currentZ };
+            }
+
+            // Check if moved since last poll
+            if (currentX !== lastX || currentZ !== lastZ) {
+                lastMoveTime = Date.now();
+                lastX = currentX;
+                lastZ = currentZ;
+            } else {
+                // No movement - check if stuck
+                if (Date.now() - lastMoveTime > STUCK_THRESHOLD) {
+                    return { arrived: false, stoppedMoving: true, x: currentX, z: currentZ };
+                }
+            }
+        }
+
+        // Timeout reached
+        const finalState = this.sdk.getState();
+        const finalX = finalState?.player?.worldX ?? lastX;
+        const finalZ = finalState?.player?.worldZ ?? lastZ;
+        const finalDist = Math.sqrt(
+            Math.pow(targetX - finalX, 2) + Math.pow(targetZ - finalZ, 2)
+        );
+
+        return {
+            arrived: finalDist <= tolerance,
+            stoppedMoving: true,
+            x: finalX,
+            z: finalZ
+        };
+    }
 
     // ============ Porcelain: UI Helpers ============
 
@@ -569,8 +667,7 @@ export class BotActions {
      * is blocked by a closed door, use openDoor() first. For multi-level
      * navigation, call this separately for each floor.
      */
-    async walkTo(x: number, z: number): Promise<ActionResult> {
-        const tolerance = 3;
+    async walkTo(x: number, z: number, tolerance: number = 3): Promise<ActionResult> {
         const startState = this.sdk.getState();
         if (!startState?.player) {
             return { success: false, message: 'No player state' };
@@ -638,43 +735,33 @@ export class BotActions {
             const WAYPOINT_STEP = 5;
             for (let wpIndex = Math.min(WAYPOINT_STEP - 1, waypoints.length - 1); wpIndex < waypoints.length; wpIndex += WAYPOINT_STEP) {
                 const wp = waypoints[wpIndex];
+                if (!wp) continue;
                 await this.sdk.sendWalk(wp.x, wp.z, true);
 
-                try {
-                    await this.sdk.waitForCondition(s => {
-                        if (!s.player) return false;
-                        const dx = Math.abs(s.player.worldX - wp.x);
-                        const dz = Math.abs(s.player.worldZ - wp.z);
-                        return dx <= 3 && dz <= 3;
-                    }, 5000);
-                } catch {
-                    // Timeout - continue anyway
-                }
+                // Use intelligent wait - exits early if stopped moving
+                const moveResult = await this.waitForMovementComplete(wp.x, wp.z, 3);
 
-                const checkState = this.sdk.getState();
-                if (!checkState?.player) {
+                if (!this.sdk.getState()?.player) {
                     return { success: false, message: 'Lost connection during walk' };
                 }
 
                 // Check if we've arrived at final destination
-                const newDist = Math.sqrt(Math.pow(x - checkState.player.worldX, 2) + Math.pow(z - checkState.player.worldZ, 2));
+                const newDist = Math.sqrt(Math.pow(x - moveResult.x, 2) + Math.pow(z - moveResult.z, 2));
                 if (newDist <= tolerance) {
-                    return { success: true, message: `Arrived at (${checkState.player.worldX}, ${checkState.player.worldZ})` };
+                    return { success: true, message: `Arrived at (${moveResult.x}, ${moveResult.z})` };
+                }
+
+                // If stopped moving but not at waypoint, might need to re-path
+                if (moveResult.stoppedMoving && !moveResult.arrived) {
+                    break; // Exit inner loop to re-query pathfinder
                 }
             }
 
             // Walk to the last waypoint
             const lastWp = waypoints[waypoints.length - 1];
-            await this.sdk.sendWalk(lastWp.x, lastWp.z, true);
-            try {
-                await this.sdk.waitForCondition(s => {
-                    if (!s.player) return false;
-                    const dx = Math.abs(s.player.worldX - lastWp.x);
-                    const dz = Math.abs(s.player.worldZ - lastWp.z);
-                    return dx <= 3 && dz <= 3;
-                }, 5000);
-            } catch {
-                // Continue even if we don't reach exactly
+            if (lastWp) {
+                await this.sdk.sendWalk(lastWp.x, lastWp.z, true);
+                await this.waitForMovementComplete(lastWp.x, lastWp.z, 3);
             }
 
             // Check progress
@@ -1023,6 +1110,79 @@ export class BotActions {
         } catch {
             return { success: false, message: `Failed to equip ${item.name}` };
         }
+    }
+
+    /**
+     * Unequips an item from equipment slots.
+     * Waits for the item to appear in inventory.
+     *
+     * @param target - Equipment item to unequip (can be InventoryItem, name string, or RegExp pattern)
+     *
+     * Equipment slot indices:
+     * - 0: Head (helmet)
+     * - 1: Cape
+     * - 2: Amulet
+     * - 3: Weapon (right hand)
+     * - 4: Body (torso)
+     * - 5: Shield (left hand)
+     * - 6: Legs
+     * - 7: Gloves
+     * - 8: Boots
+     * - 9: Ring
+     * - 10: Ammo
+     */
+    async unequipItem(target: InventoryItem | string | RegExp): Promise<UnequipResult> {
+        // Find the item in equipment
+        let item: InventoryItem | null = null;
+        if (typeof target === 'object' && 'slot' in target) {
+            item = target;
+        } else {
+            item = this.sdk.findEquipmentItem(target);
+        }
+
+        if (!item) {
+            return { success: false, message: `Item not found in equipment: ${target}` };
+        }
+
+        // Equipment items use option 1 to unequip (clicking the item removes it)
+        // The displayed options (like "Wield") are inventory options, not equipment options
+        const invCountBefore = this.sdk.getInventory().length;
+        const result = await this.sdk.sendUseEquipmentItem(item.slot, 1);
+        if (!result.success) {
+            return { success: false, message: result.message };
+        }
+
+        try {
+            // Wait for item to appear in inventory
+            await this.sdk.waitForCondition(state =>
+                state.inventory.length > invCountBefore ||
+                state.inventory.some(i => i.id === item!.id),
+                5000
+            );
+
+            const unequippedItem = this.sdk.findInventoryItem(new RegExp(item.name, 'i'));
+            return {
+                success: true,
+                message: `Unequipped ${item.name}`,
+                item: unequippedItem || undefined
+            };
+        } catch {
+            return { success: false, message: `Failed to unequip ${item.name}` };
+        }
+    }
+
+    /**
+     * Gets all currently equipped items.
+     */
+    getEquipment(): InventoryItem[] {
+        return this.sdk.getEquipment();
+    }
+
+    /**
+     * Finds an equipped item by name pattern.
+     */
+    findEquippedItem(pattern: string | RegExp): InventoryItem | null {
+        return this.sdk.findEquipmentItem(pattern);
     }
 
     /**

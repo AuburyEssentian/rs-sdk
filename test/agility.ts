@@ -111,12 +111,12 @@ runTest({
             /log|net|rope|branch|pipe|wall|ledge|hurdle|plank/i.test(loc.name)
         );
 
-        if (namedObstacle && namedObstacle.optionsWithIndex.length > 0) {
-            const opt = namedObstacle.optionsWithIndex[0];
+        const obstacleOpt = namedObstacle?.optionsWithIndex[0];
+        if (namedObstacle && obstacleOpt) {
             if (turn % 15 === 1) {
-                console.log(`Turn ${turn}: Trying ${namedObstacle.name} - ${opt.text}`);
+                console.log(`Turn ${turn}: Trying ${namedObstacle.name} - ${obstacleOpt.text}`);
             }
-            await sdk.sendInteractLoc(namedObstacle.x, namedObstacle.z, namedObstacle.id, opt.opIndex);
+            await sdk.sendInteractLoc(namedObstacle.x, namedObstacle.z, namedObstacle.id, obstacleOpt.opIndex);
             await sleep(3000);
             continue;
         }

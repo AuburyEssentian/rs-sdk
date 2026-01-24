@@ -52,7 +52,7 @@ runTest({
     console.log('Goal: Detect damage and eat food to heal');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     // Get initial HP

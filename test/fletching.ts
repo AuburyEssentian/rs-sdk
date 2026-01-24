@@ -24,7 +24,7 @@ runTest({
 }, async ({ sdk }) => {
     console.log('Goal: Use knife on logs to gain Fletching XP');
 
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const initialXp = sdk.getSkill('Fletching')?.experience ?? 0;
@@ -55,7 +55,7 @@ runTest({
             if (okOption) {
                 console.log(`Turn ${turn}: Clicking Ok to fletch`);
                 await sdk.sendClickDialog(okOption.index);
-            } else if (state.dialog.options.length > 0) {
+            } else if (state.dialog.options.length > 0 && state.dialog.options[0]) {
                 await sdk.sendClickDialog(state.dialog.options[0].index);
             } else {
                 await sdk.sendClickDialog(0);
@@ -66,7 +66,7 @@ runTest({
 
         // Handle interface (make-x)
         if (state?.interface.isOpen) {
-            if (state.interface.options.length > 0) {
+            if (state.interface.options.length > 0 && state.interface.options[0]) {
                 console.log(`Turn ${turn}: Clicking interface option to fletch`);
                 await sdk.sendClickInterface(state.interface.options[0].index);
             }

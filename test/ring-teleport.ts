@@ -56,7 +56,7 @@ async function runTest(): Promise<boolean> {
         const { sdk } = session;
 
         // Wait for state to fully load
-        await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+        await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
         await sleep(500);
 
         console.log(`Bot '${session.botName}' ready!`);

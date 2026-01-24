@@ -27,7 +27,7 @@ runTest({
     console.log('Goal: Cast Wind Strike on NPCs to gain Magic XP');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const initialLevel = sdk.getSkill('Magic')?.baseLevel ?? 1;

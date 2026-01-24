@@ -76,7 +76,7 @@ async function testRoute(
 
     try {
         // Wait for state
-        await sdk.waitForCondition(s => s.player?.worldX > 0, 10000);
+        await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0, 10000);
         await sleep(500);
 
         const startState = sdk.getState();
@@ -158,8 +158,8 @@ async function testPathfindingAPI(session: SDKSession): Promise<boolean> {
     if (result.waypoints.length > 0) {
         const first = result.waypoints[0];
         const last = result.waypoints[result.waypoints.length - 1];
-        console.log(`  First waypoint: (${first.x}, ${first.z})`);
-        console.log(`  Last waypoint: (${last.x}, ${last.z})`);
+        if (first) console.log(`  First waypoint: (${first.x}, ${first.z})`);
+        if (last) console.log(`  Last waypoint: (${last.x}, ${last.z})`);
     }
 
     return result.waypoints.length > 0;
@@ -183,7 +183,7 @@ async function runAllTests(): Promise<boolean> {
         session = await launchBotWithSDK(BOT_NAME, { skipTutorial: false });
 
         // First, test the raw pathfinding API
-        await session.sdk.waitForCondition(s => s.player?.worldX > 0, 10000);
+        await session.sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0, 10000);
         apiTestPassed = await testPathfindingAPI(session);
 
         if (!apiTestPassed) {

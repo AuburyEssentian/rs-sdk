@@ -205,18 +205,20 @@ for (let i = 0; i < 256; i++) {
 function getCRC32(data: Uint8Array, offset: number, length: number): number {
     let crc = 0xffffffff;
     for (let i = offset; i < length; i++) {
-        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ data[i]) & 0xff];
+        const tableIndex = (crc ^ (data[i] ?? 0)) & 0xff;
+        crc = (crc >>> 8) ^ (CRC32_TABLE[tableIndex] ?? 0);
     }
     return ~crc;
 }
 
 // Calculate XP for a given level (RS formula)
+// Must match engine's levelExperience calculation: Math.floor(acc / 4) * 10
 function getExpByLevel(level: number): number {
     let xp = 0;
     for (let i = 1; i < level; i++) {
         xp += Math.floor(i + 300 * Math.pow(2, i / 7));
     }
-    return Math.floor(xp / 4);
+    return Math.floor(xp / 4) * 10;  // ×10 to match engine format
 }
 
 // Binary writer helper
@@ -268,7 +270,8 @@ export function createSaveData(config: SaveConfig): Uint8Array {
     const pos = config.position ?? Locations.LUMBRIDGE_CASTLE;
     writer.p2(pos.x);
     writer.p2(pos.z);
-    writer.p1(pos.level ?? 0);
+    const posLevel = (pos as { level?: number }).level ?? 0;
+    writer.p1(posLevel);
 
     // Appearance - body parts (7 values)
     const body = config.appearance?.body ?? [0, 10, 18, 26, 33, 36, 42];
@@ -574,6 +577,9 @@ export const TestPresets = {
     } as SaveConfig,
 };
 
+/** Type for a single test preset (value from TestPresets) */
+export type TestPreset = SaveConfig;
+
 // CLI usage
 if (import.meta.main) {
     const args = process.argv.slice(2);
@@ -583,7 +589,8 @@ if (import.meta.main) {
         process.exit(1);
     }
 
-    const [username, presetName] = args;
+    const username = args[0]!;
+    const presetName = args[1]!;
     const preset = TestPresets[presetName as keyof typeof TestPresets];
 
     if (!preset) {

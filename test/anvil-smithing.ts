@@ -28,7 +28,7 @@ runTest({
     console.log('Goal: Smith bronze bars into bronze daggers');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const initialLevel = sdk.getSkill('Smithing')?.baseLevel ?? 1;
@@ -75,7 +75,7 @@ runTest({
             if (daggerOpt) {
                 console.log(`Turn ${turn}: Selecting "${daggerOpt.text}" (index ${daggerOpt.index})`);
                 await sdk.sendClickInterface(daggerOpt.index);
-            } else if (options.length > 0) {
+            } else if (options.length > 0 && options[0]) {
                 console.log(`Turn ${turn}: Selecting first option "${options[0].text}"`);
                 await sdk.sendClickInterface(options[0].index);
             } else {

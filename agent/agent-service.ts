@@ -122,13 +122,15 @@ function computeStateDelta(prev: BotWorldState, curr: BotWorldState): StateDelta
     // Equipment changes - compare by slot
     const equipSlots = ['Head', 'Cape', 'Neck', 'Weapon', 'Body', 'Shield', 'Legs', 'Hands', 'Feet', 'Ring', 'Ammo'];
     for (let i = 0; i < equipSlots.length; i++) {
+        const slotName = equipSlots[i];
+        if (!slotName) continue;
         const prevItem = prev.equipment[i];
         const currItem = curr.equipment[i];
         const prevName = prevItem?.name || null;
         const currName = currItem?.name || null;
         if (prevName !== currName) {
             delta.equipmentChanged.push({
-                slot: equipSlots[i],
+                slot: slotName,
                 from: prevName || undefined,
                 to: currName || undefined
             });
@@ -404,7 +406,8 @@ function formatCurrentState(state: BotWorldState): string {
                 const opts = n.options.filter(o => o && o !== 'hidden');
                 const optsStr = opts.length > 0 ? ` [${opts.join('/')}]` : '';
                 const lvl = n.combatLevel > 0 ? ` (lvl ${n.combatLevel})` : '';
-                return `- ${n.name}${lvl} ${Math.round(n.distance)} tiles away${optsStr}`;
+                const hpStr = n.maxHp > 0 ? ` HP: ${n.hp}/${n.maxHp}` : '';
+                return `- ${n.name}${lvl}${hpStr} ${Math.round(n.distance)} tiles away${optsStr}`;
             });
         lines.push(...npcs);
     } else {
@@ -1163,7 +1166,7 @@ function processAgentMessage(session: BotSession, message: SDKMessage) {
                             broadcastToController(session.username, {
                                 type: 'todos',
                                 todos: todos
-                            });
+                            } as { type: string; todos: typeof todos });
                         } else {
                             // Skip logging other internal tools
                         }

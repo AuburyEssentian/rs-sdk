@@ -40,7 +40,7 @@ runTest({
     console.log('Goal: Climb up and down stairs between 3 floors, verify level changes');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0, 10000);
     await sleep(500);
 
     const startState = sdk.getState();

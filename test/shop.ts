@@ -26,7 +26,7 @@ runTest({
 }, async ({ sdk, bot }) => {
     console.log('Goal: Test shop buy/sell with patterns and objects');
 
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const state = sdk.getState();

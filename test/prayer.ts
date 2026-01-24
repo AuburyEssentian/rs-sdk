@@ -25,7 +25,7 @@ runTest({
     console.log('Goal: Bury bones to gain Prayer XP');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const initialLevel = sdk.getSkill('Prayer')?.baseLevel ?? 1;

@@ -32,7 +32,7 @@ runTest({
     console.log('Goal: Craft leather item with needle and thread');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const initialXp = sdk.getSkill('Crafting')?.experience ?? 0;
@@ -70,7 +70,7 @@ runTest({
             if (currentState.interface.interfaceId === 2311) {
                 console.log(`  Clicking gloves option (index 2)`);
                 await sdk.sendClickInterface(2);
-            } else if (currentState.interface.options.length > 0) {
+            } else if (currentState.interface.options.length > 0 && currentState.interface.options[0]) {
                 console.log(`  Clicking first option: ${currentState.interface.options[0].text}`);
                 await sdk.sendClickInterface(currentState.interface.options[0].index);
             }
@@ -88,7 +88,7 @@ runTest({
             if (craftOption) {
                 console.log(`  Clicking: ${craftOption.text}`);
                 await sdk.sendClickDialog(craftOption.index);
-            } else if (currentState.dialog.options.length > 0) {
+            } else if (currentState.dialog.options.length > 0 && currentState.dialog.options[0]) {
                 await sdk.sendClickDialog(currentState.dialog.options[0].index);
             } else {
                 await sdk.sendClickDialog(0);

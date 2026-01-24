@@ -27,7 +27,7 @@ runTest({
     console.log('Goal: Cook raw shrimp to gain Cooking XP');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const initialLevel = sdk.getSkill('Cooking')?.baseLevel ?? 1;
@@ -76,7 +76,7 @@ runTest({
             if (cookOpt) {
                 console.log(`Turn ${turn}: Selecting cook option (index ${cookOpt.index})`);
                 await sdk.sendClickDialog(cookOpt.index);
-            } else if (options.length > 0) {
+            } else if (options.length > 0 && options[0]) {
                 console.log(`Turn ${turn}: Clicking option ${options[0].index}: ${options[0].text}`);
                 await sdk.sendClickDialog(options[0].index);
             } else {
@@ -89,7 +89,7 @@ runTest({
         // Handle interface (make-x)
         if (currentState?.interface.isOpen) {
             console.log(`Turn ${turn}: Interface open (id=${currentState.interface.interfaceId})`);
-            if (currentState.interface.options.length > 0) {
+            if (currentState.interface.options.length > 0 && currentState.interface.options[0]) {
                 await sdk.sendClickInterface(currentState.interface.options[0].index);
             }
             await sleep(500);

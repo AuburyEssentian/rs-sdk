@@ -33,7 +33,7 @@ runTest({
     console.log('Goal: Make attack potion to gain Herblore XP');
 
     // Wait for state to fully load
-    await sdk.waitForCondition(s => s.player?.worldX > 0 && s.inventory.length > 0, 10000);
+    await sdk.waitForCondition(s => (s.player?.worldX ?? 0) > 0 && s.inventory.length > 0, 10000);
     await sleep(500);
 
     const initialLevel = sdk.getSkill('Herblore')?.baseLevel ?? 1;
@@ -75,7 +75,7 @@ runTest({
             console.log(`  Options: ${currentState.interface.options.map(o => `${o.index}:${o.text}`).join(', ') || 'none'}`);
 
             // Click first option to make the potion
-            if (currentState.interface.options.length > 0) {
+            if (currentState.interface.options.length > 0 && currentState.interface.options[0]) {
                 console.log(`  Clicking: ${currentState.interface.options[0].text}`);
                 await sdk.sendClickInterface(currentState.interface.options[0].index);
             }
@@ -91,7 +91,7 @@ runTest({
             const makeOpt = options.find(o => /make|potion|yes/i.test(o.text));
             if (makeOpt) {
                 await sdk.sendClickDialog(makeOpt.index);
-            } else if (options.length > 0) {
+            } else if (options.length > 0 && options[0]) {
                 await sdk.sendClickDialog(options[0].index);
             } else {
                 await sdk.sendClickDialog(0);

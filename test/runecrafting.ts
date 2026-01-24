@@ -119,12 +119,12 @@ runTest({
 
             // Try clicking on any altar-like object
             const anyAltar = locs.find(loc => /altar/i.test(loc.name));
-            if (anyAltar && anyAltar.optionsWithIndex.length > 0) {
-                const opt = anyAltar.optionsWithIndex[0];
+            const altarOpt = anyAltar?.optionsWithIndex[0];
+            if (anyAltar && altarOpt) {
                 if (turn % 10 === 1) {
-                    console.log(`Turn ${turn}: Trying ${anyAltar.name} - ${opt.text}`);
+                    console.log(`Turn ${turn}: Trying ${anyAltar.name} - ${altarOpt.text}`);
                 }
-                await sdk.sendInteractLoc(anyAltar.x, anyAltar.z, anyAltar.id, opt.opIndex);
+                await sdk.sendInteractLoc(anyAltar.x, anyAltar.z, anyAltar.id, altarOpt.opIndex);
                 await sleep(2000);
                 continue;
             }

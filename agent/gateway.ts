@@ -147,7 +147,7 @@ const SyncModule = {
         if (!session) return;
 
         if (message.type === 'actionResult' && message.result) {
-            const actionId = message.actionId || session.currentActionId;
+            const actionId = message.actionId || session.currentActionId || undefined;
             console.log(`[Gateway] [${session.username}] Action result: ${message.result.success ? 'success' : 'failed'} - ${message.result.message}`);
 
             for (const sdkSession of this.getSDKSessionsForBot(session.username)) {
@@ -168,8 +168,8 @@ const SyncModule = {
             }
         }
 
-        if (message.type === 'screenshot_response' && (message as any).dataUrl) {
-            ControllerModule.handleScreenshot(session.username, (message as any).dataUrl);
+        if (message.type === 'screenshot_response' && message.dataUrl) {
+            ControllerModule.handleScreenshot(session.username, message.dataUrl);
         }
     },
 

@@ -221,7 +221,8 @@ async function streamLogs(botUsername: string, onComplete?: () => void): Promise
         // Print new entries
         if (log.length > lastLogCount) {
             for (let i = lastLogCount; i < log.length; i++) {
-                console.log(formatLogEntry(log[i]));
+                const entry = log[i];
+                if (entry) console.log(formatLogEntry(entry));
             }
             lastLogCount = log.length;
             checkCount = 0;  // Reset idle counter on activity
