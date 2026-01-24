@@ -151,6 +151,8 @@ export class AgentPanel {
         // Always connect to sync service so actions can be executed
         // even when the panel is not visible
         this.connectSync();
+        // Show panel by default
+        this.show();
     }
 
     setClient(client: Client): void {
@@ -912,7 +914,7 @@ export class AgentPanel {
                 break;
 
             case 'result':
-                div.innerHTML = this.formatResultEntry('', entry.content) + countBadgeHtml;
+                div.innerHTML = `<span style="color:#506050; font-size:10px;">→ returned:</span> ` + this.formatResultEntry('', entry.content) + countBadgeHtml;
                 this.lastEntryDiv = div;
                 break;
 
@@ -961,10 +963,6 @@ export class AgentPanel {
     }
 
     private formatCodeEntry(time: string, code: string): string {
-        const lines = code.split('\n');
-        const id = `code-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-        const isLong = lines.length > 10;
-
         // Try to highlight with hljs if available
         let highlighted = this.escapeHtml(code);
         const hljs = (window as any).hljs;
@@ -976,21 +974,10 @@ export class AgentPanel {
             }
         }
 
-        let html = `<div style="background: #1e1e1e; border-radius: 3px; overflow: hidden;">`;
-
-        if (isLong) {
-            html += `<div style="padding: 4px 8px; display: flex; align-items: center; border-bottom: 1px solid #2d2d2d;">
-                <span style="color:#505050; font-size:10px;">${lines.length} lines</span>
-                <button onclick="this.parentElement.nextElementSibling.classList.toggle('collapsed'); this.textContent = this.textContent === '▼' ? '▶' : '▼';"
-                       style="background: none; border: none; color: #505050; cursor: pointer; font-size: 10px; margin-left: auto;">▼</button>
-            </div>`;
-        }
-
-        html += `<div id="${id}" style="padding: 8px 10px; max-height: 200px; overflow-y: auto; overflow-x: hidden;">
+        // Simple code block without max-height or scrolling
+        return `<div style="background: #1e1e1e; border-radius: 3px; padding: 8px 10px;">
             <pre style="margin: 0; white-space: pre-wrap; word-break: break-word; font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; line-height: 1.5; color: #707070;"><code>${highlighted}</code></pre>
-        </div></div>`;
-
-        return html;
+        </div>`;
     }
 
     private formatResultEntry(time: string, content: string): string {
@@ -1008,17 +995,9 @@ export class AgentPanel {
                 return `<span style="color:${color}; font-family: monospace; font-size: 10px;">${this.syntaxHighlightJson(JSON.stringify(parsed))}</span>`;
             }
 
-            // Expandable for larger results
-            const id = `r-${Date.now()}`;
-            return `<div style="background: #1a1a1a; border-radius: 3px; overflow: hidden;">
-                <div style="padding: 4px 8px; display: flex; align-items: center;">
-                    <span style="color:#484848; font-size:10px;">${lines.length} lines</span>
-                    <button onclick="document.getElementById('${id}').classList.toggle('collapsed'); this.textContent = this.textContent === '▼' ? '▶' : '▼';"
-                           style="background: none; border: none; color: #484848; cursor: pointer; font-size: 10px; margin-left: auto;">▼</button>
-                </div>
-                <div id="${id}" style="padding: 6px 8px; max-height: 120px; overflow-y: auto; overflow-x: hidden; border-top: 1px solid #252525;">
-                    <pre style="margin: 0; font-size: 10px; line-height: 1.3; font-family: monospace; white-space: pre-wrap; word-break: break-all; color: #707070;">${this.syntaxHighlightJson(formatted)}</pre>
-                </div>
+            // Show full result without scrolling
+            return `<div style="background: #1a1a1a; border-radius: 3px; overflow: hidden; padding: 6px 8px;">
+                <pre style="margin: 0; font-size: 10px; line-height: 1.3; font-family: monospace; white-space: pre-wrap; word-break: break-all; color: #707070;">${this.syntaxHighlightJson(formatted)}</pre>
             </div>`;
         } catch {
             // Plain text

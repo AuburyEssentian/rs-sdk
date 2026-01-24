@@ -892,7 +892,7 @@ class World {
                 }
             }
 
-            // player already logged in - kick the existing session and allow the new login
+            // player already logged in - kick the existing session and transfer their state to the new login
             for (const other of this.players) {
                 if (player.username !== other.username) {
                     continue;
@@ -902,6 +902,28 @@ class World {
                     player.addSessionLog(LoggerEventType.ENGINE, 'Kicking existing session to allow new login');
                 }
                 other.addSessionLog(LoggerEventType.ENGINE, 'Kicked due to login from another session');
+
+                // Save the existing player's in-memory state before removing them
+                // This prevents losing progress when the new login was loaded from stale disk save
+                const existingSave = other.save();
+                const client = isClientConnected(player) ? player.client : null;
+
+                // Re-create the new player from the existing player's current state
+                this.newPlayers.delete(player);
+                const transferredPlayer = PlayerLoading.load(player.username, new Packet(existingSave), client);
+
+                // Preserve login metadata from the original login response
+                transferredPlayer.account_id = player.account_id;
+                transferredPlayer.reconnecting = player.reconnecting;
+                transferredPlayer.staffModLevel = player.staffModLevel;
+                transferredPlayer.lowMemory = player.lowMemory;
+                transferredPlayer.muted_until = player.muted_until;
+                transferredPlayer.members = player.members;
+                transferredPlayer.messageCount = player.messageCount;
+
+                this.newPlayers.add(transferredPlayer);
+
+                // Now remove the old player (this also flushes to disk for backup)
                 this.removePlayer(other);
                 break;
             }

@@ -85,20 +85,15 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
                     content = escapeHtml(JSON.stringify(parsed, null, 2));
                 } catch {}
             }
-            // Make long content collapsible
+            // Always show full code with syntax highlighting wrapper
             const lines = content.split('\n');
-            if (lines.length > 5) {
-                const id = `code-${index}`;
-                const preview = lines.slice(0, 3).join('\n') + '\n...';
-                // Preview and full are mutually exclusive - toggle swaps between them
-                extraHtml = `
-                    <div id="${id}-preview" class="event-content">${preview}</div>
-                    <div class="code-toggle" onclick="toggleCode('${id}')">
-                        <span class="toggle-icon">▶</span> <span class="toggle-text">Show full (${lines.length} lines)</span>
-                    </div>
-                    <div id="${id}" class="code-full" style="display:none">${content}</div>`;
-                content = ''; // Don't render content separately - it's in extraHtml
-            }
+            const lang = event.type === 'result' ? 'json' : 'typescript';
+            extraHtml = `
+                <div class="code-block">
+                    <div class="code-header"><span class="line-count">${lines.length} lines</span></div>
+                    <pre class="code-content"><code class="language-${lang}">${content}</code></pre>
+                </div>`;
+            content = '';
         } else if (event.type === 'state') {
             // State delta - show nicely formatted
             extraHtml = `<div class="state-delta">${content}</div>`;
@@ -107,7 +102,6 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
 
         return `<div class="event ${event.type}">
             <div class="event-header">
-                <span class="event-type">${event.type}</span>
                 <span class="event-time">${time}</span>
             </div>
             ${content ? `<div class="event-content">${content}</div>` : ''}
@@ -123,12 +117,15 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Run: ${escapeHtml(meta.goal)}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
+            background: #0a0a0a;
+            color: #888;
             margin: 0;
             padding: 20px;
             line-height: 1.5;
@@ -137,84 +134,87 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
         h1 { color: #5bf; margin-bottom: 10px; font-size: 20px; }
         .back { color: #5bf; text-decoration: none; font-size: 14px; }
         .meta {
-            color: #888;
+            color: #666;
             margin: 16px 0;
             padding: 12px;
-            background: rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.03);
+            border: 1px solid #333;
             border-radius: 8px;
             display: flex;
             flex-wrap: wrap;
             gap: 16px;
         }
+        .meta strong { color: #888; }
         .timeline { display: flex; flex-direction: column; gap: 8px; }
         .event {
             padding: 12px 16px;
-            border-radius: 8px;
-            border-left: 4px solid #555;
-            background: rgba(255,255,255,0.03);
-        }
-        .event.system { border-left-color: #888; }
-        .event.thinking { border-left-color: #66f; background: rgba(100,100,255,0.1); }
-        .event.action { border-left-color: #fa0; background: rgba(255,170,0,0.1); }
-        .event.code { border-left-color: #ff0; background: rgba(40,40,50,0.9); }
-        .event.result { border-left-color: #5f5; background: rgba(100,255,100,0.08); }
-        .event.error { border-left-color: #f55; background: rgba(255,100,100,0.1); }
-        .event.user_message { border-left-color: #5bf; background: rgba(100,200,255,0.1); }
-        .event.screenshot { border-left-color: #f0f; background: rgba(255,100,255,0.08); }
-        .event.state { border-left-color: #0ff; background: rgba(0,255,255,0.08); }
-        .event-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .event-type {
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 11px;
-            padding: 2px 8px;
             border-radius: 4px;
-            background: rgba(255,255,255,0.1);
+            border-left: 3px solid #333;
+            background: rgba(255,255,255,0.02);
         }
-        .event-time { color: #666; font-size: 12px; font-family: monospace; }
+        .event.system { border-left-color: #555; }
+        .event.thinking { border-left-color: #6666aa; background: rgba(100,100,170,0.08); }
+        .event.action { border-left-color: #aa8844; background: rgba(170,136,68,0.08); }
+        .event.code { border-left-color: #888855; background: #0d0d0d; }
+        .event.result { border-left-color: #558855; background: rgba(85,136,85,0.05); }
+        .event.error { border-left-color: #884444; background: rgba(136,68,68,0.08); }
+        .event.user_message { border-left-color: #446688; background: rgba(68,102,136,0.08); }
+        .event.screenshot { border-left-color: #885588; background: rgba(136,85,136,0.05); }
+        .event.state { border-left-color: #448888; background: rgba(68,136,136,0.05); }
+        .event-header {
+            margin-bottom: 6px;
+        }
+        .event-time { color: #444; font-size: 10px; font-family: 'Consolas', 'Monaco', monospace; }
         .event-content {
             white-space: pre-wrap;
             word-break: break-word;
-            font-size: 13px;
-        }
-        .event.code .event-content,
-        .code-full {
-            font-family: 'Monaco', 'Consolas', monospace;
             font-size: 12px;
-            color: #fd6;
+            color: #999;
+        }
+        .code-block {
+            background: #111;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #222;
+        }
+        .code-header {
+            padding: 4px 10px;
+            background: #151515;
+            border-bottom: 1px solid #222;
+        }
+        .line-count {
+            font-size: 10px;
+            color: #444;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .code-content {
+            margin: 0;
+            padding: 10px 12px;
+            overflow-x: auto;
+        }
+        .code-content code {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            line-height: 1.5;
             white-space: pre-wrap;
-        }
-        .event.result .event-content {
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 12px;
-            color: #8f8;
+            word-break: break-word;
         }
         .state-delta {
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 12px;
-            color: #0ff;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            color: #668888;
             white-space: pre-wrap;
+            background: #0d0d0d;
+            padding: 8px 10px;
+            border-radius: 4px;
         }
-        .code-toggle {
-            cursor: pointer;
-            color: #888;
-            font-size: 12px;
-            margin-top: 8px;
-            user-select: none;
-        }
-        .code-toggle:hover { color: #aaa; }
-        .toggle-icon { font-size: 10px; }
         .screenshot-thumb {
             max-width: 400px;
             max-height: 300px;
             border-radius: 4px;
             cursor: pointer;
             margin-top: 8px;
+            border: 1px solid #333;
         }
         .screenshot-thumb:hover { opacity: 0.9; }
         .lightbox {
@@ -222,7 +222,7 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
             position: fixed;
             top: 0; left: 0;
             width: 100%; height: 100%;
-            background: rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.95);
             z-index: 1000;
             justify-content: center;
             align-items: center;
@@ -232,10 +232,29 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
         .lightbox-close {
             position: absolute;
             top: 20px; right: 30px;
-            color: white;
+            color: #666;
             font-size: 30px;
             cursor: pointer;
         }
+        /* Highlight.js custom theme - matching AgentPanel */
+        .hljs { background: transparent; color: #808080; }
+        .hljs-keyword { color: #907090; }
+        .hljs-built_in { color: #709080; }
+        .hljs-string { color: #908070; }
+        .hljs-number { color: #809070; }
+        .hljs-literal { color: #708090; }
+        .hljs-comment { color: #505050; }
+        .hljs-function { color: #909070; }
+        .hljs-title.function_ { color: #909070; }
+        .hljs-params { color: #707080; }
+        .hljs-property { color: #707080; }
+        .hljs-attr { color: #807070; }
+        .hljs-variable { color: #707080; }
+        .hljs-punctuation { color: #606060; }
+        /* Scrollbar styling */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -255,24 +274,12 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
         <img src="" alt="Screenshot">
     </div>
     <script>
-        function toggleCode(id) {
-            const full = document.getElementById(id);
-            const preview = document.getElementById(id + '-preview');
-            const toggle = full.previousElementSibling;
-            const icon = toggle.querySelector('.toggle-icon');
-            const text = toggle.querySelector('.toggle-text');
-            if (full.style.display === 'none') {
-                full.style.display = 'block';
-                preview.style.display = 'none';
-                icon.textContent = '▼';
-                text.textContent = 'Hide code';
-            } else {
-                full.style.display = 'none';
-                preview.style.display = 'block';
-                icon.textContent = '▶';
-                text.textContent = 'Show full';
-            }
-        }
+        // Apply syntax highlighting to all code blocks
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('pre.code-content code').forEach(block => {
+                hljs.highlightElement(block);
+            });
+        });
         document.querySelectorAll('.screenshot-thumb').forEach(img => {
             img.addEventListener('click', e => {
                 e.stopPropagation();
