@@ -12,7 +12,8 @@
     "sync:dev": "bun run --watch sync.ts",
     "cli": "bun run cli.ts",
     "login": "bun run login.ts",
-    "controller": "bun run agent-controller.ts"
+    "controller": "bun run agent-controller.ts",
+    "controller:dev": "bun run --watch agent-controller.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.14",
