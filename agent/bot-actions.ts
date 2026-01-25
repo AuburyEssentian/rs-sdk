@@ -971,6 +971,13 @@ export class BotActions {
         }
 
         // Check for rejection messages or successful sale
+        // Use TOTAL COUNT of items with this ID to handle:
+        // 1. Unstackable items (like shortbows) with count=1 each
+        // 2. Slot shifting after items are sold
+        const getTotalCount = (playerItems: typeof shop.playerItems) =>
+            playerItems.filter(i => i.id === sellItem.id).reduce((sum, i) => sum + i.count, 0);
+        const totalCountBefore = getTotalCount(shop.playerItems);
+
         try {
             const finalState = await this.sdk.waitForCondition(state => {
                 // Check for rejection messages (arrived after we started)
@@ -983,10 +990,9 @@ export class BotActions {
                     }
                 }
 
-                // Check for successful sale (item count decreased)
-                const item = state.shop.playerItems.find(i => i.id === sellItem.id);
-                if (!item) return true;  // Item gone completely
-                return item.count < countBefore;  // Count decreased
+                // Check for successful sale - total count of this item type decreased
+                const totalCountNow = getTotalCount(state.shop.playerItems);
+                return totalCountNow < totalCountBefore;
             }, 5000);
 
             // Check if it was a rejection
@@ -1017,10 +1023,9 @@ export class BotActions {
                 }
             }
 
-            // Calculate actual amount sold
-            const itemAfter = finalState.shop.playerItems.find(i => i.id === sellItem.id);
-            const countAfter = itemAfter?.count ?? 0;
-            const amountSold = countBefore - countAfter;
+            // Calculate actual amount sold using total count
+            const totalCountAfter = getTotalCount(finalState.shop.playerItems);
+            const amountSold = totalCountBefore - totalCountAfter;
 
             return {
                 success: true,
@@ -1039,21 +1044,31 @@ export class BotActions {
     private async sellAllToShop(sellItem: ShopItem, startTick: number): Promise<ShopSellResult> {
         let totalSold = 0;
 
+        // Helper to get total count of items with this ID (handles unstackable items)
+        const getTotalCount = (playerItems: ShopItem[]) => {
+            return playerItems
+                .filter(i => i.id === sellItem.id)
+                .reduce((sum, i) => sum + i.count, 0);
+        };
+
         while (true) {
             const state = this.sdk.getState();
             if (!state?.shop.isOpen) {
                 break;
             }
 
+            // Find any item with this ID to sell
             const currentItem = state.shop.playerItems.find(i => i.id === sellItem.id);
             if (!currentItem || currentItem.count === 0) {
                 break; // All sold
             }
 
-            const countBefore = currentItem.count;
-            const sellAmount = Math.min(10, countBefore);
+            // Track total count before (handles unstackable items like shortbows)
+            const totalCountBefore = getTotalCount(state.shop.playerItems);
+            const sellAmount = Math.min(10, currentItem.count);
+            const currentSlot = currentItem.slot;
 
-            const result = await this.sdk.sendShopSell(sellItem.slot, sellAmount);
+            const result = await this.sdk.sendShopSell(currentSlot, sellAmount);
             if (!result.success) {
                 break;
             }
@@ -1070,10 +1085,9 @@ export class BotActions {
                         }
                     }
 
-                    // Check for count decrease
-                    const item = s.shop.playerItems.find(i => i.id === sellItem.id);
-                    if (!item) return true;
-                    return item.count < countBefore;
+                    // Check for total count decrease (works for both stackable and unstackable)
+                    const totalCountNow = getTotalCount(s.shop.playerItems);
+                    return totalCountNow < totalCountBefore;
                 }, 3000);
 
                 // Check for rejection
@@ -1101,13 +1115,13 @@ export class BotActions {
                     }
                 }
 
-                // Count what was sold
-                const itemAfter = finalState.shop.playerItems.find(i => i.id === sellItem.id);
-                const countAfter = itemAfter?.count ?? 0;
-                totalSold += (countBefore - countAfter);
+                // Count what was sold using total count
+                const totalCountAfter = getTotalCount(finalState.shop.playerItems);
+                const soldThisRound = totalCountBefore - totalCountAfter;
+                totalSold += soldThisRound;
 
                 // If nothing sold, exit
-                if (countBefore === countAfter) {
+                if (soldThisRound === 0) {
                     break;
                 }
 

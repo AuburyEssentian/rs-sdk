@@ -170,10 +170,14 @@ async function skipTutorial(botName: string, maxAttempts: number = 30): Promise<
             await Bun.sleep(500);
         }
 
-        // Check if we're in tutorial (x < 3200)
+        // Check if we're on Tutorial Island (specific coordinate bounds)
+        const isOnTutorialIsland = (x: number, z: number) =>
+            x >= 3050 && x <= 3156 && z >= 3056 && z <= 3136;
+
         const isInTutorial = () => {
             const s = sdk.getState();
-            return !s?.player || s.player.worldX < 3200;
+            if (!s?.player) return true;
+            return isOnTutorialIsland(s.player.worldX, s.player.worldZ);
         };
 
         // If not in tutorial, nothing to do

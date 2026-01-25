@@ -1,215 +1,190 @@
 # Lab Log: combat-trainer
 
-## Goal
-Maximize the value function: Attack + Strength + Defence + Hitpoints base levels
+**Goal**: Maximize Attack + Strength + Defence + Hitpoints levels over 5 minutes.
 
-After 5 minutes of training, measure the sum of these four combat skill levels.
-
-## Baseline
-Starting levels from COMBAT_TRAINER preset:
-- Attack: 1
-- Strength: 1
-- Defence: 1
-- Hitpoints: 10
-
-**Starting Value: 13**
-
-## Strategy Notes
-
-### Training Locations
-1. **Chickens** (north of Lumbridge) - Level 1, low HP, good for beginners
-2. **Goblins** (east of Lumbridge) - Level 2, slightly stronger
-3. **Cows** (cow field east) - Level 2, need to open gate
-
-### XP Distribution in OSRS
-- Attack style determines which skill gets XP
-- HP always gets 1/3 of damage dealt as XP
-- Need to check which attack style the bot defaults to
+**Strategy**: Kill goblins near Lumbridge while cycling combat styles for balanced XP gain.
 
 ---
 
-## Runs
+## Run 001 - (pending)
 
-## Run 001 - 2026-01-24 22:45
+**Setup**: LUMBRIDGE_SPAWN preset - standard tutorial-complete items (bronze sword, shield, dagger, axe, arrows, etc.)
 
-**Outcome**: timeout (5 min limit reached)
-**Duration**: 5 minutes
-**Final Value**: ~5 (started at 5 - HP showing 2 not 10)
-**Kills**: 1
+### Hypotheses
+1. The new combat SDK features (`player.combat`, `npc.inCombat`, `combatEvents`) will help us track combat state effectively
+2. Cycling combat styles every 3 kills will provide balanced training across Attack/Strength/Defence
+3. 45 second stall timeout should accommodate natural combat lulls
 
-### What Happened
-- Started at chicken coop after walking north
-- Opened gate successfully
-- Kept saying "Combat taking too long, re-targeting..." after every attack
-- Only got 1 confirmed kill in the entire 5 minutes
-- Lots of dialogs dismissed (probably level-up popups?)
-- At the end "No targets found" - walked to wrong spot
-
-### Root Cause
-1. **Combat detection broken**: The `targetStillAlive` check keeps finding the chicken, but we're not actually dealing damage. Need to track XP gain or player animation to know if we're fighting.
-2. **Timeout too short**: 50 game ticks (~30s) but chickens respawn, so we see same chicken and think combat is ongoing.
-3. **HP starting at 2 not 10**: Save generator issue or skill reading issue.
-
-### Fix Applied
-Need to:
-1. Track XP gain during combat as success signal
-2. Re-attack more frequently if not getting XP
-3. Check if we're actually in combat (player animation)
-4. Shorten the "combat taking too long" window to 10s
-
----
-
-## Run 002 - 2026-01-24 22:52
-
-**Outcome**: timeout (5 min limit - expected)
-**Duration**: 5 minutes
-**Final Value**: 56 (started at 5)
-**Kills**: 43
-
-### What Happened
-- XP-based kill detection worked perfectly
-- Consistent chicken kills every ~7 seconds
-- Final stats: Atk=32 Str=1 Def=1 HP=22
-
-### Issues Found
-1. **All XP going to Attack only** - Need to rotate attack styles or use controlled style
-2. **HP still starting at 2 not 10** - Save generator bug with Hitpoints skill name
-
-### Value Analysis
-- Gained 51 value points (5 → 56)
-- If we trained all 4 skills equally instead of just Attack + HP, we could potentially gain more levels
-- Level distribution: Attack went from 1→32 (+31), HP went from 2→22 (+20)
-- Strength and Defence stayed at 1 (wasted XP potential)
-
-### Fix for Next Run
-1. Rotate between attack styles (accurate/aggressive/defensive) to train all skills
-2. Or find and use "controlled" attack style
-
----
-
-## Run 003 - 2026-01-24 22:58
-
-**Outcome**: timeout (5 min limit - expected)
-**Duration**: 5 minutes
-**Final Value**: 95 (started at 5)
-**Kills**: 33
-
-### What Happened
-- Rotation working but buggy - started with Strength (style 1) but currentStyleIndex was 0
-- So first rotation stayed on Strength, then Defence, then Attack
-- Final: Atk=16 Str=29 Def=25 HP=25
-
-### Root Cause
-Style index mismatch: started with `styles[1]` but `currentStyleIndex=0`
-
----
-
-## Run 004 - 2026-01-24 23:04
-
-**Outcome**: timeout (expected)
-**Duration**: 5 minutes
-**Final Value**: 64 (started at 13)
-**Kills**: 34
-
-### What Happened
-- Tried using "Shared/Lunge" style which claims to train all 3 skills
-- BUT it only trained Strength! Atk=1, Str=36, Def=1, HP=26
-- The "Shared" style doesn't actually train all skills on this server
-
-### Learning
-Shared/Controlled style is NOT viable for maximizing the value function. Use rotation instead.
-
----
-
-## Run 005 - 2026-01-24 23:10
-
-**Outcome**: timeout (expected)
-**Duration**: 5 minutes
-**Final Value**: ~98+ (Atk=24+, Str=28+, Def=30+, HP=26+)
-**Kills**: 34
-
-### What Happened
-- Fixed rotation: Attack → Strength → Defence → repeat
-- Proper balanced training across all 3 combat skills
-- Each style gets 5 kills before rotating
+### Testing
+- `player.combat.inCombat` - does this accurately reflect when we're fighting?
+- `npc.targetIndex` - can we detect if an NPC is already fighting someone else?
+- `combatEvents` array - is damage_dealt/damage_taken tracked reliably?
+- Combat style switching - does `sendSetCombatStyle()` work?
 
 ### Results
-- Starting: Value=13 (Atk=1 Str=1 Def=1 HP=10)
-- Final: Value=~98 (estimated from last logged stats at kill 30: 95)
-- Improvement: +85 value points in 5 minutes
+**Outcome**: TIMEOUT (ran full 5 minutes)
+**Final Stats**: Attack 12, Hitpoints 12, Combat Level 7+ (from level 3!)
 
-### Possible Optimizations
-1. Shorter rotation (3 kills?) - may improve balance
-2. Reduce time spent walking/waiting between attacks
-3. Priority attack nearest chicken to reduce movement
+### Observations
 
----
+**GOOD NEWS**: Training actually worked great! XP was gained steadily despite our broken combat tracking.
 
-## Run 006 - 2026-01-24 23:15
+**SDK Issues Found**:
 
-**Outcome**: timeout (expected)
-**Duration**: 5 minutes
-**Final Value**: ~100 (at kill 30: Value=96, then 4 more kills)
-**Kills**: 34
+1. **`npc.hp` and `npc.maxHp` always 0** - NPC health tracking isn't populating. All goblins show `HP: 0/0`. This makes it impossible to detect NPC death by health.
 
-### What Happened
-- Tried 3-kill rotation (more frequent style changes)
-- Stats at kill 30: Atk=26 Str=22 Def=23 HP=25
+2. **`player.combat.inCombat` unreliable** - Our `waitForCombatEnd()` exits immediately with "lost_target" even while combat is ongoing (proven by XP gains in state snapshots).
 
-### Comparison
-| Rotation | Value | Atk | Str | Def | HP  | Balance |
-|----------|-------|-----|-----|-----|-----|---------|
-| 5-kill   | ~98   | 20  | 24  | 26  | 25  | Def-heavy |
-| 3-kill   | ~100  | 26  | 22  | 23  | 25  | Atk-heavy |
+3. **`npc.inCombat` false positives** - Getting "already in combat" for goblins that we should be able to attack. May need to check if NPC is targeting US specifically vs someone else.
 
-Both approaches yield ~98-100 final value. The 3-kill rotation gives slightly better balance.
+4. **`combatEvents` not visible in state snapshots** - Can't confirm if damage_dealt/damage_taken events are firing. Need to log these explicitly.
 
-### Current Best Strategy
-1. Use style rotation (Attack → Strength → Defence)
-2. Rotate every 3-5 kills
-3. Re-attack every 4 seconds if no XP gain
-4. Stay at chicken coop for consistent spawns
-5. ~34 kills achievable in 5 minutes
+### Root Cause
+Our `waitForCombatEnd()` checks `player.combat.inCombat` which returns false almost immediately, causing us to think combat ended when it hasn't. Meanwhile the actual combat continues in the background and we gain XP.
+
+### Fix Ideas
+1. Don't rely on `player.combat.inCombat` - instead wait for XP gains or NPC disappearance
+2. Add timeout-based combat wait (e.g., wait 5-10 seconds after attack)
+3. Track the NPC index and wait for it to disappear from nearbyNpcs
+4. Use `combatEvents` array to detect damage being dealt
 
 ---
 
-## Summary
+## SDK Feedback
 
-**Best Result: Value ≈ 100** (from starting value of 13)
+### Combat Status Fields Being Tested
 
-The combat trainer successfully improved from:
-- Start: Atk=1, Str=1, Def=1, HP=10 (Value=13)
-- End: Atk≈25, Str≈22, Def≈24, HP≈25 (Value≈96-100)
+1. **PlayerCombatState** (`player.combat`)
+   - `inCombat: boolean` - player has a target
+   - `targetIndex: number` - who we're targeting
+   - `lastDamageTick: number` - when we last took damage
 
-Key learnings:
-1. XP-based kill detection > NPC presence tracking
-2. Style rotation required for balanced training
-3. "Shared/Controlled" style doesn't work on this server
-4. 4-second re-attack timer optimal for chicken spawns
-5. ~34 kills achievable in 5 minutes at chicken coop
+2. **NearbyNpc combat fields**
+   - `hp / maxHp / healthPercent` - NPC health tracking
+   - `targetIndex: number` - who the NPC is targeting
+   - `inCombat: boolean` - is NPC in combat with anyone
+
+3. **CombatEvent array** (`state.combatEvents`)
+   - `type: 'damage_taken' | 'damage_dealt' | 'kill'`
+   - `damage: number`
+   - `sourceIndex / targetIndex` - who hit who
+
+### Questions Answered
+- [x] Is `player.combat.inCombat` reliable? **NO** - returns false even during active combat
+- [x] Does `npc.inCombat` correctly indicate when NPCs are fighting? **UNCLEAR** - may have false positives
+- [ ] Are combat events being logged correctly? **NEEDS TESTING** - not visible in state snapshots
+- [x] Is kill detection working (NPC disappears or HP=0)? **PARTIAL** - NPC disappearance works, but hp/maxHp always 0
+
+---
+
+## SDK Fixes Applied (by Claude)
+
+**Date**: After Run 001 feedback
+
+### Issues Fixed
+
+1. **`player.combat.inCombat` now reliable** ✅
+   - **Root cause**: Only checked `targetId !== -1`, which resets between attack animations
+   - **Fix**: Now also checks `combatCycle > loopCycle` (400-tick window after any hit)
+   - **Test result**: `player.combat.inCombat: true` during combat (was false before)
+
+2. **`npc.inCombat` improved** ✅
+   - Same fix applied - uses `combatCycle` in addition to `targetId`
+
+3. **`npc.hp/maxHp` documented** ✅
+   - This is expected behavior - server only sends HP data when NPC takes damage
+   - Added JSDoc comments explaining: "NOTE: 0 until NPC takes damage"
+   - **Test result**: After first hit, health shows correctly (e.g., 7/7 → 6/7 → 5/7)
+
+4. **`npc.combatCycle` field added** ✅
+   - New field exposed for scripts to do custom timing logic
+   - Value is `tick + 400` when NPC takes damage
+
+5. **`combatEvents` ARE working** ✅
+   - Test showed `damage_dealt` events being tracked
+   - Note: Damage value may show 0 for misses/blocks
+
+### Code Changes
+
+- `webclient/src/bot/BotSDK.ts:354-358` - Player `inCombat` fix
+- `webclient/src/bot/BotSDK.ts:611-619` - NPC `inCombat` fix
+- `agent/types.ts` - Added `combatCycle` field and JSDoc docs
+
+### Test Commands
+
+```bash
+# Run combat state test
+bun test/combat-state.ts
+
+# Run combat events test (more thorough)
+bun test/combat-events.ts
+```
+
+### Recommended Script Changes
+
+Your `waitForCombatEnd()` should now work better since `player.combat.inCombat` stays TRUE during combat. However, consider also checking:
+
+```typescript
+// More robust combat detection
+const isInCombat = (): boolean => {
+    const state = sdk.getState();
+    const pc = state?.player?.combat;
+    if (!pc) return false;
+
+    // inCombat is now reliable (uses combatCycle internally)
+    return pc.inCombat;
+};
+
+// For NPC-specific checks, use combatCycle directly
+const npcRecentlyHit = (npc: NearbyNpc, currentTick: number): boolean => {
+    return npc.combatCycle > currentTick;
+};
+```
+
+**Please test and confirm if these fixes resolve your issues!**
 
 ---
 
-<!-- Template for logging runs:
+## Run 002 - 2026-01-25 (after SDK fixes)
 
-## Run XXX - YYYY-MM-DD HH:MM
+**Outcome**: TIMEOUT (ran full 5 minutes) - 8+ kills, **17,490 XP gained!**
 
-**Outcome**: success | stall | timeout | error
-**Duration**: X minutes Y seconds
-**Final Value**: XX (started at 13)
-**Kills**: N
+### Results
 
-### What Happened
-- Key events...
+| Metric | Run 001 | Run 002 | Improvement |
+|--------|---------|---------|-------------|
+| Kills | 1 | 8+ | 8x |
+| Total XP | ~1600 | 17,490 | 10x |
+| Attack | 0→? | +8,800 | Working |
+| Strength | 0 | +4,400 | Working |
+| Defence | 0 | 0 | (switched style too late) |
+| Hitpoints | +390 | +4,290 | 10x |
+| Damage dealt | 0 | 20 | Now tracked |
+| Damage taken | 0 | 10 | Now tracked |
+| Food eaten | 0 | 1 | Working |
+| Looted | 0 | 5 | Working |
 
-### Root Cause (if failed)
-Description of why it failed
+### SDK Fixes Verified
 
-### Fix Applied
-What changes were made
+1. **`player.combat.inCombat` - FIXED** - Stays true during combat now
+2. **`npc.combatCycle` - WORKING** - Reliable combat detection via tick comparison
+3. **`combatEvents` - WORKING** - Damage tracking functional
+4. **Kill detection - WORKING** - NPC disappearance detected correctly
 
-### Ideas for Next Run
-- Optimizations to try...
+### Script Fixes Applied
 
----
--->
+1. Fixed `waitForCombatEnd()` to use `combatCycle` comparison
+2. Fixed food regex to not match "fishing net" (`/^(bread|shrimps?|...)$/i`)
+
+### Remaining Issues
+
+1. **HP: 0/0 still showing** - Expected behavior (0 until first damage)
+2. **"Timeout waiting to attack"** - Pathing issues, need investigation
+3. **"already in combat"** - May be competing with other players/NPCs
+4. **Defence XP = 0** - Style switching happened too late in the run
+
+### Next Steps
+
+- Start with Defensive style to get Defence XP
+- Better NPC selection (avoid ones being fought by others)
+- Log HP values after first hit to confirm tracking

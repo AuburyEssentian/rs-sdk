@@ -64,8 +64,22 @@ export interface NearbyNpc {
     x: number;
     z: number;
     distance: number;
+    /** Current HP - NOTE: 0 until NPC takes damage (server only sends on hit) */
     hp: number;
+    /** Max HP - NOTE: 0 until NPC takes damage (server only sends on hit) */
     maxHp: number;
+    /** Health as percentage 0-100 (null until NPC takes damage) */
+    healthPercent: number | null;
+    /** Index of who this NPC is targeting (-1 if none) */
+    targetIndex: number;
+    /** Is this NPC currently in combat? (has target OR was hit within last 400 ticks) */
+    inCombat: boolean;
+    /** Combat cycle - set to tick+400 when NPC takes damage. Compare with state.tick for timing. */
+    combatCycle: number;
+    /** Current animation ID (-1 = idle/none) */
+    animId: number;
+    /** Current spot animation ID (-1 = none) */
+    spotanimId: number;
     options: string[];           // Display-only list of option texts
     optionsWithIndex: NpcOption[];  // Options with their actual op index
 }
@@ -132,6 +146,16 @@ export interface ShopState {
     playerItems: ShopItem[];    // Player inventory items (for selling)
 }
 
+/** Combat state tracking for player */
+export interface PlayerCombatState {
+    /** Currently engaged in combat (has a target) */
+    inCombat: boolean;
+    /** Index of NPC/player we're targeting (-1 if none) */
+    targetIndex: number;
+    /** Tick when we last took damage (-1 if never) */
+    lastDamageTick: number;
+}
+
 export interface PlayerState {
     name: string;
     combatLevel: number;
@@ -142,6 +166,12 @@ export interface PlayerState {
     level: number; // Map plane (0-3)
     runEnergy: number;
     runWeight: number;
+    /** Current animation ID (-1 = idle/none) */
+    animId: number;
+    /** Current spot animation ID (-1 = none). Spot anims are effects like spell impacts, combat hits, etc. */
+    spotanimId: number;
+    /** Combat state tracking */
+    combat: PlayerCombatState;
 }
 
 // Combat style state
@@ -156,6 +186,24 @@ export interface CombatStyleState {
     currentStyle: number;           // 0-3, the selected style
     weaponName: string;             // Name of equipped weapon or "Unarmed"
     styles: CombatStyleOption[];    // Available combat styles for this weapon
+}
+
+/** Combat event for tracking damage, kills, etc. */
+export interface CombatEvent {
+    /** Game tick when event occurred */
+    tick: number;
+    /** Type of combat event */
+    type: 'damage_taken' | 'damage_dealt' | 'kill';
+    /** Damage amount (for damage events) */
+    damage: number;
+    /** Source of damage/kill */
+    sourceType: 'player' | 'npc' | 'other_player';
+    /** Index of the source entity (-1 if unknown/self) */
+    sourceIndex: number;
+    /** Target of damage/kill */
+    targetType: 'player' | 'npc' | 'other_player';
+    /** Index of the target entity (-1 if self) */
+    targetIndex: number;
 }
 
 export interface BotState {
@@ -173,11 +221,19 @@ export interface BotState {
     menuActions: MenuAction[];
     shop: ShopState;
     inGame: boolean;
+    /** Recent combat events (damage, kills) - bounded to last ~50 ticks */
+    combatEvents: CombatEvent[];
 }
 
 // State collector class
 export class BotStateCollector {
     private client: Client;
+    // Combat event tracking
+    private combatEvents: CombatEvent[] = [];
+    private lastPlayerDamageCycles: Int32Array = new Int32Array(4);
+    private lastNpcDamageCycles: Map<number, Int32Array> = new Map();
+    private static readonly MAX_EVENTS = 50;
+    private static readonly EVENT_EXPIRY_TICKS = 50;
 
     constructor(client: Client) {
         this.client = client;
@@ -185,9 +241,13 @@ export class BotStateCollector {
 
     collectState(): BotState {
         const c = this.client as any; // Access private members
+        const currentTick = c.loopCycle || 0;
+
+        // Collect combat events (must be done before returning state)
+        this.collectCombatEvents(currentTick);
 
         return {
-            tick: c.loopCycle || 0,
+            tick: currentTick,
             player: this.collectPlayerState(),
             skills: this.collectSkills(),
             inventory: this.collectInventory(INVENTORY_INTERFACE_ID),
@@ -200,15 +260,125 @@ export class BotStateCollector {
             gameMessages: this.collectGameMessages(),
             menuActions: this.collectMenuActions(),
             shop: this.collectShopState(),
-            inGame: c.ingame || false
+            inGame: c.ingame || false,
+            combatEvents: [...this.combatEvents] // Return copy of events
         };
+    }
+
+    private collectCombatEvents(currentTick: number): void {
+        const c = this.client as any;
+        const player = c.localPlayer;
+
+        // Prune old events
+        this.combatEvents = this.combatEvents.filter(
+            e => currentTick - e.tick < BotStateCollector.EVENT_EXPIRY_TICKS
+        );
+
+        // Detect player damage taken
+        if (player?.damageCycles && player?.damageValues) {
+            for (let i = 0; i < 4; i++) {
+                const cycle = player.damageCycles[i] || 0;
+                const lastCycle = this.lastPlayerDamageCycles[i] || 0;
+
+                if (cycle > lastCycle && cycle > 0) {
+                    // New damage detected
+                    const damage = player.damageValues[i] || 0;
+                    this.combatEvents.push({
+                        tick: currentTick,
+                        type: 'damage_taken',
+                        damage,
+                        sourceType: 'npc', // Assume NPC source for now
+                        sourceIndex: player.targetId ?? -1,
+                        targetType: 'player',
+                        targetIndex: -1 // Self
+                    });
+                }
+                this.lastPlayerDamageCycles[i] = cycle;
+            }
+        }
+
+        // Detect NPC damage (when player deals damage to NPCs)
+        const npcArray = c.npcs || [];
+        const npcIds = c.npcIds || [];
+        const npcCount = c.npcCount || 0;
+
+        for (let i = 0; i < npcCount; i++) {
+            const npcIndex = npcIds[i];
+            const npc = npcArray[npcIndex];
+            if (!npc?.damageCycles || !npc?.damageValues) continue;
+
+            // Get or create tracking for this NPC
+            let lastCycles = this.lastNpcDamageCycles.get(npcIndex);
+            if (!lastCycles) {
+                lastCycles = new Int32Array(4);
+                this.lastNpcDamageCycles.set(npcIndex, lastCycles);
+            }
+
+            for (let j = 0; j < 4; j++) {
+                const cycle = npc.damageCycles[j] || 0;
+                const lastCycle = lastCycles[j] || 0;
+
+                if (cycle > lastCycle && cycle > 0) {
+                    const damage = npc.damageValues[j] || 0;
+                    // Check if player is targeting this NPC (likely we dealt the damage)
+                    const playerTarget = player?.targetId ?? -1;
+                    const isPlayerSource = playerTarget === npcIndex;
+
+                    this.combatEvents.push({
+                        tick: currentTick,
+                        type: isPlayerSource ? 'damage_dealt' : 'damage_taken',
+                        damage,
+                        sourceType: isPlayerSource ? 'player' : 'other_player',
+                        sourceIndex: isPlayerSource ? -1 : -1,
+                        targetType: 'npc',
+                        targetIndex: npcIndex
+                    });
+                }
+                lastCycles[j] = cycle;
+            }
+        }
+
+        // Clean up tracking for NPCs no longer nearby
+        const activeNpcIndices = new Set<number>();
+        for (let i = 0; i < npcCount; i++) {
+            activeNpcIndices.add(npcIds[i]);
+        }
+        for (const npcIndex of this.lastNpcDamageCycles.keys()) {
+            if (!activeNpcIndices.has(npcIndex)) {
+                this.lastNpcDamageCycles.delete(npcIndex);
+            }
+        }
+
+        // Limit event buffer size
+        if (this.combatEvents.length > BotStateCollector.MAX_EVENTS) {
+            this.combatEvents = this.combatEvents.slice(-BotStateCollector.MAX_EVENTS);
+        }
     }
 
     private collectPlayerState(): PlayerState | null {
         const c = this.client as any;
         const player = c.localPlayer;
+        const loopCycle = c.loopCycle || 0;
 
         if (!player) return null;
+
+        // Get player's combat state
+        const targetId = player.targetId ?? -1;
+        // combatCycle is set to loopCycle + 400 when damage is taken/dealt
+        // So if combatCycle > loopCycle, we're in combat (within 400 ticks of last hit)
+        const combatCycle = player.combatCycle ?? -1000;
+        const inCombat = targetId !== -1 || combatCycle > loopCycle;
+
+        // Find most recent damage tick from damageCycles array
+        let lastDamageTick = -1;
+        const damageCycles = player.damageCycles;
+        if (damageCycles) {
+            for (let i = 0; i < damageCycles.length; i++) {
+                if (damageCycles[i] > lastDamageTick) {
+                    lastDamageTick = damageCycles[i];
+                }
+            }
+        }
 
         return {
             name: player.name || 'Unknown',
@@ -219,7 +389,14 @@ export class BotStateCollector {
             worldZ: (c.sceneBaseTileZ || 0) + ((player.z || 0) >> 7),
             level: c.currentLevel || 0,
             runEnergy: c.runenergy || 0,
-            runWeight: c.runweight || 0
+            runWeight: c.runweight || 0,
+            animId: player.primarySeqId ?? -1,
+            spotanimId: player.spotanimId ?? -1,
+            combat: {
+                inCombat,
+                targetIndex: targetId,
+                lastDamageTick
+            }
         };
     }
 
@@ -440,6 +617,17 @@ export class BotStateCollector {
                 }
             }
 
+            const hp = npc.health || 0;
+            const maxHp = npc.totalHealth || 0;
+            // healthPercent is null until NPC takes damage (server only sends health on hit)
+            const healthPercent = maxHp > 0 ? Math.round((hp / maxHp) * 100) : null;
+            const targetId = npc.targetId ?? -1;
+            // combatCycle is set to loopCycle + 400 when NPC takes damage
+            const combatCycle = npc.combatCycle ?? -1000;
+            const loopCycle = c.loopCycle || 0;
+            // NPC is in combat if it has a target OR was hit recently (within 400 ticks)
+            const inCombat = targetId !== -1 || combatCycle > loopCycle;
+
             npcs.push({
                 index: npcIndex,
                 name: npcType.name || 'Unknown',
@@ -447,8 +635,14 @@ export class BotStateCollector {
                 x: npc.x || 0,
                 z: npc.z || 0,
                 distance,
-                hp: npc.health || 0,
-                maxHp: npc.totalHealth || 0,
+                hp,
+                maxHp,
+                healthPercent,
+                targetIndex: targetId,
+                inCombat,
+                combatCycle,
+                animId: npc.primarySeqId ?? -1,
+                spotanimId: npc.spotanimId ?? -1,
                 options,
                 optionsWithIndex
             });

@@ -11,33 +11,9 @@
 
 import { BotSDK } from '../agent/sdk';
 import { BotActions } from '../agent/bot-actions';
-import { launchBotBrowser, sleep, type BrowserSession } from './utils/browser';
+import { launchBotBrowser, skipTutorial, sleep, type BrowserSession } from './utils/browser';
 
 const BOT_NAME = process.env.BOT_NAME;
-
-async function skipTutorial(sdk: BotSDK): Promise<boolean> {
-    // Accept character design if modal is open
-    const state = sdk.getState();
-    if (state?.modalOpen && state.modalInterface === 269) {
-        await sdk.sendAcceptCharacterDesign();
-        await sleep(500);
-    }
-
-    // Check if we're in tutorial (x < 3200)
-    const isInTutorial = () => {
-        const s = sdk.getState();
-        return !s?.player || s.player.worldX < 3200;
-    };
-
-    let attempts = 0;
-    while (isInTutorial() && attempts < 30) {
-        await sdk.sendSkipTutorial();
-        await sleep(1000);
-        attempts++;
-    }
-
-    return !isInTutorial();
-}
 
 async function runTest(): Promise<boolean> {
     console.log('=== Woodcutting & Firemaking Test (SDK) ===');

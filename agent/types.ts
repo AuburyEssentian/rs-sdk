@@ -3,6 +3,16 @@
 
 // ============ State Types ============
 
+/** Combat state tracking for player */
+export interface PlayerCombatState {
+    /** Currently engaged in combat (has a target) */
+    inCombat: boolean;
+    /** Index of NPC/player we're targeting (-1 if none) */
+    targetIndex: number;
+    /** Tick when we last took damage (-1 if never) */
+    lastDamageTick: number;
+}
+
 export interface PlayerState {
     name: string;
     combatLevel: number;
@@ -14,6 +24,12 @@ export interface PlayerState {
     level: number;
     runEnergy: number;
     runWeight: number;
+    /** Current animation ID (-1 = idle/none) */
+    animId: number;
+    /** Current spot animation ID (-1 = none). Spot anims are effects like spell impacts, combat hits, etc. */
+    spotanimId: number;
+    /** Combat state tracking */
+    combat: PlayerCombatState;
 }
 
 export interface SkillState {
@@ -49,8 +65,22 @@ export interface NearbyNpc {
     x: number;
     z: number;
     distance: number;
+    /** Current HP - NOTE: 0 until NPC takes damage (server only sends on hit) */
     hp: number;
+    /** Max HP - NOTE: 0 until NPC takes damage (server only sends on hit) */
     maxHp: number;
+    /** Health as percentage 0-100 (null until NPC takes damage) */
+    healthPercent: number | null;
+    /** Index of who this NPC is targeting (-1 if none) */
+    targetIndex: number;
+    /** Is this NPC currently in combat? (has target OR was hit within last 400 ticks) */
+    inCombat: boolean;
+    /** Combat cycle - set to tick+400 when NPC takes damage. Compare with state.tick for timing. */
+    combatCycle: number;
+    /** Current animation ID (-1 = idle/none) */
+    animId: number;
+    /** Current spot animation ID (-1 = none) */
+    spotanimId: number;
     options: string[];
     optionsWithIndex: NpcOption[];
 }
@@ -151,6 +181,24 @@ export interface CombatStyleState {
     styles: CombatStyleOption[];
 }
 
+/** Combat event for tracking damage, kills, etc. */
+export interface CombatEvent {
+    /** Game tick when event occurred */
+    tick: number;
+    /** Type of combat event */
+    type: 'damage_taken' | 'damage_dealt' | 'kill';
+    /** Damage amount (for damage events) */
+    damage: number;
+    /** Source of damage/kill - 'player' for local player, 'npc' for NPC, 'other_player' for other players */
+    sourceType: 'player' | 'npc' | 'other_player';
+    /** Index of the source entity (-1 if unknown/self) */
+    sourceIndex: number;
+    /** Target of damage/kill */
+    targetType: 'player' | 'npc' | 'other_player';
+    /** Index of the target entity (-1 if self) */
+    targetIndex: number;
+}
+
 export interface BotWorldState {
     tick: number;
     inGame: boolean;
@@ -169,6 +217,8 @@ export interface BotWorldState {
     modalOpen: boolean;
     modalInterface: number;
     combatStyle?: CombatStyleState;
+    /** Recent combat events (damage, kills) - bounded to last ~50 ticks */
+    combatEvents: CombatEvent[];
 }
 
 // ============ Action Types ============

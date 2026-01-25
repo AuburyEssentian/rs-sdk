@@ -33,6 +33,7 @@ Hypothesize → Implement → Run → Observe → Record in lab_log → Improve 
 ```
 scripts/
 ├── METHODOLOGY.md              # This file
+├── script_best_practices.md    # Common patterns & pitfalls
 ├── script-runner.ts            # Shared runner infrastructure
 └── <script-name>/              # Each script is self-contained
     ├── script.ts               # The automation code
@@ -147,9 +148,49 @@ Add `await bot.pickupItem(/bones|coins/)` after combat ends
 
 ## Best Practices
 
-1. **Call `ctx.progress()`** after meaningful actions to reset stall timer
-2. **Use `ctx.log()`** for key decisions - it goes to events.jsonl for later analysis
-3. **Review events.jsonl** to understand what happened
-4. **Document insights** in lab_log.md - patterns that work, issues that fail
-5. **One change at a time** - easier to attribute improvements/regressions
-6. **Commit working versions** before major changes
+See **[script_best_practices.md](./script_best_practices.md)** for detailed patterns and common pitfalls (dialog handling, fishing spots, state quirks, etc.).
+
+1. **No cheating with spawned items** - Scripts should start with standard tutorial-complete items only. Use `LUMBRIDGE_SPAWN` preset which gives the normal post-tutorial loadout. Don't spawn with extra gear or boosted skills.
+
+2. **Dismiss blocking dialogs** - Level-up congratulations and other dialogs block all actions. Check `state.dialog.isOpen` in your main loop and call `ctx.sdk.sendClickDialog(0)` to dismiss.
+
+3. **Call `ctx.progress()`** after meaningful actions to reset stall timer
+4. **Use `ctx.log()`** for key decisions - it goes to events.jsonl for later analysis
+5. **Review events.jsonl** to understand what happened
+6. **Document insights** in lab_log.md - patterns that work, issues that fail
+7. **One change at a time** - easier to attribute improvements/regressions
+8. **Commit working versions** before major changes
+
+## Learnings Section
+
+After a run of improvement (5+ cycles or whenever you run out of ideas / feel stuck), add a **Learnings** section to the end of the lab_log with three categories:
+
+```markdown
+---
+
+## Learnings
+
+### 1. Strategic Findings
+What works and what doesn't - both code patterns and game strategies:
+- Effective approaches discovered
+- Failed strategies and why they failed
+- Optimal parameters found (batch sizes, thresholds, timing)
+- Game mechanics insights
+
+### 2. Process & Tooling Reflections
+Meta-observations on the improvement process itself:
+- What made debugging easier/harder
+- Logging improvements that would help
+- Run analysis techniques that worked
+- Suggestions for the script-runner or methodology
+
+### 3. SDK Issues & Gaps
+Problems or missing features in the Bot SDK:
+- Functions that don't work as expected
+- Missing functionality that would help
+- API design issues encountered
+- Workarounds that shouldn't be necessary
+```
+
+This helps capture institutional knowledge that benefits future scripts and SDK development.
+

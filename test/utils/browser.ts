@@ -165,6 +165,21 @@ export async function launchBotBrowser(
 }
 
 /**
+ * Check if player is on Tutorial Island based on coordinates.
+ * Tutorial Island is a specific area, not just "west of Lumbridge".
+ *
+ * Tutorial Island bounds (approximate):
+ * - X: 3050 to 3156
+ * - Z: 3056 to 3136
+ *
+ * Other western locations like Catherby (x: 2836) or Falador (x: 2964)
+ * should NOT be considered tutorial.
+ */
+export function isOnTutorialIsland(x: number, z: number): boolean {
+    return x >= 3050 && x <= 3156 && z >= 3056 && z <= 3136;
+}
+
+/**
  * Skip tutorial using SDK.
  * Returns true if tutorial was skipped successfully.
  */
@@ -176,10 +191,11 @@ export async function skipTutorial(sdk: BotSDK, maxAttempts: number = 30): Promi
         await sleep(500);
     }
 
-    // Check if we're in tutorial (x < 3200)
+    // Check if we're in tutorial (on Tutorial Island specifically)
     const isInTutorial = () => {
         const s = sdk.getState();
-        return !s?.player || s.player.worldX < 3200;
+        if (!s?.player) return true;  // No player state yet, assume tutorial
+        return isOnTutorialIsland(s.player.worldX, s.player.worldZ);
     };
 
     let attempts = 0;
@@ -243,16 +259,3 @@ export async function launchBotWithSDK(
     };
 }
 
-/**
- * Helper to check if player is in tutorial area (x < 3200)
- */
-export async function isInTutorial(page: Page): Promise<boolean> {
-    return await page.evaluate(() => {
-        const client = (window as any).gameClient;
-        if (!client?.localPlayer) return true;
-        const sceneBaseX = client.sceneBaseTileX || 0;
-        const playerTileX = (client.localPlayer.x || 0) >> 7;
-        const worldX = sceneBaseX + playerTileX;
-        return worldX < 3200;
-    });
-}
