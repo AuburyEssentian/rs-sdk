@@ -23,34 +23,157 @@ A persistent character for long-term progression experiments.
 | 01-25 | combat-basics | 252s | 128 | 193 | +65 |
 | 01-25 | cowhide-banking | 600s | 193 | 214 | +21 |
 | 01-25 | cowhide-banking | 600s | 214 | 229 | +15 |
+| 01-25 | cowhide-banking | 600s | 229 | 234 | +5 |
+| 01-25 | cowhide-banking | 600s | 234 | 240 | +6 |
+| 01-25 | combat-progression | 44s | 240 | 245 | +5 |
+| 01-25 | combat-progression | 901s | 245 | 286 | +41 |
+| 01-25 | combat-progression | 598s | 286 | 302 | +16 |
+| 01-25 | combat-progression | 901s | 302 | 313 | +11 |
+| 01-25 | combat-progression | 604s | 313 | 321 | +8 |
+| 01-25 | combat-progression | 901s | 321 | 328 | +7 |
+| 01-25 | combat-progression | 336s | 328 | 330 | +2 |
+| 01-25 | sell-and-upgrade | ~6m | 330 | 332 | +2 |
+| 01-25 | combat-progression | 901s | 332 | 338 | +6 |
+| 01-25 | combat-progression | 661s | 338 | 340 | +2 |
+| 01-25 | combat-progression | 88s | 340 | 341 | +1 |
+| 01-25 | cow-farming (multiple short runs) | ~10m | 341 | 344 | +3 |
 
 ---
 
-## Current State
+## Current State (as of 2026-01-25 22:30)
 
-**Total Level**: 229
+**Total Level**: 344
 **GP**: 0
-**Equipment**: Bronze dagger, Bronze sword (equipped)
-**Equipment Value**: ~50
+**Equipment**: Bronze sword, Wooden shield (equipped) - STILL BRONZE AT LEVEL 67!
+**Position**: Cow field (~3253, 3290)
+**HP**: 66
 
-**Score**: 229
+**Combat Stats**:
+- Attack: 67
+- Strength: 66
+- Defence: 67
+- Hitpoints: 66
+- Combat Level: ~74
 
-**Peak Score Achieved**: 229 (current!)
-
-**Levels**:
-- Attack: ~40
-- Strength: ~42
-- Defence: ~28
-- Hitpoints: ~28
+**Other Skills**:
 - Woodcutting: 31
 - Mining: 30
-- Firemaking: 1
-- Fishing: 1 (after reset)
+
+**Inventory** (26/28):
+- 23 cow hides (ready to bank!)
+- 3 tools (bronze dagger, axe, pickaxe)
+
+---
+
+## Session Notes (2026-01-25 evening continued)
+
+### Connection Stability Remains Major Issue
+
+T1 protocol errors continue causing page crashes:
+- Connection success rate around 30-40%
+- Runs last 30-120 seconds before disconnect
+- Progress is being made in small increments
+
+### Progress This Session
+
+Starting state: 6 hides, Total Level 341
+Current state: 23 hides, Total Level 344
+
+Key achievements:
+- Attack 66→67 (+1 level)
+- Collected 17 additional hides (6→23)
+- Dropped raw beef to make room for hides
+- Ready to attempt banking trip
+
+### Next Steps (when connection stable)
+
+1. **Bank 23 hides** - Walk to Varrock West Bank
+2. **Sell hides** - At general store (~10gp each = ~230gp)
+3. **Combine with banked hides** - ~45 in bank + 23 = ~68 hides (~680gp)
+4. **Buy Mithril sword** - Can afford at ~850gp (need ~17 more hides worth)
+5. **Continue combat training** - With better weapon, kills will be faster
+
+### Economics Analysis
+
+- Current: 23 hides in inventory + ~45 in bank = ~68 hides total
+- Value at general store: 68 × 10 = 680gp
+- Mithril sword: ~850gp
+- Adamant sword: ~2100gp
+- Gap: Need ~170 more hides for Adamant, or ~17 more for Mithril
+
+**Recommendation**: Focus on Mithril first (need 17 more hides), then save for Adamant later.
+
+### Session Ended: ~22:55
+
+Final state:
+- Position: (3241, 3298) - near potato farm north of cow field
+- HP: 66 (full)
+- Total Level: 344
+- Inventory: 23 cow hides + 3 tools
+- Equipment: Bronze sword, Wooden shield
+
+Connection stability issues prevented completing sell trip. Progress made:
+- Total Level: 341 → 344 (+3)
+- Hides: 6 → 23 (+17)
+- Attack: 66 → 67 (+1 level)
+
+Next session priorities:
+1. Get stable connection
+2. Complete sell trip to Lumbridge
+3. Buy better weapon (Mithril sword minimum)
+4. Continue combat training
+
+---
+
+## Session Notes (2026-01-25 evening)
+
+### Connection Stability Issues
+
+Experiencing intermittent T1 protocol errors that cause client disconnect:
+- Error format: `T1 - XX,0 - 134,192` where XX is an unknown packet type
+- The T1 error triggers `await this.logout()` in the webclient
+- This prevents game state from loading (position stays at 0,0)
+- Success rate approximately 30-50% of connection attempts
+
+### Progress Made Despite Issues
+- Combat training continued successfully on some runs
+- Attack: 66 → 67 (confirmed via level-up dialog)
+- Strength: 65 → 66 (confirmed via final stats)
+- About 100+ cows killed across runs
+- Script improvements made:
+  - Added state loading wait loop (30s timeout)
+  - Added HP safety checks (retreat at HP < 10)
+  - Fixed drift check to ignore invalid 0,0 positions
+
+### Issues to Address
+1. **No cooked food** - Character has raw beef but can't eat it
+2. **Bronze gear** - Still using starter weapons at level 66+ attack
+3. **Banking threshold** - Set to 15 hides but only have 6, so never banks
+4. **T1 errors** - Need investigation of webclient/server protocol mismatch
+
+**Non-Combat Stats**:
+- Woodcutting: 31
+- Mining: 30
 - All others: 1
 
-**Inventory**: Bronze pickaxe, Bronze dagger, Bronze sword, 25x Cow hide
+**Inventory** (28/28):
+- Tools: Bronze pickaxe, Bronze dagger, Bronze axe
+- Food: Raw beef x19
+- Loot: Cow hide x6
 
-**Bank**: Empty
+**Bank**: Unknown
+
+**Session Progress** (this conversation):
+- Started at Total Level 332
+- Gained +8 levels through combat training
+- Killed ~130+ cows across multiple script runs
+- Collected 6 hides (threshold for banking is 15)
+- SDK connection issues causing frequent script failures (~60s before disconnect)
+
+**Goal Loop Progress**:
+- [✓] Combat training - Working but limited by connection drops
+- [ ] Earn gold - Need 15 hides to trigger banking
+- [ ] Buy equipment - Need GP from selling hides
 
 ---
 
@@ -161,18 +284,204 @@ Kill cows at Lumbridge cow field, collect hides, bank for GP.
 - 25 hides collected (inventory full)
 - Efficient XP farming at higher combat levels
 
+### Run 003/004 - 2026-01-25 (BANKING FIXED!)
+
+**Duration**: 2x 600 seconds (20 minutes total)
+**Outcome**: SUCCESS - Banking works!
+**Score**: 229 → 240 (+11)
+
+### What Happened
+- Switched from Lumbridge Castle (stairs) to Varrock West Bank (ground floor)
+- Added waypoint-based walking for reliable long-distance travel
+- Successfully deposited 25 hides in first trip, 20 in second trip
+- Total ~45 hides now in bank (worth ~4500gp)
+- Combat XP continues to accumulate during farming
+
 ### Learnings
-- Banking via Lumbridge Castle stairs is complex
-- Dropping items to maintain inventory space works well
-- Combat XP rates slow down at higher levels (kills are fast, less XP per kill)
-- Character now has strong combat stats for future content
+- **Varrock West Bank** is the best choice for Lumbridge cow farming
+- Ground floor access, no stairs needed
+- Waypoints every ~30 tiles make long walks reliable
+- Bank booth sometimes fails, banker NPC is reliable fallback
+- Each banking trip takes ~3-4 minutes round trip
+
+---
+
+## Arc: combat-progression
+
+### Goal
+Train combat to 70+ attack/strength/defence. Kill cows, collect hides/meat, upgrade gear.
+
+### Run 001 - 2026-01-25
+
+**Duration**: 44 seconds (connection dropped early)
+**Outcome**: SUCCESS (partial)
+**Score**: 240 → 245 (+5)
+
+### What Happened
+- Connection dropped after 44s but character saved
+- Defence: 20 → 25 (+5 levels)
+- Collected 1 hide and 2 raw beef
+- Combat style auto-set to Defence (lowest stat)
+
+### Run 002 - 2026-01-25
+
+**Duration**: 901 seconds (15 minutes)
+**Outcome**: SUCCESS - Massive XP gains!
+**Score**: 245 → 286 (+41 levels)
+
+### What Happened
+- 112 cows killed in 15 minutes
+- Strength: 34 → 49 (+15 levels!)
+- Defence: 25 → 47 (+22 levels!)
+- Hitpoints: 50 → 54 (+4 levels)
+- Collected 11 hides and 14 raw beef
+- Combat style cycling working (trains lowest stat)
+- Script handles dialog dismissal well
+
+### Run 003-008 - 2026-01-25 (Continued)
+
+**Total Duration**: ~65 minutes across 8 runs
+**Outcome**: EXCELLENT PROGRESS!
+
+### Combat Stats Progression
+| Stat | Start | After 8 Runs | Gain |
+|------|-------|--------------|------|
+| Attack | 60 | 64 | +4 |
+| Strength | 49 | 64 | +15 |
+| Defence | 47 | 64 | +17 |
+| HP | 54 | 64 | +10 |
+| Total Level | 286 | ~332 | +46 |
+
+### Key Observations
+- Script reliably trains lowest stat first (good for balanced progression)
+- Kills ~80-110 cows per 15-minute run at this level
+- Combat style cycling works well (Attack/Strength/Defence rotation)
+- Level-up dialog handling improved
+- Some connection issues causing early disconnects (browser/puppeteer related)
+- No banking or gear upgrades triggered (hides stayed at 11, below threshold)
+
+### Learnings
+- Training lowest stat gives best overall progression
+- At these levels, cows give ~2-3 levels per minute
+- "I'm already under attack!" messages are normal (trying to attack while in combat)
+- Connection stability affects run duration - some runs disconnect early
+- Should sell hides and buy better gear for faster kills
+
+---
+
+## Arc: sell-and-upgrade (ATTEMPTED)
+
+### Run 001-007 - 2026-01-25
+
+**Goal**: Sell banked hides, buy Adamant weapon
+**Outcome**: PARTIAL - Sold some hides, but didn't buy weapon
+
+### What Happened
+- Bank withdrawal worked but got mixed items instead of just hides
+- Walking to general store worked
+- Sold 1 hide for 0gp (low sell price or issue)
+- Couldn't afford weapon upgrades
+
+### Learnings
+- Need more hides before selling (collect 25+ in inventory first)
+- General store buy prices are very low (~10gp per hide)
+- May need to find a better buyer (other players, specialized shops)
+
+---
+
+### Run 009 - 2026-01-25 (Latest)
+
+**Duration**: ~15 min total across multiple attempts
+**Outcome**: PARTIAL - State sync issues
+
+**Combat Stats After Run**:
+- Attack: 66 → 67 (+1 level)
+- Strength: 65 → 66 (+1 level)
+- Defence: 66 → 67 (+1 level)
+- HP: 65 → 65 (unchanged)
+- Total Level: 338 → ~340 (+2 levels)
+
+**Issues Encountered**:
+- Browser state sync drops intermittently - SDK sees (0,0) position
+- "HP: X -> 0" messages are false alarms (SDK disconnect, not actual death)
+- Character is actually alive at cow field with full inventory
+
+**Current Inventory**: 28 items (6 hides, 19 raw beef, tools)
+**Equipment**: Bronze sword, Wooden shield
+
+**Note**: SDK state sync is extremely unreliable. Character is alive but connections keep dropping after ~60s.
+
+---
+
+## Known Issues
+
+### SDK State Sync Problem
+The SDK intermittently loses connection to game state mid-run:
+- Position shows as (0, 0)
+- HP shows as 0
+- Inventory shows as empty
+- This is NOT actual death - character is fine when reconnecting
+
+**Workaround**: Re-run script after failure - the character state is preserved
 
 ---
 
 ## Next Steps
 
-1. **Fix banking** - Try different bank location or fix stairs climbing
-2. Train Ranged at chickens with shortbow (in inventory)
-3. Train Magic with runes (in inventory)
-4. Sell cowhides for GP once banking works
-5. Buy better gear (iron/steel equipment)
+1. **Sell 23 hides** - Walk to Lumbridge general store (short path from current position)
+2. **Buy Mithril sword** - ~850gp, should be affordable after selling 68+ hides
+3. **Continue combat training** - With better weapon, faster kills
+4. **Reach 70s in all combat stats** - Currently 66-67
+
+## Latest Session Summary (2026-01-25 23:00)
+
+**Progress Made**:
+- Total Level: 341 → 344 (+3)
+- Attack: 66 → 67 (+1)
+- Hides collected: 6 → 23 (+17)
+- Scripts improved: state-wait logic, beef dropping, shorter waypoints
+
+**Blocking Issue**: Browser/SDK connection drops after 30-60s
+- State sync fails ~50% of attempts
+- Walks timeout due to disconnects
+- Character state is preserved between reconnects
+
+**Ready to Execute**:
+- 23 hides in inventory, ready to sell
+- Sell script modified to skip banking and take short path
+- Just need stable connection to complete walk to Lumbridge
+
+---
+
+## Session Notes (2026-01-25 23:25)
+
+### T1 Protocol Errors - Connection Fully Blocked
+
+Every connection attempt now hits T1 protocol errors:
+- `T1 - XX,0 - 134,192` where XX varies (0, 5, 90, 124, 164, 197, 252, 254)
+- The webclient calls `logout()` when it receives unrecognized packet opcodes
+- This closes the bot WebSocket, causing "Bot not connected" errors
+
+**Observation**: Two Java server processes running (PIDs 1034 and 57974) - possible conflict source.
+
+### Character State (preserved)
+
+Last successful diagnostic showed:
+- Position: (3247, 3278) - cow field
+- HP: 66/66
+- Total Level: 344
+- Inventory: 23 cow hides + 3 tools
+- Equipment: Bronze sword, Wooden shield
+- Combat: Attack 67, Strength 66, Defence 67, Hitpoints 66
+
+### What Was Tried
+
+1. Diagnostic runs - ~66% success rate earlier, now 0%
+2. sell-and-upgrade - disconnects during walkTo
+3. recovery script with fire-and-forget walks - still disconnects
+4. combat-progression - disconnects after state loads
+
+### Blocker
+
+T1 protocol errors need infrastructure-level resolution.
+

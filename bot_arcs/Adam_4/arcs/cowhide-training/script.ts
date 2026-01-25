@@ -163,9 +163,8 @@ async function cowLoop(ctx: ScriptContext, stats: Stats): Promise<void> {
             continue;
         }
 
-        // Pick up nearby loot first
-        const pickedUp = await pickupLoot(ctx, stats);
-        if (pickedUp > 0) continue;
+        // Pick up nearby loot (but only after attacking, not as primary action)
+        // Limited to 1 pickup per iteration to not get stuck in loot loop
 
         // Drop excess items when inventory near full
         if (currentState.inventory.length >= 26) {
@@ -243,11 +242,22 @@ async function cowLoop(ctx: ScriptContext, stats: Stats): Promise<void> {
                 stats.kills++;
                 markProgress(ctx, stats);
 
-                // Wait for kill then pickup
-                await new Promise(r => setTimeout(r, 2500));
+                // Wait for kill
+                await new Promise(r => setTimeout(r, 3000));
 
-                // Try to pickup loot right after kill
-                await pickupLoot(ctx, stats);
+                // Try to pickup ONE hide after kill (don't loop)
+                if (ctx.state()!.inventory.length < 26) {
+                    const hides = ctx.sdk.getGroundItems()
+                        .filter(i => /cow\s*hide/i.test(i.name))
+                        .filter(i => i.distance <= 5)
+                        .slice(0, 1);
+                    if (hides.length > 0) {
+                        const result = await ctx.bot.pickupItem(hides[0]!);
+                        if (result.success) {
+                            stats.hidesCollected++;
+                        }
+                    }
+                }
                 continue;
             }
         }

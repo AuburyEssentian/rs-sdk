@@ -9,12 +9,12 @@
 
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
-import { launchBotWithSDK, sleep, type SDKSession } from '../test/utils/browser';
-import { generateSave, type SaveConfig, TestPresets } from '../test/utils/save-generator';
-import { RunRecorder } from '../agent/run-recorder';
-import { BotSDK } from '../agent/sdk';
-import { BotActions } from '../agent/bot-actions';
-import type { BotWorldState } from '../agent/types';
+import { launchBotWithSDK, sleep, type SDKSession } from '../test/utils/browser.ts';
+import { generateSave, type SaveConfig, TestPresets } from '../test/utils/save-generator.ts';
+import { RunRecorder } from '../agent/run-recorder.ts';
+import { BotSDK } from '../agent/sdk.ts';
+import { BotActions } from '../agent/bot-actions.ts';
+import type { BotWorldState } from '../agent/types.ts';
 
 // ============ State Delta Types ============
 
@@ -247,8 +247,8 @@ function formatDelta(delta: StateDelta): string | null {
 }
 
 // Re-export for convenience
-export { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner';
-import { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner';
+export { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner.ts';
+import { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner.ts';
 
 export interface ArcConfig {
     /** Character name (must match save file) */
@@ -535,13 +535,18 @@ export function runArc(config: ArcConfig, arcFn: ArcFn): void {
             });
             const { sdk, bot, page } = session;
 
-            // Wait for proper state with player position
+            // Wait for proper state with player position (polling approach for reliability)
             console.log('Waiting for game state to settle...');
-            try {
-                await sdk.waitForCondition(s => {
-                    return s.player && s.player.worldX > 0 && s.player.worldZ > 0;
-                }, 30000);
-            } catch (e) {
+            let stateReady = false;
+            for (let i = 0; i < 60; i++) {  // Up to 30 seconds
+                const s = sdk.getState();
+                if (s?.player?.worldX > 0 && s?.player?.worldZ > 0) {
+                    stateReady = true;
+                    break;
+                }
+                await sleep(500);
+            }
+            if (!stateReady) {
                 console.warn('Warning: Timed out waiting for player position');
             }
 

@@ -353,6 +353,7 @@ learnings/
 
 When you discover a pattern that **works reliably**, add it to the appropriate file:
 When you're having problems, don't write any learnings entry, just focus on yourself and your lab log.
+If you try something from the learnings section and it seems false, FIX OR DELETE IT! We have git history so there's no need to keep it or write why you deleted it.
 
 1. **Include code** - Snippets that can be copy-pasted
 2. **Add context** - Coordinates, level requirements, gotchas that helped, effeciency tips
