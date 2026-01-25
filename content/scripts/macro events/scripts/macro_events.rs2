@@ -60,6 +60,9 @@ if (~in_tutorial_island($coord) = true) {
 return(true);
 
 [proc,macro_event_allowed]()(boolean)
+if (map_random_events = false) {
+    return(false);
+}
 if (~macro_event_area(coord) = false) {
     return(false);
 }
@@ -71,6 +74,10 @@ return(true);
 
 // called when the player logs in
 [queue,macro_event_login]
+if (map_random_events = false) {
+    %macro_event = 0;
+    return;
+}
 def_int $macro_event = %macro_event;
 %macro_event = 0;
 if (nc_param(~macro_event_npc($macro_event), follow_player_on_logout) = ^true) {
