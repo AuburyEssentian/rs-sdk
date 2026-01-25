@@ -7,8 +7,14 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
 import { BotSDK } from '../../agent/sdk';
 import { BotActions } from '../../agent/bot-actions';
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 const BOT_URL = process.env.BOT_URL || 'http://localhost:8888/bot';
+
+// Persistent browser endpoint file - allows cross-process browser sharing
+const BROWSER_ENDPOINT_FILE = join(tmpdir(), 'rs-agent-browser-endpoint.txt');
 
 // HEADLESS env var: 'true' or '1' for headless, anything else for visible browser
 // Default: false (show browser) for easier debugging
@@ -54,35 +60,106 @@ const LIGHTWEIGHT_CHROME_ARGS = [
 ];
 
 /**
+ * Try to connect to an existing browser via saved WebSocket endpoint.
+ * Returns null if no browser available or connection fails.
+ */
+async function tryConnectToExistingBrowser(): Promise<Browser | null> {
+    if (!existsSync(BROWSER_ENDPOINT_FILE)) {
+        return null;
+    }
+
+    try {
+        const wsEndpoint = readFileSync(BROWSER_ENDPOINT_FILE, 'utf-8').trim();
+        const browser = await puppeteer.connect({
+            browserWSEndpoint: wsEndpoint,
+            protocolTimeout: 120000,
+        });
+        console.log('[Browser] Connected to existing browser');
+        return browser;
+    } catch (err) {
+        // Endpoint stale or browser closed - clean up file
+        try { unlinkSync(BROWSER_ENDPOINT_FILE); } catch {}
+        return null;
+    }
+}
+
+/**
+ * Save browser endpoint for cross-process sharing.
+ */
+function saveBrowserEndpoint(browser: Browser): void {
+    const wsEndpoint = browser.wsEndpoint();
+    writeFileSync(BROWSER_ENDPOINT_FILE, wsEndpoint, 'utf-8');
+    console.log('[Browser] Saved endpoint for cross-process sharing');
+}
+
+/**
  * Get or create a shared browser instance.
  * Use this for load tests to avoid spawning many browser processes.
+ *
+ * Cross-process sharing: If another process has a browser running,
+ * we'll connect to it instead of launching a new one.
  */
 export async function getSharedBrowser(headless: boolean = true, background: boolean = false): Promise<Browser> {
-    if (!sharedBrowser || !sharedBrowser.connected) {
-        const chromeArgs = background && !headless
-            ? [...LIGHTWEIGHT_CHROME_ARGS, '--window-position=3000,3000']
-            : LIGHTWEIGHT_CHROME_ARGS;
-        sharedBrowser = await puppeteer.launch({
-            headless,
-            args: chromeArgs,
-            protocolTimeout: 120000,  // 2 minutes for heavy load scenarios
-        });
+    // First, try connecting to in-process shared browser
+    if (sharedBrowser && sharedBrowser.connected) {
+        sharedBrowserRefCount++;
+        return sharedBrowser;
     }
+
+    // Try connecting to cross-process shared browser
+    const existingBrowser = await tryConnectToExistingBrowser();
+    if (existingBrowser) {
+        sharedBrowser = existingBrowser;
+        sharedBrowserRefCount++;
+        return existingBrowser;
+    }
+
+    // Launch new browser
+    const chromeArgs = background && !headless
+        ? [...LIGHTWEIGHT_CHROME_ARGS, '--window-position=3000,3000']
+        : LIGHTWEIGHT_CHROME_ARGS;
+
+    sharedBrowser = await puppeteer.launch({
+        headless,
+        args: chromeArgs,
+        protocolTimeout: 120000,  // 2 minutes for heavy load scenarios
+    });
+
+    // Save endpoint for other processes to connect
+    saveBrowserEndpoint(sharedBrowser);
+
     sharedBrowserRefCount++;
     return sharedBrowser;
 }
 
 /**
  * Release a reference to the shared browser.
- * Closes the browser when all references are released.
+ * Does NOT close the browser - it stays open for other processes.
+ * Use closeSharedBrowser() to force-close the shared browser.
  */
 export async function releaseSharedBrowser(): Promise<void> {
     sharedBrowserRefCount--;
-    if (sharedBrowserRefCount <= 0 && sharedBrowser) {
-        await sharedBrowser.close();
+    if (sharedBrowserRefCount <= 0) {
         sharedBrowser = null;
         sharedBrowserRefCount = 0;
+        // Don't close browser - leave it running for other processes
     }
+}
+
+/**
+ * Force close the shared browser and clean up endpoint file.
+ * Call this when you're done with all scripts and want to free resources.
+ */
+export async function closeSharedBrowser(): Promise<void> {
+    // Clean up endpoint file
+    try { unlinkSync(BROWSER_ENDPOINT_FILE); } catch {}
+
+    if (sharedBrowser && sharedBrowser.connected) {
+        await sharedBrowser.close();
+        console.log('[Browser] Closed shared browser');
+    }
+    sharedBrowser = null;
+    sharedBrowserRefCount = 0;
 }
 
 export interface BrowserSession {
@@ -135,7 +212,7 @@ export async function launchBotBrowser(
 
     // Navigate to bot URL with all params - page handles auto-login, fps, etc.
     // tst=1 indicates running via test (hides agent panel by default)
-    await page.goto(`${BOT_URL}?bot=${name}&password=test&fps=5&tst=1`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(`${BOT_URL}?bot=${name}&password=test&fps=15&tst=1`, { waitUntil: 'networkidle2', timeout: 60000 });
 
     // Wait for in-game (page auto-logs in via URL params)
     let attempts = 0;

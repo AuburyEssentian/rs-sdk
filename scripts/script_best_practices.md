@@ -96,7 +96,7 @@ Animation state is useful, but you can also detect activity through:
 - **Just keep clicking** - the game queues actions, so continuous clicking often works best
 
 ### State Updates
-The SDK state is updated via WebSocket. At low FPS (fps=5 in tests), state updates are infrequent. Don't rely on real-time state for fast actions.
+The SDK state is updated via WebSocket. At low FPS (fps=15 in tests), state updates are infrequent. Don't rely on real-time state for fast actions.
 
 ## Action Patterns
 
@@ -162,6 +162,107 @@ if (stuckReason) {
     throw new StallError(`STUCK: ${stuckReason}`);
 }
 ```
+
+## Getting to Al Kharid
+
+### Toll Gate is the Only Entrance
+There is **no free route** to Al Kharid from Lumbridge. The area is completely fenced - you must pay the 10gp toll at the gate.
+
+### Sourcing 10gp
+If starting without coins, sell a **shortbow** at Lumbridge general store - it sells for 20gp (keeps the sword).
+
+```typescript
+// Get 10gp+ by selling shortbow
+await ctx.bot.walkTo(3211, 3247);  // Lumbridge general store
+await ctx.bot.openShop(/shop keeper/i);
+await ctx.bot.sellToShop(/shortbow/i);  // Sells for 20gp
+await ctx.bot.closeShop();
+```
+
+**Note:** Runes sell for only ~1gp each and prices decrease as you sell more. Bronze sword sells for 10gp but you probably want to keep it.
+
+### Passing Through the Toll Gate
+The toll gate requires special handling - `openDoor()` doesn't work because it's not a normal door.
+
+```typescript
+// Walk to gate
+await ctx.bot.walkTo(3268, 3228);
+
+// Click gate to trigger dialog
+const gate = ctx.state()?.nearbyLocs.find(l => /gate/i.test(l.name));
+const openOpt = gate.optionsWithIndex.find(o => /open/i.test(o.text));
+await ctx.sdk.sendInteractLoc(gate.x, gate.z, gate.id, openOpt.opIndex);
+await new Promise(r => setTimeout(r, 800));
+
+// Handle dialog - click through until "Yes, ok." option appears
+for (let i = 0; i < 20; i++) {
+    const s = ctx.state();
+    if (!s?.dialog.isOpen) {
+        await new Promise(r => setTimeout(r, 150));
+        continue;
+    }
+    const yesOpt = s.dialog.options.find(o => /yes/i.test(o.text));
+    if (yesOpt) {
+        await ctx.sdk.sendClickDialog(yesOpt.index);  // Pay toll
+        break;
+    }
+    await ctx.sdk.sendClickDialog(0);  // Click to continue
+    await new Promise(r => setTimeout(r, 200));
+}
+
+// Wait for gate to open, then walk through (may need retry)
+await new Promise(r => setTimeout(r, 500));
+for (let i = 0; i < 3; i++) {
+    await ctx.bot.walkTo(3277, 3227);  // Inside Al Kharid
+    if (ctx.state()?.player?.worldX >= 3270) break;  // Success
+    await new Promise(r => setTimeout(r, 500));
+}
+```
+
+### Al Kharid Detection
+Position `x >= 3270` means you're inside Al Kharid:
+```typescript
+const isInAlKharid = ctx.state()?.player?.worldX >= 3270;
+```
+
+## Buying Kebabs in Al Kharid
+
+### Kebab Seller Uses Dialog, Not Shop
+The kebab seller (Karim) at (3273, 3180) uses a **dialog system**, not a shop interface. You must talk to him and select "Yes please." to buy.
+
+```typescript
+// Walk to kebab seller
+await ctx.bot.walkTo(3273, 3180);
+
+// Find and talk to kebab seller
+const seller = ctx.sdk.findNearbyNpc(/kebab/i);
+const talkOpt = seller.optionsWithIndex.find(o => /talk/i.test(o.text));
+await ctx.sdk.sendInteractNpc(seller.index, talkOpt.opIndex);
+await new Promise(r => setTimeout(r, 1000));
+
+// Handle dialog - click through and select "Yes please."
+for (let i = 0; i < 15; i++) {
+    const s = ctx.state();
+    if (!s?.dialog.isOpen) {
+        await new Promise(r => setTimeout(r, 200));
+        continue;
+    }
+
+    const buyOpt = s.dialog.options.find(o => /yes/i.test(o.text));
+    if (buyOpt) {
+        await ctx.sdk.sendClickDialog(buyOpt.index);  // Buy kebab (1gp)
+    } else {
+        await ctx.sdk.sendClickDialog(0);  // Click to continue
+    }
+    await new Promise(r => setTimeout(r, 300));
+}
+
+// Kebab now in inventory
+const kebab = ctx.sdk.findInventoryItem(/kebab/i);
+```
+
+**Cost:** 1gp per kebab
+**Heals:** 10 HP (random 1-10)
 
 ## Location & Spawning
 

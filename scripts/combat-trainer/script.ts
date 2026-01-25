@@ -1,12 +1,14 @@
 /**
  * Combat Trainer Script
  *
- * Goal: Maximize Attack + Strength + Defence + Hitpoints levels over 5 minutes.
+ * Goal: Maximize Attack + Strength + Defence + Hitpoints levels over 10 minutes.
  *
  * Strategy:
  * - Find and kill goblins (low level, abundant near Lumbridge)
- * - Cycle combat styles to train all melee skills evenly
- * - Pick up bones/coins as loot
+ * - Phase 1 (first ~3 min): Farm coins with Defensive style for Defence XP
+ * - Phase 2: Walk to Al Kharid and buy an iron scimitar (major damage upgrade!)
+ * - Phase 3: Continue training with better weapon, cycle styles
+ * - Pick up bones/coins as loot (coins fund the upgrade)
  * - Eat food if HP drops low
  * - Track XP gains and combat events
  */
@@ -15,12 +17,13 @@ import { runScript, TestPresets } from '../script-runner';
 import type { ScriptContext } from '../script-runner';
 import type { NearbyNpc } from '../../agent/types';
 
-// Combat style indices for unarmed/sword combat
+// Combat style indices for swords (4 styles: Stab, Lunge, Slash, Block)
+// See: https://oldschool.runescape.wiki/w/Combat_Options
 const COMBAT_STYLES = {
-    ACCURATE: 0,    // Trains Attack
-    AGGRESSIVE: 1,  // Trains Strength
-    DEFENSIVE: 2,   // Trains Defence (or Block for swords)
-    CONTROLLED: 2,  // Some weapons have this instead - trains all
+    ACCURATE: 0,    // Stab - Trains Attack
+    AGGRESSIVE: 1,  // Lunge - Trains Strength
+    CONTROLLED: 2,  // Slash - Trains Attack+Strength+Defence evenly
+    DEFENSIVE: 3,   // Block - Trains Defence only
 };
 
 // Track combat statistics
@@ -31,6 +34,9 @@ interface CombatStats {
     startXp: { atk: number; str: number; def: number; hp: number };
     foodEaten: number;
     looted: number;
+    coinsCollected: number;
+    weaponUpgraded: boolean;
+    phase: 'farming' | 'upgrading' | 'training';
 }
 
 /**
@@ -82,43 +88,68 @@ function shouldEat(ctx: ScriptContext): boolean {
 }
 
 /**
- * Cycle to the next combat style for balanced training
+ * Cycle to the next combat style for balanced training.
+ * Phase 1 (farming): Use Defensive to get Defence XP early (fixes Run 002's Def=0)
+ * Phase 3 (training): Use Controlled style for balanced Atk/Str/Def XP
  */
-async function cycleCombatStyle(ctx: ScriptContext, currentKills: number): Promise<void> {
-    // Change style every 3 kills to train evenly
-    const styleIndex = Math.floor(currentKills / 3) % 3;
-    const styleNames = ['Accurate (Attack)', 'Aggressive (Strength)', 'Defensive (Defence)'];
-
+async function cycleCombatStyle(ctx: ScriptContext, stats: CombatStats): Promise<void> {
     const state = ctx.state();
     const combatStyle = state?.combatStyle;
+    if (!combatStyle) return;
 
-    if (combatStyle && combatStyle.currentStyle !== styleIndex) {
-        ctx.log(`Switching to ${styleNames[styleIndex]} style`);
-        await ctx.sdk.sendSetCombatStyle(styleIndex);
+    let targetStyle: number;
+    let styleName: string;
+
+    if (stats.phase === 'farming') {
+        // Phase 1: Use Defensive to get Defence XP (was 0 in Run 002!)
+        // Sword style 3 = Block (Defensive) - trains Defence only
+        targetStyle = COMBAT_STYLES.DEFENSIVE;
+        styleName = 'Block (Defence)';
+    } else {
+        // Phase 3 (training): Use Controlled for balanced XP across all melee stats
+        // Sword style 2 = Slash (Controlled) - trains Attack + Strength + Defence evenly
+        targetStyle = COMBAT_STYLES.CONTROLLED;
+        styleName = 'Slash (Controlled - All Stats)';
+    }
+
+    if (combatStyle.currentStyle !== targetStyle) {
+        ctx.log(`Switching to ${styleName} style`);
+        await ctx.sdk.sendSetCombatStyle(targetStyle);
         ctx.progress();
     }
 }
 
 /**
  * Wait for current combat to complete (NPC dies or we need to heal)
- * Uses combatCycle comparison for reliable combat detection.
+ * Uses multiple detection methods: XP gains, combatCycle, and NPC disappearance.
  */
 async function waitForCombatEnd(
     ctx: ScriptContext,
     targetNpc: NearbyNpc,
     stats: CombatStats
 ): Promise<'kill' | 'fled' | 'lost_target' | 'need_heal'> {
-    const startTick = ctx.state()?.tick ?? 0;
-    let lastSeenTick = startTick;
+    let lastSeenTick = ctx.state()?.tick ?? 0;
     let combatStarted = false;
     let ticksSinceCombatEnded = 0;
+    let loopCount = 0;
+
+    // Track starting XP to detect combat via XP gains
+    const startState = ctx.state();
+    const startXp = {
+        def: startState?.skills.find(s => s.name === 'Defence')?.experience ?? 0,
+        hp: startState?.skills.find(s => s.name === 'Hitpoints')?.experience ?? 0,
+    };
 
     // Wait up to 30 seconds for combat to resolve
     const maxWaitMs = 30000;
     const startTime = Date.now();
 
+    // Initial delay to let combat actually start (attack animation takes time)
+    await new Promise(r => setTimeout(r, 800));
+
     while (Date.now() - startTime < maxWaitMs) {
-        await new Promise(r => setTimeout(r, 300));
+        await new Promise(r => setTimeout(r, 400));
+        loopCount++;
         const state = ctx.state();
         if (!state) return 'lost_target';
 
@@ -129,13 +160,26 @@ async function waitForCombatEnd(
             return 'need_heal';
         }
 
+        // Check XP gains as combat indicator (most reliable!)
+        const currentXp = {
+            def: state.skills.find(s => s.name === 'Defence')?.experience ?? 0,
+            hp: state.skills.find(s => s.name === 'Hitpoints')?.experience ?? 0,
+        };
+        const xpGained = (currentXp.def - startXp.def) + (currentXp.hp - startXp.hp);
+        if (xpGained > 0) {
+            combatStarted = true;  // XP gain = definitely in combat
+        }
+
         // Find our target NPC
         const target = state.nearbyNpcs.find(n => n.index === targetNpc.index);
 
         if (!target) {
-            // NPC disappeared - likely died
-            stats.kills++;
-            return 'kill';
+            // NPC disappeared - count as kill if we gained XP or waited a bit
+            if (combatStarted || xpGained > 0 || loopCount >= 2) {
+                stats.kills++;
+                return 'kill';
+            }
+            return 'lost_target';
         }
 
         // Check NPC health - if 0, it died (only valid once maxHp > 0)
@@ -159,33 +203,133 @@ async function waitForCombatEnd(
         }
         lastSeenTick = currentTick;
 
-        // Check combat status via combatCycle (more reliable than inCombat flag)
-        // NPC combatCycle > currentTick means NPC was hit recently
+        // Check combat status via combatCycle
         const npcInCombat = target.combatCycle > currentTick;
-
-        // Player inCombat now uses combatCycle internally
         const playerInCombat = state.player?.combat?.inCombat ?? false;
-
-        // Consider combat active if EITHER player or NPC shows combat signs
-        const inActiveCombat = playerInCombat || npcInCombat;
+        const inActiveCombat = playerInCombat || npcInCombat || xpGained > 0;
 
         if (inActiveCombat) {
             combatStarted = true;
             ticksSinceCombatEnded = 0;
         } else if (combatStarted) {
-            // Combat seems to have ended - wait a few ticks to be sure
             ticksSinceCombatEnded++;
-            if (ticksSinceCombatEnded >= 3) {
-                // NPC is still there but combat ended - they fled or we did
+            if (ticksSinceCombatEnded >= 4) {
                 return 'fled';
             }
+        } else if (loopCount >= 8) {
+            // Combat never started after ~4 seconds
+            return 'lost_target';
         }
 
         ctx.progress();
     }
 
-    // Timeout - combat took too long
     return 'lost_target';
+}
+
+// Al Kharid scimitar shop location and prices
+const ALKHARID_SCIMITAR_SHOP = { x: 3287, z: 3186 };  // Zeke's Scimitar Shop
+const IRON_SCIMITAR_PRICE = 112;  // Base shop price
+const GATE_TOLL = 10;  // Gate toll to enter Al Kharid
+const UPGRADE_THRESHOLD = IRON_SCIMITAR_PRICE + GATE_TOLL + 20;  // ~142 coins before attempting
+
+/**
+ * Attempt to upgrade weapon by traveling to Al Kharid scimitar shop.
+ * Returns true if upgrade was successful.
+ */
+async function attemptWeaponUpgrade(ctx: ScriptContext, stats: CombatStats): Promise<boolean> {
+    ctx.log('=== Starting Weapon Upgrade Phase ===');
+    stats.phase = 'upgrading';
+
+    // Check if we have enough coins
+    const coins = ctx.sdk.findInventoryItem(/^coins$/i);
+    const coinCount = coins?.count ?? 0;
+    ctx.log(`Coins available: ${coinCount}`);
+
+    if (coinCount < UPGRADE_THRESHOLD) {
+        ctx.log(`Not enough coins for upgrade (need ${UPGRADE_THRESHOLD}), continuing farming`);
+        stats.phase = 'farming';
+        return false;
+    }
+
+    // Walk towards Al Kharid gate (from Lumbridge goblin area)
+    ctx.log('Walking to Al Kharid gate...');
+    await ctx.bot.walkTo(3268, 3227);  // Near the toll gate
+    ctx.progress();
+
+    // Try to go through the gate (may need to pay toll)
+    const gate = ctx.state()?.nearbyObjects.find(o => /gate/i.test(o.name) && o.distance < 10);
+    if (gate) {
+        ctx.log('Passing through Al Kharid gate...');
+        const gateResult = await ctx.bot.openDoor(/gate/i);
+        if (!gateResult.success) {
+            ctx.log('Gate blocked or toll required, checking dialog...');
+        }
+        await new Promise(r => setTimeout(r, 1000));
+
+        // Handle toll dialog if it appears
+        const state = ctx.state();
+        if (state?.dialog.isOpen) {
+            ctx.log('Paying gate toll (10gp)...');
+            await ctx.sdk.sendClickDialog(1);  // Usually "Yes" to pay toll
+            await new Promise(r => setTimeout(r, 500));
+        }
+    }
+    ctx.progress();
+
+    // Walk to scimitar shop
+    ctx.log('Walking to Zeke\'s Scimitar Shop...');
+    await ctx.bot.walkTo(ALKHARID_SCIMITAR_SHOP.x, ALKHARID_SCIMITAR_SHOP.z);
+    ctx.progress();
+
+    // Open the shop
+    ctx.log('Opening shop...');
+    const shopResult = await ctx.bot.openShop(/zeke/i);
+    if (!shopResult.success) {
+        // Try generic shopkeeper
+        const shopResult2 = await ctx.bot.openShop(/shop/i);
+        if (!shopResult2.success) {
+            ctx.warn('Failed to open scimitar shop, returning to training');
+            stats.phase = 'training';
+            return false;
+        }
+    }
+    ctx.progress();
+
+    // Buy iron scimitar
+    ctx.log('Buying iron scimitar...');
+    const buyResult = await ctx.bot.buyFromShop(/iron scimitar/i, 1);
+    if (!buyResult.success) {
+        ctx.warn(`Failed to buy iron scimitar: ${buyResult.message}`);
+        // Close shop and continue
+        await ctx.sdk.sendCloseInterface();
+        stats.phase = 'training';
+        return false;
+    }
+    ctx.log('Iron scimitar purchased!');
+    ctx.progress();
+
+    // Close shop
+    await ctx.sdk.sendCloseInterface();
+    await new Promise(r => setTimeout(r, 300));
+
+    // Equip the new weapon
+    const scimitar = ctx.sdk.findInventoryItem(/iron scimitar/i);
+    if (scimitar) {
+        ctx.log('Equipping iron scimitar...');
+        await ctx.bot.equipItem(scimitar);
+        ctx.progress();
+    }
+
+    // Walk back to goblin area
+    ctx.log('Walking back to goblin training area...');
+    await ctx.bot.walkTo(3245, 3235);  // Goblin area east of Lumbridge
+    ctx.progress();
+
+    stats.weaponUpgraded = true;
+    stats.phase = 'training';
+    ctx.log('=== Weapon Upgrade Complete! Iron Scimitar Equipped ===');
+    return true;
 }
 
 /**
@@ -208,6 +352,9 @@ async function combatTrainingLoop(ctx: ScriptContext): Promise<void> {
         },
         foodEaten: 0,
         looted: 0,
+        coinsCollected: 0,
+        weaponUpgraded: false,
+        phase: 'farming',  // Start in farming phase to collect coins + Defence XP
     };
 
     ctx.log('=== Combat Trainer Started ===');
@@ -256,13 +403,39 @@ async function combatTrainingLoop(ctx: ScriptContext): Promise<void> {
             }
         }
 
-        // Cycle combat style based on kills
-        await cycleCombatStyle(ctx, stats.kills);
+        // Cycle combat style based on current phase
+        await cycleCombatStyle(ctx, stats);
 
-        // Pick up loot if any bones/coins nearby
+        // Check if we should attempt weapon upgrade (phase 1 -> phase 2)
+        if (stats.phase === 'farming' && !stats.weaponUpgraded) {
+            const coins = ctx.sdk.findInventoryItem(/^coins$/i);
+            const coinCount = coins?.count ?? 0;
+
+            if (coinCount >= UPGRADE_THRESHOLD) {
+                ctx.log(`Have ${coinCount} coins - attempting weapon upgrade!`);
+                await attemptWeaponUpgrade(ctx, stats);
+                continue;  // Re-enter loop after upgrade attempt
+            }
+
+            // After 15 kills without enough coins, skip upgrade and go to training
+            if (stats.kills >= 15 && coinCount < UPGRADE_THRESHOLD) {
+                ctx.log(`Skipping weapon upgrade after ${stats.kills} kills (only ${coinCount} coins, need ${UPGRADE_THRESHOLD})`);
+                ctx.log('Switching to balanced training with Controlled style');
+                stats.phase = 'training';
+            }
+        }
+
+        // Pick up loot - prioritize coins (for upgrade), then bones (for prayer XP later)
         const loot = ctx.sdk.getGroundItems()
             .filter(i => /bones|coins/i.test(i.name))
-            .filter(i => i.distance <= 3);
+            .filter(i => i.distance <= 5)  // Slightly larger pickup radius
+            .sort((a, b) => {
+                // Prioritize coins over bones
+                const aIsCoins = /coins/i.test(a.name) ? 0 : 1;
+                const bIsCoins = /coins/i.test(b.name) ? 0 : 1;
+                if (aIsCoins !== bIsCoins) return aIsCoins - bIsCoins;
+                return a.distance - b.distance;
+            });
 
         if (loot.length > 0) {
             const item = loot[0]!;
@@ -270,6 +443,9 @@ async function combatTrainingLoop(ctx: ScriptContext): Promise<void> {
             const result = await ctx.bot.pickupItem(item);
             if (result.success) {
                 stats.looted++;
+                if (/coins/i.test(item.name)) {
+                    stats.coinsCollected += item.quantity ?? 1;
+                }
             }
             ctx.progress();
         }
@@ -348,20 +524,21 @@ function logStats(ctx: ScriptContext, stats: CombatStats): void {
 
     const totalXp = xpGained.atk + xpGained.str + xpGained.def + xpGained.hp;
 
-    ctx.log(`--- Stats after ${stats.kills} kills ---`);
+    ctx.log(`--- Stats after ${stats.kills} kills (Phase: ${stats.phase}) ---`);
     ctx.log(`XP Gained: Atk +${xpGained.atk}, Str +${xpGained.str}, Def +${xpGained.def}, HP +${xpGained.hp} (Total: +${totalXp})`);
     ctx.log(`Damage dealt: ${stats.damageDealt}, taken: ${stats.damageTaken}`);
-    ctx.log(`Food eaten: ${stats.foodEaten}, Items looted: ${stats.looted}`);
+    ctx.log(`Food eaten: ${stats.foodEaten}, Looted: ${stats.looted}, Coins: ${stats.coinsCollected}`);
+    ctx.log(`Weapon upgraded: ${stats.weaponUpgraded ? 'YES (Iron Scimitar)' : 'No (Bronze Sword)'}`);
 }
 
 // Run the script with standard tutorial-complete items
 runScript({
     name: 'combat-trainer',
-    goal: 'Maximize Attack + Strength + Defence + Hitpoints levels by killing goblins',
+    goal: 'Maximize Attack + Strength + Defence + Hitpoints levels by killing goblins with weapon upgrade',
     // Standard post-tutorial loadout (bronze gear, basic supplies)
     preset: TestPresets.LUMBRIDGE_SPAWN,
-    timeLimit: 5 * 60 * 1000,  // 5 minutes
-    stallTimeout: 45_000,      // 45 seconds (combat can have lulls)
+    timeLimit: 10 * 60 * 1000,  // 10 minutes (extended for weapon upgrade trip)
+    stallTimeout: 60_000,       // 60 seconds (increased for shop trip)
 }, async (ctx) => {
     try {
         await combatTrainingLoop(ctx);
