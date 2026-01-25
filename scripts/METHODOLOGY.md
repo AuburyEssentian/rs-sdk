@@ -54,8 +54,8 @@ import { runScript, TestPresets } from './script-runner';
 
 runScript({
   name: 'goblin-killer',           // Creates scripts/goblin-killer/
-  goal: 'Kill goblins to level 10', // Recorded in metadata
-  preset: TestPresets.LUMBRIDGE_SPAWN,
+  goal: 'Kill goblins to level 10', // CONSTRAINT: what success looks like
+  preset: TestPresets.LUMBRIDGE_SPAWN, // CONSTRAINT: starting conditions (don't modify!)
   timeLimit: 10 * 60 * 1000,       // 10 minutes (default: 5 min)
   stallTimeout: 30_000,            // 30 seconds (default)
 }, async (ctx) => {
@@ -99,8 +99,8 @@ runScript({
 ```typescript
 interface ScriptConfig {
   name: string;              // Script folder name
-  goal: string;              // What success looks like
-  preset?: TestPreset;       // Starting save state
+  goal: string;              // What success looks like (CONSTRAINT)
+  preset?: TestPreset;       // Starting conditions (CONSTRAINT - don't modify!)
   timeLimit?: number;        // Max runtime (default: 5 min)
   stallTimeout?: number;     // No-progress timeout (default: 30s)
   screenshotInterval?: number; // Screenshot frequency (default: 30s)
@@ -150,7 +150,12 @@ Add `await bot.pickupItem(/bones|coins/)` after combat ends
 
 See **[script_best_practices.md](./script_best_practices.md)** for detailed patterns and common pitfalls (dialog handling, fishing spots, state quirks, etc.).
 
-1. **No cheating with spawned items** - Scripts should start with standard tutorial-complete items only. Use `LUMBRIDGE_SPAWN` preset which gives the normal post-tutorial loadout. Don't spawn with extra gear or boosted skills.
+1. **Preset is a constraint, not a variable** - The `preset` defines your starting conditions and is a fixed constraint like the `goal`. During script optimization:
+   - **DO NOT** modify the preset to improve your score
+   - **DO NOT** create custom spawn configs (saveConfig is not available)
+   - **DO** optimize your script logic to work within the given constraints
+
+   The preset is chosen by the user, not the agent. If a script needs different starting conditions, that's a conversation with the user - not something to "solve" by spawning with advantages.
 
 2. **Dismiss blocking dialogs** - Level-up congratulations and other dialogs block all actions. Check `state.dialog.isOpen` in your main loop and call `ctx.sdk.sendClickDialog(0)` to dismiss.
 

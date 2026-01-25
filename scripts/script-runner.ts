@@ -14,7 +14,7 @@
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import { launchBotWithSDK, sleep, type SDKSession } from '../test/utils/browser';
-import { generateSave, type SaveConfig, type TestPreset } from '../test/utils/save-generator';
+import { generateSave, type TestPreset } from '../test/utils/save-generator';
 import { RunRecorder, type RunMetadata } from '../agent/run-recorder';
 import { BotSDK } from '../agent/sdk';
 import { BotActions } from '../agent/bot-actions';
@@ -31,10 +31,8 @@ export interface ScriptConfig {
     goal: string;
     /** Bot name (auto-generated if not provided) */
     botName?: string;
-    /** Pre-defined test preset from save-generator */
+    /** Test preset - a fixed constraint like goal, NOT to be modified during optimization */
     preset?: TestPreset;
-    /** Custom save configuration (used if preset not provided) */
-    saveConfig?: SaveConfig;
     /** Max runtime in ms (default: 5 minutes) */
     timeLimit?: number;
     /** No-progress timeout in ms (default: 30 seconds) */
@@ -306,11 +304,11 @@ export function runScript(config: ScriptConfig, scriptFn: ScriptFn): void {
         console.log(`Goal: ${config.goal}`);
         console.log(`Time limit: ${timeLimit / 1000}s, Stall timeout: ${stallTimeout / 1000}s`);
 
-        // Generate save file if preset or config provided
-        if (config.preset || config.saveConfig) {
-            console.log(`Creating save file for '${botName}'...`);
-            await generateSave(botName, config.preset ?? config.saveConfig!);
-        }
+        // Generate save file from preset (a fixed constraint, not to be modified during optimization)
+        const { TestPresets } = await import('../test/utils/save-generator');
+        const preset = config.preset ?? TestPresets.LUMBRIDGE_SPAWN;
+        console.log(`Creating save file for '${botName}' with preset...`);
+        await generateSave(botName, preset);
 
         // Launch session
         let session: SDKSession | null = null;
@@ -493,13 +491,14 @@ function generateBotName(scriptName: string): string {
  * Create a compact state representation for logging
  */
 function compactState(state: BotWorldState): object {
+    const hpSkill = state.skills.find(s => s.name === 'Hitpoints');
     return {
         tick: state.tick,
         player: state.player ? {
             x: state.player.worldX,
             z: state.player.worldZ,
-            hp: state.player.currentHitpoints,
-            maxHp: state.player.maxHitpoints,
+            hp: hpSkill?.level ?? 10,
+            maxHp: hpSkill?.baseLevel ?? 10,
             combatLevel: state.player.combatLevel
         } : null,
         skills: state.skills
@@ -513,6 +512,5 @@ function compactState(state: BotWorldState): object {
     };
 }
 
-// Re-export useful types
-export type { SaveConfig } from '../test/utils/save-generator';
+// Re-export TestPresets (only LUMBRIDGE_SPAWN is available)
 export { TestPresets } from '../test/utils/save-generator';
