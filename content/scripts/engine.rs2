@@ -1030,6 +1030,8 @@
 [command,error](string $text)
 // info: Return true if the world is in a production environment
 [command,map_production]()(boolean)
+// info: Return true if the world has random events enabled
+[command,map_random_events]()(boolean)
 // info: Server debug stats
 [command,map_lastclock]()(int)
 // info: Server debug stats

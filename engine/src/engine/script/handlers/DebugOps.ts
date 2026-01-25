@@ -17,6 +17,10 @@ const DebugOps: CommandHandlers = {
         state.pushInt(Environment.NODE_PRODUCTION ? 1 : 0);
     },
 
+    [ScriptOpcode.MAP_RANDOM_EVENTS]: state => {
+        state.pushInt(Environment.NODE_RANDOM_EVENTS ? 1 : 0);
+    },
+
     [ScriptOpcode.MAP_LASTCLOCK]: state => {
         state.pushInt(World.lastCycleStats[WorldStat.CYCLE]);
     },

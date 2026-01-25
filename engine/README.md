@@ -54,6 +54,14 @@ Content developers should run `bun start`. The server will watch for changes to 
 
 Engine developers should run `bun dev`. This does what `bun start` does above, but also completely restarts the server when engine code has changed.
 
+## Configuration
+
+Environment variables can be set in the `.env` file. See `.env.example` for all available options.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NODE_RANDOM_EVENTS` | `true` | Enable or disable random events (anti-macro events). Set to `false` to disable. |
+
 ## Common Issues
 
 * `'"java"' is not recognized as an internal or external command`  

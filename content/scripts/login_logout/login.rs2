@@ -16,7 +16,9 @@ settimer(stat_boost_restore, 100);
 // same for health
 settimer(health_regen, 100);
 // random event timer
-settimer(general_macro_events, 500);
+if (map_random_events = true) {
+    settimer(general_macro_events, 500);
+}
 // chest macro gas 
 ~check_chest_macro_gas;
 // for logout out during a general macro event, they respawn when you log back in

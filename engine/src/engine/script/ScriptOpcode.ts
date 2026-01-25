@@ -444,6 +444,7 @@ export const enum ScriptOpcode {
     // Debug ops (10000-11000)
     ERROR = 10000,
     MAP_PRODUCTION,
+    MAP_RANDOM_EVENTS,
     MAP_LASTCLOCK,
     MAP_LASTWORLD,
     MAP_LASTCLIENTIN,
@@ -861,6 +862,7 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['DB_LISTALL', ScriptOpcode.DB_LISTALL],
     ['ERROR', ScriptOpcode.ERROR],
     ['MAP_PRODUCTION', ScriptOpcode.MAP_PRODUCTION],
+    ['MAP_RANDOM_EVENTS', ScriptOpcode.MAP_RANDOM_EVENTS],
     ['MAP_LASTCLOCK', ScriptOpcode.MAP_LASTCLOCK],
     ['MAP_LASTWORLD', ScriptOpcode.MAP_LASTWORLD],
     ['MAP_LASTCLIENTIN', ScriptOpcode.MAP_LASTCLIENTIN],
