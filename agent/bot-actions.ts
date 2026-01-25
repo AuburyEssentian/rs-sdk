@@ -87,6 +87,13 @@ export interface OpenDoorResult {
     door?: NearbyLoc;
 }
 
+export interface FletchResult {
+    success: boolean;
+    message: string;
+    xpGained?: number;
+    product?: InventoryItem;
+}
+
 export class BotActions {
     constructor(private sdk: BotSDK) {}
 
@@ -802,6 +809,53 @@ export class BotActions {
     // ============ Porcelain: Shop Actions ============
 
     /**
+     * Closes the shop interface and waits for BOTH shop.isOpen AND interface.isOpen
+     * to become false.
+     *
+     * This fixes the issue where sendCloseShop() returns immediately after clicking
+     * the close button, but the interface state may not have updated yet, causing
+     * subsequent interactions to fail.
+     *
+     * @param timeout - Maximum time to wait for close confirmation (default: 5000ms)
+     */
+    async closeShop(timeout: number = 5000): Promise<ActionResult> {
+        const state = this.sdk.getState();
+        if (!state?.shop.isOpen && !state?.interface?.isOpen) {
+            return { success: true, message: 'Shop already closed' };
+        }
+
+        // Send the close command
+        await this.sdk.sendCloseShop();
+
+        try {
+            // Wait for BOTH shop.isOpen AND interface.isOpen to become false
+            await this.sdk.waitForCondition(s => {
+                const shopClosed = !s.shop.isOpen;
+                const interfaceClosed = !s.interface?.isOpen;
+                return shopClosed && interfaceClosed;
+            }, timeout);
+
+            return { success: true, message: 'Shop closed' };
+        } catch {
+            // If timeout, try a second close attempt
+            await this.sdk.sendCloseShop();
+
+            // Wait a bit and check again
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const finalState = this.sdk.getState();
+
+            if (!finalState?.shop.isOpen && !finalState?.interface?.isOpen) {
+                return { success: true, message: 'Shop closed (second attempt)' };
+            }
+
+            return {
+                success: false,
+                message: `Shop close timeout - shop.isOpen=${finalState?.shop.isOpen}, interface.isOpen=${finalState?.interface?.isOpen}`
+            };
+        }
+    }
+
+    /**
      * Opens a shop by trading with a shopkeeper NPC.
      * Waits for the shop interface to open.
      */
@@ -1074,6 +1128,177 @@ export class BotActions {
             message: `Sold ${sellItem.name} x${totalSold}`,
             amountSold: totalSold
         };
+    }
+
+    // ============ Porcelain: Crafting Actions ============
+
+    /**
+     * Fletches logs into a product.
+     *
+     * @param product - Product to make: 'arrow shafts', 'short bow', 'long bow', or RegExp
+     * @param timeout - Maximum time to wait for crafting to complete (default: 10000ms)
+     *
+     * Prerequisites:
+     * - Knife and logs must be in inventory
+     * - Fletching level must be high enough for the product:
+     *   - Arrow Shafts: level 1
+     *   - Short Bow: level 5
+     *   - Long Bow: level 10
+     */
+    async fletchLogs(
+        product: string | RegExp = /arrow\s*shaft/i,
+        timeout: number = 10000
+    ): Promise<FletchResult> {
+        // Find knife and logs
+        const knife = this.sdk.findInventoryItem(/knife/i);
+        if (!knife) {
+            return { success: false, message: 'No knife in inventory' };
+        }
+
+        // Find any type of logs (logs, oak logs, willow logs, etc.)
+        const logs = this.sdk.findInventoryItem(/logs$/i);
+        if (!logs) {
+            return { success: false, message: 'No logs in inventory' };
+        }
+
+        const fletchingXpBefore = this.sdk.getSkill('Fletching')?.experience ?? 0;
+        const productPattern = typeof product === 'string'
+            ? new RegExp(product.replace(/\s+/g, '\\s*'), 'i')
+            : product;
+
+        // Use knife on logs to open the fletching dialog
+        await this.sdk.sendUseItemOnItem(knife.slot, logs.slot);
+
+        // Wait for dialog to open
+        try {
+            await this.sdk.waitForCondition(s => s.dialog.isOpen, 5000);
+        } catch {
+            return { success: false, message: 'Fletching dialog did not open' };
+        }
+
+        const fullState = this.sdk.getState();
+        const dialogState = fullState?.dialog;
+        const interfaceState = fullState?.interface;
+
+        if (!dialogState?.isOpen) {
+            return { success: false, message: 'Fletching dialog closed unexpectedly' };
+        }
+
+        // The fletching dialog has this structure:
+        // - 3 "Ok" buttons (components 2800, 2801, 2802) - one for EACH product
+        // - 3 product labels (components 2803, 2804, 2805) - "Arrow Shafts.", "Short Bow.", "Long Bow."
+        //
+        // To make a specific product, click its corresponding Ok button:
+        // - Component 2800 → Arrow Shafts
+        // - Component 2801 → Short Bow
+        // - Component 2802 → Long Bow
+        //
+        // The product label componentId - 3 = the corresponding Ok button componentId
+
+        // Find the product text option to determine which Ok button to click
+        const productOption = dialogState.options.find(o => productPattern.test(o.text));
+
+        // Get all Ok buttons sorted by component ID
+        const okButtons = dialogState.options
+            .filter(o => /^ok$/i.test(o.text))
+            .sort((a, b) => (a.componentId ?? 0) - (b.componentId ?? 0));
+
+        if (productOption && okButtons.length > 0) {
+            // Map product to corresponding Ok button by position
+            // Different fletching interfaces have different component IDs but consistent ordering:
+            // - Regular logs: Ok buttons 2800,2801,2802 → Products 2803,2804,2805
+            // - Oak logs: Ok buttons 142,143 → Products 144,145
+            // The pattern is: products and Ok buttons are in parallel order (sorted by componentId)
+
+            const productLabels = dialogState.options
+                .filter(o => !/^ok$/i.test(o.text) && !/close/i.test(o.text))
+                .sort((a, b) => (a.componentId ?? 0) - (b.componentId ?? 0));
+
+            const productIndex = productLabels.findIndex(o => o.componentId === productOption.componentId);
+
+            if (productIndex >= 0 && productIndex < okButtons.length) {
+                await this.sdk.sendClickDialog(okButtons[productIndex]!.index);
+            } else {
+                // Fallback: click first Ok
+                await this.sdk.sendClickDialog(okButtons[0]!.index);
+            }
+        } else if (okButtons.length > 0) {
+            // No product found, click first Ok (default product)
+            await this.sdk.sendClickDialog(okButtons[0]!.index);
+        } else {
+            // No Ok buttons found, try clicking continue
+            await this.sdk.sendClickDialog(0);
+        }
+
+        // Wait for fletching to complete
+        // Success: XP gained
+        // Failure: Dialog closed without XP gain, or timeout
+        let lastDialogClickTick = 0;
+        let dialogWasOpen = true;
+        let ticksWithDialogClosed = 0;
+
+        try {
+            await this.sdk.waitForCondition(state => {
+                // Check for XP gain - SUCCESS
+                const fletchingXp = state.skills.find(s => s.name === 'Fletching')?.experience ?? 0;
+                if (fletchingXp > fletchingXpBefore) {
+                    return true;
+                }
+
+                // Track dialog state
+                const dialogOpen = state.dialog.isOpen;
+
+                // If dialog was open but now closed, start counting ticks
+                if (dialogWasOpen && !dialogOpen) {
+                    dialogWasOpen = false;
+                    ticksWithDialogClosed = 0;
+                }
+
+                // If dialog is closed, count how long
+                if (!dialogOpen) {
+                    ticksWithDialogClosed++;
+
+                    // If dialog has been closed for 5+ ticks without XP gain, it failed
+                    if (ticksWithDialogClosed >= 5) {
+                        throw new Error('Dialog closed without fletching');
+                    }
+                }
+
+                // If a level-up dialog appears, dismiss it
+                if (dialogOpen && (state.tick - lastDialogClickTick) >= 3) {
+                    // Check if this looks like a level-up dialog (different from fletching)
+                    const options = state.dialog.options;
+                    const isLevelUp = options.some(o => /continue|congratulations/i.test(o.text));
+                    if (isLevelUp) {
+                        lastDialogClickTick = state.tick;
+                        this.sdk.sendClickDialog(0).catch(() => {});
+                    }
+                }
+
+                return false;
+            }, timeout);
+
+            const fletchingXpAfter = this.sdk.getSkill('Fletching')?.experience ?? 0;
+            const xpGained = fletchingXpAfter - fletchingXpBefore;
+
+            // Find the created product
+            const createdProduct = this.sdk.findInventoryItem(productPattern) ||
+                                   this.sdk.findInventoryItem(/bow/i) ||
+                                   this.sdk.findInventoryItem(/arrow\s*shaft/i);
+
+            return {
+                success: true,
+                message: `Fletched ${createdProduct?.name ?? 'product'}`,
+                xpGained,
+                product: createdProduct || undefined
+            };
+        } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : 'Unknown error';
+            if (errorMsg.includes('Dialog closed')) {
+                return { success: false, message: 'Fletching dialog closed without crafting' };
+            }
+            return { success: false, message: 'Timeout waiting for fletching to complete' };
+        }
     }
 
     // ============ Porcelain: Equipment & Combat ============

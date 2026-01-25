@@ -49,6 +49,7 @@ export const Items = {
 
     // Resources
     LOGS: 1511,
+    OAK_LOGS: 1521,
     RAW_SHRIMPS: 317,
     SHRIMPS: 315,
     COPPER_ORE: 436,

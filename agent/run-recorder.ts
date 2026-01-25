@@ -6,11 +6,16 @@ import { join } from 'path';
 
 export interface RunEvent {
     timestamp: number;
-    type: 'system' | 'thinking' | 'action' | 'code' | 'result' | 'error' | 'user_message' | 'state' | 'screenshot';
+    type: 'system' | 'thinking' | 'action' | 'code' | 'result' | 'error' | 'user_message' | 'state' | 'screenshot' | 'console';
     content: string;
     // Optional fields for specific event types
     screenshot?: string;  // base64 data URL for screenshot events
     state?: object;       // world state snapshot for state events
+    // Action event fields
+    method?: string;      // method name for action events
+    args?: unknown[];     // arguments for action events
+    result?: unknown;     // result for action events
+    durationMs?: number;  // duration for action events
 }
 
 export interface RunMetadata {
@@ -21,6 +26,13 @@ export interface RunMetadata {
     endTime?: number;
     eventCount: number;
     screenshotCount: number;
+    outcome?: 'success' | 'failure' | 'timeout' | 'stall' | 'error';
+    outcomeMessage?: string;
+}
+
+export interface RunRecorderConfig {
+    runsDir?: string;
+    screenshotIntervalMs?: number;  // Default: 5000 (5s), set to 0 to disable
 }
 
 export class RunRecorder {
@@ -31,9 +43,17 @@ export class RunRecorder {
     private screenshotCount = 0;
     private screenshotInterval: ReturnType<typeof setInterval> | null = null;
     private requestScreenshot: (() => void) | null = null;
+    private screenshotIntervalMs: number;
 
-    constructor(runsDir: string = join(__dirname, '..', 'runs')) {
-        this.runsDir = runsDir;
+    constructor(config: RunRecorderConfig | string = {}) {
+        // Support legacy string argument for backwards compatibility
+        if (typeof config === 'string') {
+            this.runsDir = config;
+            this.screenshotIntervalMs = 5000;
+        } else {
+            this.runsDir = config.runsDir ?? join(__dirname, '..', 'runs');
+            this.screenshotIntervalMs = config.screenshotIntervalMs ?? 5000;
+        }
         // Ensure runs directory exists
         if (!existsSync(this.runsDir)) {
             mkdirSync(this.runsDir, { recursive: true });
@@ -74,11 +94,11 @@ export class RunRecorder {
             content: `Run started: ${goal}`
         });
 
-        // Start periodic screenshot capture (every 5 seconds)
-        if (this.requestScreenshot) {
+        // Start periodic screenshot capture
+        if (this.requestScreenshot && this.screenshotIntervalMs > 0) {
             this.screenshotInterval = setInterval(() => {
                 this.requestScreenshot?.();
-            }, 5000);
+            }, this.screenshotIntervalMs);
         }
 
         console.log(`[RunRecorder] Started recording: ${runId}`);
@@ -163,6 +183,42 @@ export class RunRecorder {
             content: 'State snapshot',
             state
         });
+    }
+
+    /**
+     * Log a console message
+     */
+    logConsole(message: string, level: 'log' | 'warn' | 'error' = 'log'): void {
+        this.logEvent({
+            timestamp: Date.now(),
+            type: 'console',
+            content: `[${level}] ${message}`
+        });
+    }
+
+    /**
+     * Log a BotActions method call
+     */
+    logAction(method: string, args: unknown[], result: unknown, durationMs: number): void {
+        this.logEvent({
+            timestamp: Date.now(),
+            type: 'action',
+            content: `${method}(${args.map(a => JSON.stringify(a)).join(', ')})`,
+            method,
+            args,
+            result,
+            durationMs
+        });
+    }
+
+    /**
+     * Set the run outcome (called before stopRun)
+     */
+    setOutcome(outcome: RunMetadata['outcome'], message?: string): void {
+        if (this.metadata) {
+            this.metadata.outcome = outcome;
+            this.metadata.outcomeMessage = message;
+        }
     }
 
     /**

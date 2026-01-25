@@ -78,11 +78,14 @@ type BotAction =
     | { type: 'say'; message: string; reason: string }
     | { type: 'spellOnNpc'; npcIndex: number; spellComponent: number; reason: string }
     | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
-    | { type: 'setTab'; tabIndex: number; reason: string };
+    | { type: 'setTab'; tabIndex: number; reason: string }
+    | { type: 'useEquipmentItem'; slot: number; optionIndex: number; reason: string }
+    | { type: 'bankDeposit'; slot: number; amount: number; reason: string }
+    | { type: 'bankWithdraw'; slot: number; amount: number; reason: string };
 
 // Messages from sync service
 interface SyncMessage {
-    type: 'action' | 'thinking' | 'error' | 'status';
+    type: 'action' | 'thinking' | 'error' | 'status' | 'screenshot_request';
     action?: BotAction;
     thinking?: string;
     error?: string;
@@ -136,8 +139,8 @@ export class AgentPanel {
     private static readonly SYNC_INTERVAL_TICKS: number = 10; // Sync every 10 ticks (~500ms at 20 ticks/sec)
 
     // UI Elements
-    private statusEl: HTMLDivElement | null = null;
-    private syncStatusEl: HTMLDivElement | null = null;
+    private statusEl: HTMLSpanElement | null = null;
+    private syncStatusEl: HTMLSpanElement | null = null;
     private messageInput: HTMLInputElement | null = null;
     private logContainer: HTMLDivElement | null = null;
     private stopBtn: HTMLButtonElement | null = null;
@@ -446,12 +449,23 @@ export class AgentPanel {
         const baseState = this.stateCollector.collectState();
         const c = this.client as any;
 
-        // Get dialog state
-        const dialogOptions: Array<{ index: number; text: string }> = [];
+        // Get dialog state - include componentId for direct clicking
+        const dialogOptions: Array<{ index: number; text: string; componentId?: number; buttonType?: number }> = [];
+        const allDialogComponents: Array<{ id: number; type: number; buttonType: number; option: string; text: string }> = [];
         if (c.chatInterfaceId !== -1) {
             const options = this.client.getDialogOptions();
             for (const opt of options) {
-                dialogOptions.push({ index: opt.index, text: opt.text });
+                dialogOptions.push({
+                    index: opt.index,
+                    text: opt.text,
+                    componentId: opt.componentId,
+                    buttonType: opt.buttonType
+                });
+            }
+            // Also get ALL components for debugging
+            const debugComps = this.client.debugDialogComponents();
+            for (const comp of debugComps) {
+                allDialogComponents.push(comp);
             }
         }
 
@@ -469,7 +483,8 @@ export class AgentPanel {
             dialog: {
                 isOpen: this.client.isDialogOpen(),
                 options: dialogOptions,
-                isWaiting: this.client.isWaitingForDialog()
+                isWaiting: this.client.isWaitingForDialog(),
+                allComponents: allDialogComponents
             },
             interface: {
                 isOpen: this.client.isViewportInterfaceOpen(),
@@ -493,7 +508,7 @@ export class AgentPanel {
         if (!state) return;
 
         // Always use the current value from the input field (reflects what user typed)
-        const goal = this.goalInput?.value.trim() || this.currentGoal;
+        const goal = this.messageInput?.value.trim() || this.currentGoal;
         const formattedState = formatWorldStateForAgent(state, goal);
         this.sendSync({
             type: 'state',
@@ -633,6 +648,16 @@ export class AgentPanel {
                     }
                     console.log(`[AgentPanel] useInventoryItem FAILED - slot: ${action.slot}, optionIndex: ${action.optionIndex}`);
                     return { success: false, message: 'Failed to use inventory item' };
+
+                case 'useEquipmentItem':
+                    console.log(`[AgentPanel] useEquipmentItem called - slot: ${action.slot}, optionIndex: ${action.optionIndex}`);
+                    // Use INV_BUTTON for equipment (not OPHELD) - triggers inv_button1 script for unequip
+                    if (this.client.clickEquipmentSlot(action.slot, action.optionIndex)) {
+                        console.log(`[AgentPanel] useEquipmentItem SUCCESS - slot: ${action.slot}, optionIndex: ${action.optionIndex}`);
+                        return { success: true, message: `Using equipment item at slot ${action.slot}` };
+                    }
+                    console.log(`[AgentPanel] useEquipmentItem FAILED - slot: ${action.slot}, optionIndex: ${action.optionIndex}`);
+                    return { success: false, message: 'Failed to use equipment item' };
 
                 case 'dropItem':
                     console.log(`[AgentPanel] dropItem called - slot: ${action.slot}`);

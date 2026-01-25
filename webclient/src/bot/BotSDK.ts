@@ -115,6 +115,7 @@ export interface GameMessage {
     type: number;  // 0=game, 2=public chat, 3=private, etc.
     text: string;
     sender: string;
+    tick: number;
 }
 
 export interface ShopItem {

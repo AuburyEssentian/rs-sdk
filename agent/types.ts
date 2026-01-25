@@ -95,11 +95,27 @@ export interface GameMessage {
     tick: number;  // Game tick when message arrived
 }
 
+export interface DialogOption {
+    index: number;
+    text: string;
+    componentId?: number;  // Component ID for direct clicking
+    buttonType?: number;   // Button type (1=BUTTON_OK, 6=BUTTON_CONTINUE, etc.)
+}
+
+export interface DialogComponent {
+    id: number;
+    type: number;
+    buttonType: number;
+    option: string;
+    text: string;
+}
+
 export interface DialogState {
     isOpen: boolean;
-    options: Array<{ index: number; text: string }>;
+    options: DialogOption[];
     isWaiting: boolean;
     text?: string;  // Optional dialog text (e.g., NPC speech)
+    allComponents?: DialogComponent[];  // All components for debugging
 }
 
 export interface InterfaceState {

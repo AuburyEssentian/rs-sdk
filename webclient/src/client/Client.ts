@@ -68,7 +68,7 @@ import OnDemand from '#/io/OnDemand.js';
 import MobileKeyboard from '#/client/MobileKeyboard.js';
 
 // Bot SDK is conditionally included based on build flag
-declare const process: { env: { ENABLE_BOT_SDK?: string } };
+declare const process: { env: { ENABLE_BOT_SDK?: string; SECURE_ORIGIN?: string; LOGIN_RSAN?: string; LOGIN_RSAE?: string } };
 const ENABLE_BOT_SDK = process.env.ENABLE_BOT_SDK === 'true';
 
 // Conditional Bot SDK import - will be tree-shaken in standard build
@@ -1262,9 +1262,18 @@ export class Client extends GameShell {
             return false;
         }
 
-        // Click the close button (component 3902 = shop_template:com_77)
-        this.writePacketOpcode(ClientProt.IF_BUTTON);
-        this.out.p2(3902);
+        // Send CLOSE_MODAL to server (same as pressing ESC or clicking X)
+        this.out.p1isaac(ClientProt.CLOSE_MODAL);
+
+        // Also locally reset the interface state immediately
+        // This ensures isShopOpen() and isViewportInterfaceOpen() return false
+        if (this.sidebarInterfaceId !== -1) {
+            this.sidebarInterfaceId = -1;
+            this.redrawSidebar = true;
+            this.redrawSideicons = true;
+        }
+        this.viewportInterfaceId = -1;
+        this.pressedContinueOption = false;
 
         return true;
     }
@@ -1813,20 +1822,17 @@ export class Client extends GameShell {
      */
     clickDialogOption(optionIndex: number = 0): boolean {
         if (!this.ingame || !this.out) {
-            console.log('[clickDialogOption] Not in game or no output stream');
             return false;
         }
 
         // For "click to continue" or resume dialog
         if (optionIndex === 0) {
             if (!this.pressedContinueOption && this.chatInterfaceId !== -1) {
-                console.log(`[clickDialogOption] Clicking continue on chatInterfaceId: ${this.chatInterfaceId}`);
                 this.writePacketOpcode(ClientProt.RESUME_PAUSEBUTTON);
                 this.out.p2(this.chatInterfaceId);
                 this.pressedContinueOption = true;
                 return true;
             }
-            console.log(`[clickDialogOption] Cannot continue - pressedContinueOption: ${this.pressedContinueOption}, chatInterfaceId: ${this.chatInterfaceId}`);
             return false;
         }
 
@@ -1834,8 +1840,6 @@ export class Client extends GameShell {
         // Dialog options are child components of the chat interface
         if (this.chatInterfaceId !== -1) {
             const dialogOptions = this.getDialogOptions();
-            console.log(`[clickDialogOption] Found ${dialogOptions.length} options in chatInterfaceId ${this.chatInterfaceId}:`,
-                dialogOptions.map(o => `${o.index}. "${o.text}" (component: ${o.componentId}, buttonType: ${o.buttonType})`));
             if (optionIndex > 0 && optionIndex <= dialogOptions.length) {
                 const option = dialogOptions[optionIndex - 1];
 
@@ -1843,25 +1847,20 @@ export class Client extends GameShell {
                 // BUTTON_OK (1) uses IF_BUTTON
                 // BUTTON_CONTINUE (6) uses RESUME_PAUSEBUTTON
                 if (option.buttonType === ButtonType.BUTTON_CONTINUE) {
-                    console.log(`[clickDialogOption] Clicking BUTTON_CONTINUE option ${optionIndex}: "${option.text}" (component: ${option.componentId})`);
                     if (!this.pressedContinueOption) {
                         this.writePacketOpcode(ClientProt.RESUME_PAUSEBUTTON);
                         this.out.p2(option.componentId);
                         this.pressedContinueOption = true;
                         return true;
                     }
-                    console.log('[clickDialogOption] Already pressed continue, waiting for response');
                     return false;
                 } else {
-                    console.log(`[clickDialogOption] Clicking BUTTON_OK option ${optionIndex}: "${option.text}" (component: ${option.componentId})`);
+                    // BUTTON_OK - just send IF_BUTTON packet
                     this.writePacketOpcode(ClientProt.IF_BUTTON);
                     this.out.p2(option.componentId);
                     return true;
                 }
             }
-            console.log(`[clickDialogOption] Invalid option index ${optionIndex} (have ${dialogOptions.length} options)`);
-        } else {
-            console.log(`[clickDialogOption] No chat interface open (chatInterfaceId: ${this.chatInterfaceId})`);
         }
         return false;
     }
@@ -1911,8 +1910,8 @@ export class Client extends GameShell {
     /**
      * Debug: Get all components in the current chat interface
      */
-    debugDialogComponents(): Array<{ id: number; type: number; buttonType: number; option: string; text: string }> {
-        const components: Array<{ id: number; type: number; buttonType: number; option: string; text: string }> = [];
+    debugDialogComponents(): Array<{ id: number; type: number; buttonType: number; option: string; text: string; scripts?: string; scriptOperand?: string }> {
+        const components: Array<{ id: number; type: number; buttonType: number; option: string; text: string; scripts?: string; scriptOperand?: string }> = [];
 
         if (this.chatInterfaceId === -1) {
             return components;
@@ -1923,14 +1922,17 @@ export class Client extends GameShell {
             const com = Component.types[comId];
             if (!com) return;
 
-            // Log ALL components for debugging
+            // Log ALL components for debugging, including scripts
             components.push({
                 id: comId,
                 type: com.type,
                 buttonType: com.buttonType,
                 option: com.option || '',
-                text: (com.text || '').substring(0, 50)
-            });
+                text: (com.text || '').substring(0, 50),
+                scripts: com.scripts ? JSON.stringify(com.scripts) : undefined,
+                scriptOperand: com.scriptOperand ? JSON.stringify(com.scriptOperand) : undefined,
+                clientCode: com.clientCode || undefined
+            } as any);
 
             if (com.children) {
                 for (const childId of com.children) {
@@ -1947,7 +1949,7 @@ export class Client extends GameShell {
      * Check if a modal interface (like character design or dialog) is open
      */
     isModalOpen(): boolean {
-        return this.modalInterface !== -1;
+        return this.viewportInterfaceId !== -1;
     }
 
     /**
@@ -1961,7 +1963,7 @@ export class Client extends GameShell {
      * Get the currently open modal interface ID
      */
     getModalInterface(): number {
-        return this.modalInterface;
+        return this.viewportInterfaceId;
     }
 
     /**
@@ -2087,6 +2089,8 @@ export class Client extends GameShell {
         if (!this.ingame || !this.out) {
             return false;
         }
+
+        // Send the IF_BUTTON packet - server handles any state changes
         this.writePacketOpcode(ClientProt.IF_BUTTON);
         this.out.p2(componentId);
         return true;
@@ -2184,7 +2188,7 @@ export class Client extends GameShell {
                 let info = `${indent}${comId}:`;
                 if (hasButton) info += ` buttonType=${com.buttonType}`;
                 if (hasOption) info += ` option="${com.option}"`;
-                if (hasIop) {
+                if (hasIop && com.iop) {
                     const ops = com.iop.filter((op: string | null) => op).join(', ');
                     info += ` iop=[${ops}]`;
                 }
