@@ -1166,6 +1166,29 @@ export class BotActions {
             ? new RegExp(product.replace(/\s+/g, '\\s*'), 'i')
             : product;
 
+        // Dismiss any leftover dialog (e.g. "Click here to continue" from previous crafting)
+        const existingDialog = this.sdk.getState()?.dialog;
+        if (existingDialog?.isOpen) {
+            const isContinueDialog = existingDialog.options?.some(o => /continue/i.test(o.text));
+            if (isContinueDialog) {
+                // Click to dismiss
+                await this.sdk.sendClickDialog(0);
+                // Give the server time to process and dialog to close
+                await new Promise(r => setTimeout(r, 500));
+                // Wait for dialog to close or change
+                try {
+                    await this.sdk.waitForCondition(s => {
+                        if (!s.dialog.isOpen) return true;
+                        // Also accept if dialog changed (no longer has continue)
+                        const stillContinue = s.dialog.options?.some(o => /continue/i.test(o.text));
+                        return !stillContinue;
+                    }, 3000);
+                } catch {
+                    // Dialog didn't close, continue anyway
+                }
+            }
+        }
+
         // Use knife on logs to open the fletching dialog
         await this.sdk.sendUseItemOnItem(knife.slot, logs.slot);
 
