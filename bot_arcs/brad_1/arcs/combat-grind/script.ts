@@ -198,6 +198,14 @@ async function combatLoop(ctx: ScriptContext, stats: Stats): Promise<void> {
                 Math.pow(player.worldZ - LOCATIONS.COW_FIELD.z, 2)
             );
             if (distToCows > 50) {
+                // Skip if position looks invalid (large distance typically means state glitch)
+                if (distToCows > 500 || player.worldX < 2000 || player.worldZ < 2000) {
+                    ctx.log('Invalid position detected (' + player.worldX + ', ' + player.worldZ + '), waiting for state...');
+                    await new Promise(r => setTimeout(r, 3000));
+                    markProgress(ctx, stats);
+                    continue;
+                }
+
                 ctx.log('Too far from cows (' + distToCows.toFixed(0) + ' tiles)! Walking back...');
                 // Wait a moment for respawn to complete
                 await new Promise(r => setTimeout(r, 2000));
@@ -207,18 +215,25 @@ async function combatLoop(ctx: ScriptContext, stats: Stats): Promise<void> {
                 const useNorthWaypoints = player.worldZ > 3285;
                 const waypoints = useNorthWaypoints ? WAYPOINTS_FROM_NORTH : WAYPOINTS_FROM_LUMBRIDGE;
 
-                for (const wp of waypoints) {
-                    ctx.log('  Walking to waypoint (' + wp.x + ', ' + wp.z + ')...');
-                    await ctx.bot.walkTo(wp.x, wp.z);
-                    markProgress(ctx, stats);
-                    await new Promise(r => setTimeout(r, 500));
-                    if (ctx.state()?.dialog.isOpen) {
-                        await ctx.sdk.sendClickDialog(0);
+                try {
+                    for (const wp of waypoints) {
+                        ctx.log('  Walking to waypoint (' + wp.x + ', ' + wp.z + ')...');
+                        await ctx.bot.walkTo(wp.x, wp.z);
+                        markProgress(ctx, stats);
+                        await new Promise(r => setTimeout(r, 500));
+                        if (ctx.state()?.dialog.isOpen) {
+                            await ctx.sdk.sendClickDialog(0);
+                        }
                     }
+                    await ctx.bot.openDoor(/gate/i);
+                    markProgress(ctx, stats);
+                    ctx.log('Back at cow field!');
+                } catch (err) {
+                    const errorMsg = err instanceof Error ? err.message : String(err);
+                    ctx.log('Walk failed: ' + errorMsg + ', retrying next loop...');
+                    await new Promise(r => setTimeout(r, 2000));
+                    markProgress(ctx, stats);
                 }
-                await ctx.bot.openDoor(/gate/i);
-                markProgress(ctx, stats);
-                ctx.log('Back at cow field!');
                 continue;
             }
         }
@@ -250,20 +265,31 @@ async function combatLoop(ctx: ScriptContext, stats: Stats): Promise<void> {
 
             noCowCount = 0;
 
-            // Attack the cow
-            const attackResult = await ctx.bot.attackNpc(cow);
-            if (attackResult.success) {
-                ctx.log('Attacking cow (dist: ' + cow.distance.toFixed(0) + ')');
-                stats.kills++;
-                markProgress(ctx, stats);
-                await new Promise(r => setTimeout(r, 2000));
-            } else {
-                ctx.log('Attack failed: ' + attackResult.message);
-                if (attackResult.reason === 'out_of_reach') {
-                    ctx.log('Opening gate...');
-                    await ctx.bot.openDoor(/gate/i);
+            // Attack the cow with error handling for timeouts
+            try {
+                const attackResult = await ctx.bot.attackNpc(cow);
+                if (attackResult.success) {
+                    ctx.log('Attacking cow (dist: ' + cow.distance.toFixed(0) + ')');
+                    stats.kills++;
                     markProgress(ctx, stats);
+                    await new Promise(r => setTimeout(r, 2000));
+                } else {
+                    ctx.log('Attack failed: ' + attackResult.message);
+                    if (attackResult.reason === 'out_of_reach') {
+                        ctx.log('Opening gate...');
+                        await ctx.bot.openDoor(/gate/i);
+                        markProgress(ctx, stats);
+                    }
                 }
+            } catch (err) {
+                // Timeout or other error - just continue with next cow
+                const errorMsg = err instanceof Error ? err.message : String(err);
+                if (errorMsg.includes('timeout') || errorMsg.includes('timed out')) {
+                    ctx.log('Attack timed out, trying next cow...');
+                } else {
+                    ctx.log('Attack error: ' + errorMsg);
+                }
+                markProgress(ctx, stats);
             }
         }
 
@@ -375,10 +401,11 @@ runArc({
         );
         ctx.log('Distance to cow field: ' + distToCows.toFixed(0) + ' tiles');
 
+        // Check if we're inside the cow field already (z < 3295 and x > 3240)
+        const insideCowField = player.worldZ < 3293 && player.worldX > 3245 && player.worldX < 3270;
+
         if (distToCows > 30) {
-            // Choose waypoints based on current position
-            // If north of cow field (z > 3290), use north waypoints
-            // If near Lumbridge (z < 3230), use Lumbridge waypoints
+            // Far from cows - use waypoints
             const useNorthWaypoints = player.worldZ > 3285;
             const waypoints = useNorthWaypoints ? WAYPOINTS_FROM_NORTH : WAYPOINTS_FROM_LUMBRIDGE;
 
@@ -394,15 +421,29 @@ runArc({
                 }
             }
             ctx.log('Arrived at cow field!');
+        } else if (!insideCowField) {
+            // Near cow field but outside fence - walk to gate first
+            ctx.log('Near cow field but outside fence - walking to gate at (3253, 3296)...');
+            await ctx.bot.walkTo(3253, 3296);  // Gate position
+            markProgress(ctx, stats);
+            await new Promise(r => setTimeout(r, 1000));
         } else {
-            ctx.log('Already near cow field, skipping walk');
+            ctx.log('Already inside cow field, skipping walk');
         }
 
-        // Open gate to enter
+        // Open gate to enter (or it will just confirm gate is open)
         ctx.log('Opening gate to cow field...');
         await ctx.bot.openDoor(/gate/i);
         markProgress(ctx, stats);
         await new Promise(r => setTimeout(r, 500));
+
+        // After opening gate, walk inside the field
+        if (!insideCowField) {
+            ctx.log('Walking inside cow field...');
+            await ctx.bot.walkTo(3253, 3279);  // Center of cow field
+            markProgress(ctx, stats);
+            await new Promise(r => setTimeout(r, 1000));
+        }
     } else {
         ctx.log('Skipping initial walk (no valid position yet)');
     }

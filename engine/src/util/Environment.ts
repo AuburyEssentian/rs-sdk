@@ -34,6 +34,8 @@ export default {
     NODE_AUTO_SUBSCRIBE_MEMBERS: tryParseBoolean(process.env.NODE_AUTO_SUBSCRIBE_MEMBERS, true),
     // addxp multiplier
     NODE_XPRATE: tryParseInt(process.env.NODE_XPRATE, 1),
+    // infinite run energy
+    NODE_INFINITE_RUN: tryParseBoolean(process.env.NODE_INFINITE_RUN, true),
     // production mode!
     NODE_PRODUCTION: tryParseBoolean(process.env.NODE_PRODUCTION, false),
     // random events (anti-macro events)

@@ -9,12 +9,12 @@
 
 import { join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
-import { launchBotWithSDK, sleep, type SDKSession } from '../test/utils/browser.ts';
-import { generateSave, type SaveConfig, TestPresets } from '../test/utils/save-generator.ts';
-import { RunRecorder } from '../agent/run-recorder.ts';
-import { BotSDK } from '../agent/sdk.ts';
-import { BotActions } from '../agent/bot-actions.ts';
-import type { BotWorldState } from '../agent/types.ts';
+import { launchBotWithSDK, sleep, type SDKSession } from '../test/utils/browser';
+import { generateSave, type SaveConfig, TestPresets } from '../test/utils/save-generator';
+import { RunRecorder } from '../agent/run-recorder';
+import { BotSDK } from '../agent/sdk';
+import { BotActions } from '../agent/bot-actions';
+import type { BotWorldState } from '../agent/types';
 
 // ============ State Delta Types ============
 
@@ -247,8 +247,8 @@ function formatDelta(delta: StateDelta): string | null {
 }
 
 // Re-export for convenience
-export { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner.ts';
-import { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner.ts';
+export { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner';
+import { StallError, TimeoutError, type ScriptContext } from '../scripts/script-runner';
 
 export interface ArcConfig {
     /** Character name (must match save file) */
@@ -655,6 +655,7 @@ export function runArc(config: ArcConfig, arcFn: ArcFn): void {
 
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : String(err);
+            const errorStack = err instanceof Error ? err.stack : undefined;
 
             if (err instanceof StallError) {
                 console.error(`\nSTALL DETECTED: ${errorMessage}`);
@@ -665,7 +666,24 @@ export function runArc(config: ArcConfig, arcFn: ArcFn): void {
                 recorder?.setOutcome('timeout', errorMessage);
                 return 'timeout';
             } else {
-                console.error(`\nERROR: ${errorMessage}`);
+                // Surface the FULL error to stdout so agents can debug
+                console.error(`\n========== SCRIPT ERROR ==========`);
+                console.error(`Message: ${errorMessage}`);
+                if (errorStack) {
+                    console.error(`\nStack trace:`);
+                    console.error(errorStack);
+                }
+                // Log current state context
+                try {
+                    const state = session?.sdk?.getState();
+                    if (state?.player) {
+                        console.error(`\nState at error:`);
+                        console.error(`  Position: (${state.player.worldX}, ${state.player.worldZ})`);
+                        console.error(`  HP: ${state.skills.find(s => s.name === 'Hitpoints')?.level ?? '?'}`);
+                        console.error(`  Inventory: ${state.inventory.length} items`);
+                    }
+                } catch { /* ignore state read errors */ }
+                console.error(`==================================\n`);
                 recorder?.setOutcome('error', errorMessage);
                 return 'error';
             }

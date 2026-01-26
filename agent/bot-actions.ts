@@ -785,7 +785,7 @@ export class BotActions {
             const progressMade = distToGoal - newDistToGoal;
             if (progressMade < 5) {
                 stuckCount++;
-                if (stuckCount >= 3) {
+                if (stuckCount >= 2) {
                     return { success: false, message: `Stuck at (${afterX}, ${afterZ}) - cannot reach (${x}, ${z})` };
                 }
             } else {

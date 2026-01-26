@@ -485,3 +485,148 @@ Last successful diagnostic showed:
 
 T1 protocol errors need infrastructure-level resolution.
 
+---
+
+## Session Notes (2026-01-26 02:45)
+
+### Banking Working!
+
+Successfully got banking working to Draynor Bank:
+
+**Run 1 (cowhide-training)**:
+- Duration: ~10 minutes (browser crashed near end)
+- Bank trips: 2 (first successful, second interrupted)
+- Hides banked: 21 (first trip)
+- Kills: 28
+- Combat XP gained in Attack, Strength, Defence
+
+**Route Used** (Draynor Bank):
+- Cow field (3253, 3270) → West (3230, 3270) → (3200, 3260) → (3170, 3250) → (3140, 3245) → (3110, 3243) → Draynor Bank (3092, 3243)
+- Avoids Dark Wizards at (~3220, 3220)
+- Round trip takes ~3-4 minutes
+
+**Current State** (after browser crash):
+- Position: ~(3216, 3260) - between cow field and Draynor
+- Total Level: 342
+- HP: 67/67
+- Inventory: 21 items (18 hides + 3 tools)
+- Equipment: Bronze sword, Wooden shield
+- Bank: 21 hides deposited
+
+**Issues**:
+- Browser crashes after extended runs (~8-10 minutes)
+- Some waypoints get "stuck" (pathfinder issues around 3200,3260 area)
+- "I'm already under attack!" spam (normal, trying to attack while in combat)
+
+**Next Steps**:
+1. Run script again to bank remaining hides
+2. Sell hides for GP
+3. Buy better weapon (Mithril or Adamant sword)
+
+---
+
+## Session Notes (2026-01-26 03:12)
+
+### Diagnostic Run - State Check
+
+**Run 1**: Diagnostic (60s timeout)
+**Outcome**: Stall (walk took too long)
+
+**Current State Confirmed**:
+- Position: (3105, 3244) - near Draynor Bank
+- Total Level: 346 (+4 from last session)
+- Combat: Attack 68, Strength 67, Defence 68, HP 67
+- Equipment: Bronze sword, Wooden shield (STILL BRONZE AT LEVEL 68!)
+- Inventory: 3 tools only (bronze dagger, axe, pickaxe)
+- GP: 0
+- Bank: ~39 hides (previous 18 got banked)
+
+**Progress from last session**:
+- Total Level: 342 → 346 (+4)
+- Attack: 67 → 68 (+1)
+- Defence: 67 → 68 (+1)
+
+**Priority**: Character is near Draynor Bank. Should:
+1. Sell banked hides for GP (~400-500gp at general store)
+2. Buy better weapon from Varrock sword shop (Mithril sword ~910gp)
+3. Continue combat training
+
+---
+
+## Session Notes (2026-01-26 04:20 - 06:00)
+
+### Goal: Tan Leather at Al Kharid
+
+**NEW GOAL ASSIGNED**: Collect 100 hides, tan at Al Kharid, craft leather items, sell for profit.
+
+### Progress Made
+
+**Cowhide Farming** (5 successful runs):
+- Run 1: 17 hides banked, ~40 kills, walked to cow field successfully
+- Run 2: 16 hides banked, 47 kills
+- Run 3: 33 hides banked (2 trips), strong progress
+- Run 4: 32 hides banked (2 trips)
+- Run 5: 15 hides banked, leveled up Attack 69, Defence 69
+
+**Total Stats**:
+- Attack: 68 → 69 (+1)
+- Defence: 68 → 69 (+1)
+- Total Level: 346 → 348 (+2)
+
+**Total Hides Banked Today**: ~113 hides (17+16+33+32+15)
+
+### Critical Issue: Bank Reading Bug
+
+**Problem Discovered**: Bank contents not readable via `shop.shopItems`
+- Bank interface opens (`interface.isOpen = true`)
+- But `shop.shopItems` returns empty array (0 items)
+- Previous hides were deposited but cannot be withdrawn/counted
+- This blocks the tanning workflow (need to withdraw hides + coins)
+
+**Test Results**:
+- Opened bank successfully at Draynor
+- Bank shows "0 item types" even after depositing 15+ hides
+- The bank data doesn't persist in `shop.shopItems`
+- Other scripts use hardcoded slot 0 (`sendBankWithdraw(0, 1)`) without reading contents
+
+### Scripts Created/Updated
+
+1. **tan-leather** arc created (`arcs/tan-leather/script.ts`):
+   - Walks from Draynor to Al Kharid via toll gate
+   - Handles toll gate dialog (pay 10gp)
+   - Walks to Ellis tanner at (3274, 3192)
+   - Uses tanning interface
+   - Banks leather at Al Kharid bank
+
+2. **cowhide-training** updated:
+   - Added initial walk to cow field if far away
+   - Fixes issue where script started at bank but didn't walk to cows
+
+3. **sell-hides** updated:
+   - Fixed bank reading to use `shop.shopItems`
+   - Added debug logging for bank contents
+   - Still blocked by bank reading bug
+
+### Blockers
+
+1. **Bank reading bug**: Cannot read bank contents to withdraw items
+2. **No GP**: Character has 0gp, needs at least 15gp for toll+tanning
+3. **T1 errors**: ~40% of connection attempts fail with T1 protocol errors
+
+### Next Steps
+
+1. **Investigate bank API** - Find correct way to read bank contents
+2. **Hardcode withdrawal** - Try `sendBankWithdraw(0, 27)` to get all items from slot 0
+3. **Sell hides for GP** - Need coins before tanning can work
+4. **Alternative**: Use Varrock West Bank instead (ground floor, no toll needed)
+
+### Current State (06:00)
+
+- Position: (3093, 3245) - Draynor Bank
+- Total Level: 348
+- GP: 0
+- Combat: Attack 69, Strength 68, Defence 69, HP 68
+- Equipment: Bronze sword, Wooden shield (STILL BRONZE AT LEVEL 69!)
+- Inventory: Empty (0 items)
+- Bank: 15+ hides (confirmed deposited, but cannot read)
+

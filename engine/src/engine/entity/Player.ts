@@ -685,6 +685,10 @@ export default class Player extends PathingEntity {
     }
 
     updateEnergy() {
+        if (Environment.NODE_INFINITE_RUN) {
+            this.runenergy = 10000;
+            return;
+        }
         if (this.delayed) {
             return;
         }

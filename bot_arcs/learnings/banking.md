@@ -58,14 +58,14 @@ await ctx.bot.closeShop();  // Works for bank interface too
 await new Promise(r => setTimeout(r, 500));
 ```
 
-## Bank Locations
+## Bank Locations (THERE IS NOT BANK IN LUMBRIDGE in 2004scape)
 
 | Bank | Coordinates | Notes |
 |------|-------------|-------|
 | Varrock West | (3185, 3436) | Close to GE |
-| Lumbridge | (3208, 3220) | Top floor of castle |
 | Draynor | (3092, 3243) | Ground floor |
 | Al Kharid | (3269, 3167) | Requires toll or quest |
+... others
 
 ## Full Banking Loop Pattern
 

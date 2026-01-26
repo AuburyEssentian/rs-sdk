@@ -55,45 +55,55 @@ Fresh combat character created after Adam_3's combat broke.
 | 01-25 | combat-progression | 120s | 277 | 277 | 0 | (54 kills, training strength)
 | 01-25 | combat-progression | 261s | 277 | 278 | +1 | (Str 60→61! 120 kills)
 | 01-25 | various | various | 278 | 277 | -1 | (state sync issues, actual level confirmed 258)
+| 01-26 | cowhide-grind | 300s | 277 | 292 | +15 | (224 kills, 12 hides, Def 63→64, no bank trip)
+| 01-26 | cowhide-grind | 600s | 292 | 292 | 0 | (22 kills, 12 banked! Walk issues, got stuck returning)
+| 01-26 | cowhide-grind | 600s | 292 | 293 | +1 | (149 kills, 10 banked! Atk 64→65, walk still slow)
+| 01-26 | cowhide-grind | 600s | 293 | 294 | +1 | (146 kills, 20 banked! Str 64→65, Draynor path works great!)
+| 01-26 | cowhide-grind | 600s | 294 | 294 | 0 | (137 kills, 10 banked, walk retry issues on first waypoint)
+| 01-26 | cowhide-grind | 600s | 294 | 296 | +2 | (139 kills, 20 banked, Def 64→65! Walk smoother now)
+| 01-26 | cowhide-grind | 600s | 296 | 297 | +1 | (185 kills, 10 banked! Atk 65→66! VARROCK WEST BANK WORKING!)
+| 01-26 | cowhide-grind | 600s | 297 | 298 | +1 | (181 kills, 10 banked! Total Level 278, bank trip success)
+| 01-26 | cowhide-grind | 600s | 298 | 299 | +1 | (143 kills, 20 banked! Str 65→66! 2 bank trips! TL 279)
+| 01-26 | cowhide-grind | 600s | 299 | 299 | 0 | (163 kills, walk failed - dropped 10 hides, still TL 279)
+| 01-26 | cowhide-grind | 600s | 299 | 299 | 0 | (251 kills, 10 banked, Def training, TL 279)
+| 01-26 | cowhide-grind | 600s | 299 | 301 | +2 | (86 kills, 10 banked, Def 65→66! HP 65→66! TL 281, SCORE 300!)
+| 01-26 | cowhide-grind | 600s | 301 | 301 | 0 | (357 kills, 0 banked - timed out during bank trip, gate bug)
+| 01-26 | cowhide-grind | 600s | 301 | 302 | +1 | (54 kills, 10 banked! Atk 66→67! TL 282, Score 301, gate fix worked!)
+| 01-26 | cowhide-grind | 573s | 302 | 302 | 0 | (120 kills, 10 banked, browser crashed late, TL 282)
 
 ---
 
-## Current State (Session 4 End - 11:34 PM)
+## Current State (Session 7 - 01-26 06:10 AM)
 
-**Total Level**: 258 (Atk 61, Str 60, Def 60, HP 60 + others 1)
+**Total Level**: 282 (Atk 67, Str 66, Def 66, HP 66 + others 1)
 **GP**: 19
-**Equipment**: Bronze sword equipped
+**Equipment**: Bronze dagger equipped
 **Equipment Value**: ~0
 
-**Score**: 258 + 19 = 277
+**Score**: 282 + 19 = 301
 
-**Inventory** (26 items):
-- Combat: Bronze sword (equipped), Bronze dagger
-- Sellable: Bronze axe, Tinderbox, Small fishing net, Bucket, Pot, Bronze pickaxe, Wooden shield, Shortbow, 25 Bronze arrows, 25 Air runes, 15 Mind runes, 6 Water runes, 4 Earth runes, 9 Body runes, 7 Raw beef
-- Food: Shrimps, Bread
+**Inventory**: 4 items
 
-**Session Summary**:
-- Started at Score 273 (Atk 60, Str 59, Def 59, HP 59)
-- Ended at Score 277 (Atk 61, Str 60, Def 60, HP 60)
-- **Net Progress: +4 levels, +4 score**
-- Combat training working well despite browser instability
-- Multiple successful runs (up to 5 minutes, 175 kills)
-- Fixed infinite drop loop bug (BANK_THRESHOLD: 24→27)
+**Session Summary - Varrock West Bank Banking**:
+- Multiple runs completed with Varrock West Bank
+- Banking working reliably! ~60-70 hides banked this session
+- Combat training effective - all melee stats now 66-67
+- Score hit 300+
 
-**Browser Stability Issues**:
-- State sync failure happens ~50% of runs (position shows 0,0)
-- Browser crashes every 2-5 minutes
-- Longer waits between runs (5-10s) help somewhat
-- Server may need restart for full stability
+**Observations**:
+- Varrock West Bank path works consistently! Bank opens, deposits succeed
+- Return path has issues - last 2 waypoints (32 and 42 tiles) always fail
+- Hide pickup still sporadic - sometimes loops on same hide without picking up
+- Browser crashes occasionally but recovers on retry
+- Gate detection fixed (lowered z threshold to 3255)
 
-**Next Steps**:
-1. Continue combat training towards 70+ Attack/Strength/Defence
-2. Run sell-and-upgrade arc when browser is stable to get GP
-3. Buy iron/steel sword at Varrock for faster kills
+**Known Issues**:
+1. Return path waypoints fail for last 2 steps
+2. Hide pickup often fails to actually pick up despite being close
+3. Browser stability issues cause occasional crashes
 
 **Arcs Created**:
-- `combat-progression/script.ts` - Combat training at Lumbridge cows with style rotation
-- `sell-and-upgrade/script.ts` - Sells items at Lumbridge, buys weapons at Varrock
+- `cowhide-grind/script.ts` - Combat + banking at Varrock West Bank
 
 ---
 
