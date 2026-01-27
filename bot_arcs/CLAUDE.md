@@ -35,6 +35,7 @@ bot_arcs/
 │   └── ...
 ├── <character-name>/           # One folder per persistent character
 │   ├── config.ts               # Character settings, goals
+│   ├── state.md                # AUTO-GENERATED: Current character state (read this before runs!)
 │   ├── lab_log.md              # Progress journal
 │   └── arcs/
 │       └── <arc-name>/
@@ -45,6 +46,17 @@ bot_arcs/
 │                   ├── events.jsonl
 │                   └── screenshots/
 ```
+
+## state.md (Auto-Generated)
+
+The `state.md` file in each character folder is **automatically updated** after every arc run. It contains:
+- Current position and HP
+- All skill levels and XP
+- Equipment worn
+- Inventory contents
+- Nearby NPCs and objects
+
+**Always read `state.md` before planning a new arc** - it tells you exactly where the character is and what they have. Do not manually edit this file; it will be overwritten on the next run.
 
 ## Character Setup
 

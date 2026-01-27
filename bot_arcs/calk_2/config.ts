@@ -23,18 +23,18 @@ export const character = {
   // Current focus arc
   currentArc: 'desert-journey',
 
-  // Ultimate goals
+  // Ultimate goals (Phase 2)
   goals: {
-    // Combat stats
-    attack: 40,      // Rune scimitar requirement
-    strength: 40,
-    defence: 40,
+    // Combat stats - raised to 60
+    attack: 60,
+    strength: 60,
+    defence: 60,
 
     // Thieving for money
-    thieving: 40,    // Warriors become easy to pickpocket
+    thieving: 70,    // Higher level = more GP/hour
 
     // Equipment goal
-    weapon: 'Rune scimitar',
+    weapon: 'Adamant scimitar',  // Then Rune at 40 Attack (need Champions' Guild)
   },
 
   // Gear progression milestones (scimitars from Zeke)

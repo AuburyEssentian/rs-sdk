@@ -8,7 +8,7 @@
  */
 
 import { join } from 'path';
-import { mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { launchBotWithSDK, sleep, type SDKSession } from '../test/utils/browser';
 import { generateSave, type SaveConfig, TestPresets } from '../test/utils/save-generator';
 import { RunRecorder } from '../agent/run-recorder';
@@ -387,30 +387,63 @@ function formatArgs(args: unknown[]): unknown[] {
 
 interface ConsoleCapture {
     restore: () => void;
+    flush: () => void;
 }
 
+/**
+ * Debounced console capture - suppresses successive identical messages
+ * and shows them as "message [x4]" instead of repeating
+ */
 function captureConsole(recorder: RunRecorder): ConsoleCapture {
     const originalLog = console.log;
     const originalWarn = console.warn;
     const originalError = console.error;
 
-    console.log = (...args: unknown[]) => {
-        originalLog.apply(console, args);
-        recorder.logConsole(args.map(String).join(' '), 'log');
+    // Debounce state
+    let lastMessage = '';
+    let lastLevel: 'log' | 'warn' | 'error' = 'log';
+    let repeatCount = 0;
+
+    const flushRepeated = () => {
+        if (repeatCount > 1) {
+            originalLog.apply(console, [`  [x${repeatCount}]`]);
+            recorder.logConsole(`${lastMessage} [x${repeatCount}]`, lastLevel);
+        }
+        repeatCount = 0;
+        lastMessage = '';
     };
 
-    console.warn = (...args: unknown[]) => {
-        originalWarn.apply(console, args);
-        recorder.logConsole(args.map(String).join(' '), 'warn');
+    const handleMessage = (level: 'log' | 'warn' | 'error', args: unknown[]) => {
+        const message = args.map(String).join(' ');
+
+        if (message === lastMessage && level === lastLevel) {
+            // Same message repeated - just increment counter
+            repeatCount++;
+            return;
+        }
+
+        // Different message - flush any pending repeats first
+        flushRepeated();
+
+        // Output this new message
+        const originalFn = level === 'log' ? originalLog : level === 'warn' ? originalWarn : originalError;
+        originalFn.apply(console, args);
+        recorder.logConsole(message, level);
+
+        // Track for deduplication
+        lastMessage = message;
+        lastLevel = level;
+        repeatCount = 1;
     };
 
-    console.error = (...args: unknown[]) => {
-        originalError.apply(console, args);
-        recorder.logConsole(args.map(String).join(' '), 'error');
-    };
+    console.log = (...args: unknown[]) => handleMessage('log', args);
+    console.warn = (...args: unknown[]) => handleMessage('warn', args);
+    console.error = (...args: unknown[]) => handleMessage('error', args);
 
     return {
+        flush: flushRepeated,
         restore: () => {
+            flushRepeated();
             console.log = originalLog;
             console.warn = originalWarn;
             console.error = originalError;
@@ -467,6 +500,95 @@ function compactState(state: BotWorldState): object {
         nearbyLocs: state.nearbyLocs.slice(0, 5).map(l => ({ name: l.name, dist: l.distance })),
         dialog: state.dialog.isOpen ? { open: true, options: state.dialog.options.length } : { open: false }
     };
+}
+
+/**
+ * Write state.md to the character folder with full game state
+ * This file is auto-updated after each run for AI awareness
+ */
+function writeStateMd(characterDir: string, state: BotWorldState, characterName: string): void {
+    const lines: string[] = [];
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    lines.push(`# ${characterName} - Current State`);
+    lines.push(`> Auto-updated after each arc run. Last update: ${now}`);
+    lines.push('');
+
+    // Player summary
+    const hp = state.skills.find(s => s.name === 'Hitpoints');
+    const player = state.player;
+    if (player) {
+        lines.push(`## Location`);
+        lines.push(`- Position: (${player.worldX}, ${player.worldZ})`);
+        lines.push(`- Combat Level: ${player.combatLevel}`);
+        lines.push(`- HP: ${hp?.level ?? '?'}/${hp?.baseLevel ?? '?'}`);
+        lines.push('');
+    }
+
+    // Skills
+    lines.push(`## Skills`);
+    const totalLevel = state.skills.reduce((sum, s) => sum + s.baseLevel, 0);
+    lines.push(`**Total Level: ${totalLevel}**`);
+    lines.push('');
+    const trainedSkills = state.skills.filter(s => s.baseLevel > 1);
+    if (trainedSkills.length > 0) {
+        lines.push('| Skill | Level | XP |');
+        lines.push('|-------|-------|-----|');
+        for (const skill of trainedSkills.sort((a, b) => b.baseLevel - a.baseLevel)) {
+            lines.push(`| ${skill.name} | ${skill.baseLevel} | ${skill.experience.toLocaleString()} |`);
+        }
+    } else {
+        lines.push('No skills trained yet (all level 1)');
+    }
+    lines.push('');
+
+    // Equipment
+    lines.push(`## Equipment`);
+    const slotNames = ['Head', 'Cape', 'Neck', 'Weapon', 'Body', 'Shield', 'Legs', 'Hands', 'Feet', 'Ring', 'Ammo'];
+    const equipped = state.equipment.filter(e => e && e.name);
+    if (equipped.length > 0) {
+        for (const item of equipped) {
+            const slotName = slotNames[item.slot] ?? `Slot ${item.slot}`;
+            lines.push(`- **${slotName}**: ${item.name}`);
+        }
+    } else {
+        lines.push('Nothing equipped');
+    }
+    lines.push('');
+
+    // Inventory
+    lines.push(`## Inventory (${state.inventory.length}/28)`);
+    if (state.inventory.length > 0) {
+        for (const item of state.inventory) {
+            lines.push(`- ${item.name}${item.count > 1 ? ` x${item.count}` : ''}`);
+        }
+    } else {
+        lines.push('Empty');
+    }
+    lines.push('');
+
+    // Nearby (for context)
+    lines.push(`## Nearby`);
+    const npcs = state.nearbyNpcs.slice(0, 8);
+    if (npcs.length > 0) {
+        lines.push('**NPCs:**');
+        for (const npc of npcs) {
+            const combat = npc.combatLevel > 0 ? ` (lvl ${npc.combatLevel})` : '';
+            lines.push(`- ${npc.name}${combat} - ${npc.distance.toFixed(0)} tiles`);
+        }
+    }
+    const locs = state.nearbyLocs.slice(0, 5);
+    if (locs.length > 0) {
+        lines.push('');
+        lines.push('**Objects:**');
+        for (const loc of locs) {
+            lines.push(`- ${loc.name} - ${loc.distance.toFixed(0)} tiles`);
+        }
+    }
+    lines.push('');
+
+    const statePath = join(characterDir, 'state.md');
+    writeFileSync(statePath, lines.join('\n'));
 }
 
 /**
@@ -687,6 +809,15 @@ export function runArc(config: ArcConfig, arcFn: ArcFn): void {
             progressTracker?.stop();
             consoleCapture?.restore();
             recorder?.stopRun();
+
+            // Write state.md for AI awareness before next run
+            try {
+                const finalState = session?.sdk?.getState();
+                if (finalState) {
+                    writeStateMd(characterDir, finalState, config.characterName);
+                    console.log(`[state.md updated]`);
+                }
+            } catch { /* ignore state write errors */ }
 
             if (session) {
                 await session.cleanup();

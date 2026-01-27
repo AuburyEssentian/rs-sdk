@@ -32,7 +32,8 @@ const LOCATIONS = {
     ALKHARID_GATE: { x: 3268, z: 3228 },
     ALKHARID_INSIDE: { x: 3277, z: 3227 },
     ALKHARID_MEN: { x: 3293, z: 3175 },
-    ALKHARID_WARRIORS: { x: 3295, z: 3173 },
+    // Use more open area to avoid "can't reach" - palace courtyard
+    ALKHARID_WARRIORS: { x: 3285, z: 3175 },
     ALKHARID_KEBAB: { x: 3273, z: 3180 },
     ALKHARID_SCIMITAR: { x: 3287, z: 3186 },
     ALKHARID_BANK: { x: 3269, z: 3167 },
@@ -40,8 +41,8 @@ const LOCATIONS = {
 
 // === CONFIG ===
 const CONFIG = {
-    // Thieving thresholds
-    MIN_GP_FOR_COMBAT: 50,         // Switch to combat when GP >= this
+    // Thieving thresholds - Mithril is best from Zeke, focus on combat
+    MIN_GP_FOR_COMBAT: 100,        // Combat focus - we have Mithril scimitar
     GP_TARGET_INITIAL: 100,        // Initial thieving target before buying scimitar
 
     // Kebab management
@@ -59,11 +60,12 @@ const COMBAT_STYLES = {
     DEFENSIVE: 3,   // Defence
 };
 
+// Phase 2: Balanced rotation towards 60/60/60 (currently 48/45/42)
 const STYLE_ROTATION = [
-    { style: COMBAT_STYLES.ACCURATE, name: 'Accurate (Attack)' },
-    { style: COMBAT_STYLES.AGGRESSIVE, name: 'Aggressive (Strength)' },
-    { style: COMBAT_STYLES.AGGRESSIVE, name: 'Aggressive (Strength)' },
-    { style: COMBAT_STYLES.DEFENSIVE, name: 'Defensive (Defence)' },
+    { style: COMBAT_STYLES.DEFENSIVE, name: 'Defensive (Defence)' },  // 42 - lowest
+    { style: COMBAT_STYLES.AGGRESSIVE, name: 'Aggressive (Strength)' }, // 45
+    { style: COMBAT_STYLES.ACCURATE, name: 'Accurate (Attack)' },      // 48
+    { style: COMBAT_STYLES.DEFENSIVE, name: 'Defensive (Defence)' },  // Extra defence
 ];
 
 // === STATS TRACKING ===
@@ -184,59 +186,97 @@ async function travelToAlKharid(ctx: ScriptContext, stats: Stats): Promise<boole
 
     // Need at least 10gp for toll
     if (gp < 10) {
-        ctx.log('Need 10gp for toll - selling shortbow at general store...');
-        await ctx.bot.walkTo(LOCATIONS.LUMBRIDGE_GENERAL_STORE.x, LOCATIONS.LUMBRIDGE_GENERAL_STORE.z);
-        markProgress(ctx, stats);
-        await new Promise(r => setTimeout(r, 2000));
+        // First check if we have a shortbow to sell
+        const shortbow = ctx.state()?.inventory.find(i => /shortbow/i.test(i.name));
 
-        // Find shopkeeper - retry a few times
-        // NPC can be named "Shop keeper" or "Shopkeeper"
-        let shopkeeper = null;
-        for (let attempt = 0; attempt < 5; attempt++) {
-            shopkeeper = ctx.state()?.nearbyNpcs.find(n => /shop\s*keeper/i.test(n.name));
-            if (shopkeeper) break;
-            ctx.log('Looking for shopkeeper... attempt ' + (attempt + 1));
-            await new Promise(r => setTimeout(r, 1000));
-        }
-        if (!shopkeeper) {
-            ctx.warn('No shopkeeper found - trying to walk closer...');
-            // Try walking to the actual store entrance
-            await ctx.sdk.sendWalk(3211, 3246);
+        if (shortbow) {
+            ctx.log('Need 10gp for toll - selling shortbow at general store...');
+            await ctx.bot.walkTo(LOCATIONS.LUMBRIDGE_GENERAL_STORE.x, LOCATIONS.LUMBRIDGE_GENERAL_STORE.z);
+            markProgress(ctx, stats);
             await new Promise(r => setTimeout(r, 2000));
-            shopkeeper = ctx.state()?.nearbyNpcs.find(n => /shop\s*keeper/i.test(n.name));
-        }
-        if (!shopkeeper) {
-            ctx.warn('Still no shopkeeper - checking all nearby NPCs:');
-            const npcs = ctx.state()?.nearbyNpcs.slice(0, 10) ?? [];
-            for (const npc of npcs) {
-                ctx.log('  - ' + npc.name + ' (dist: ' + npc.distance.toFixed(0) + ')');
-            }
-            return false;
-        }
 
-        const tradeOpt = shopkeeper.optionsWithIndex.find(o => /trade/i.test(o.text));
-        if (tradeOpt) {
-            await ctx.sdk.sendInteractNpc(shopkeeper.index, tradeOpt.opIndex);
+            // Find shopkeeper - retry a few times
+            // NPC can be named "Shop keeper" or "Shopkeeper"
+            let shopkeeper = null;
+            for (let attempt = 0; attempt < 5; attempt++) {
+                shopkeeper = ctx.state()?.nearbyNpcs.find(n => /shop\s*keeper/i.test(n.name));
+                if (shopkeeper) break;
+                ctx.log('Looking for shopkeeper... attempt ' + (attempt + 1));
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            if (shopkeeper) {
+                const tradeOpt = shopkeeper.optionsWithIndex.find(o => /trade/i.test(o.text));
+                if (tradeOpt) {
+                    await ctx.sdk.sendInteractNpc(shopkeeper.index, tradeOpt.opIndex);
+                    await new Promise(r => setTimeout(r, 1500));
+
+                    // Wait for shop to open
+                    for (let i = 0; i < 15; i++) {
+                        if (ctx.state()?.shop?.isOpen) break;
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+
+                    if (ctx.state()?.shop?.isOpen) {
+                        const bow = ctx.state()?.inventory.find(i => /shortbow/i.test(i.name));
+                        if (bow) {
+                            ctx.log('Selling shortbow...');
+                            await ctx.sdk.sendShopSell(bow.slot, 1);
+                            await new Promise(r => setTimeout(r, 500));
+                        }
+                        await ctx.bot.closeShop();
+                    }
+                }
+            }
+            markProgress(ctx, stats);
+        } else {
+            // No shortbow - need to pickpocket for toll money
+            ctx.log('No shortbow to sell - pickpocketing for toll money...');
+
+            // Walk to Lumbridge castle area (men spawn there)
+            await ctx.bot.walkTo(LOCATIONS.LUMBRIDGE_SPAWN.x, LOCATIONS.LUMBRIDGE_SPAWN.z);
+            markProgress(ctx, stats);
             await new Promise(r => setTimeout(r, 1500));
 
-            // Wait for shop to open
-            for (let i = 0; i < 15; i++) {
-                if (ctx.state()?.shop?.isOpen) break;
-                await new Promise(r => setTimeout(r, 500));
-            }
+            // Pickpocket until we have 10gp
+            let attempts = 0;
+            while (getCoins(ctx) < 12 && attempts < 50) {  // 12gp to be safe
+                attempts++;
 
-            if (ctx.state()?.shop?.isOpen) {
-                // Sell shortbow
-                const shortbow = ctx.state()?.inventory.find(i => /shortbow/i.test(i.name));
-                if (shortbow) {
-                    ctx.log('Selling shortbow...');
-                    await ctx.sdk.sendShopSell(shortbow.slot, 1);
-                    await new Promise(r => setTimeout(r, 500));
+                // Dismiss dialogs
+                if (ctx.state()?.dialog.isOpen) {
+                    await ctx.sdk.sendClickDialog(0);
+                    await new Promise(r => setTimeout(r, 300));
+                    continue;
                 }
-                await ctx.bot.closeShop();
+
+                const man = ctx.state()?.nearbyNpcs.find(n => /^man$/i.test(n.name));
+                if (!man) {
+                    ctx.log('No men found - waiting...');
+                    await new Promise(r => setTimeout(r, 1000));
+                    continue;
+                }
+
+                const pickpocketOpt = man.optionsWithIndex.find(o => /pickpocket/i.test(o.text));
+                if (pickpocketOpt) {
+                    await ctx.sdk.sendInteractNpc(man.index, pickpocketOpt.opIndex);
+                    markProgress(ctx, stats);
+                    await new Promise(r => setTimeout(r, 1500));
+
+                    // Check for stun
+                    const messages = ctx.state()?.gameMessages ?? [];
+                    const wasStunned = messages.slice(-3).some(m => /stunned|caught/i.test(m.text));
+                    if (wasStunned) {
+                        await new Promise(r => setTimeout(r, 4000));
+                    }
+                }
+
+                if (attempts % 10 === 0) {
+                    ctx.log('Pickpocket progress: ' + getCoins(ctx) + 'gp (attempt ' + attempts + ')');
+                }
             }
+            ctx.log('Earned ' + getCoins(ctx) + 'gp for toll');
         }
-        markProgress(ctx, stats);
     }
 
     // Walk to Al Kharid gate
@@ -431,6 +471,7 @@ function getBestAffordableScimitar(ctx: ScriptContext): { tier: string; cost: nu
     const attackLevel = getSkillLevel(ctx, 'Attack');
     const currentTier = getEquippedWeaponTier(ctx);
 
+    // Note: Zeke only sells up to Mithril. Adamant requires Champions' Guild.
     const upgrades = [
         { tier: 'mithril', cost: 1040, reqAttack: 20 },
         { tier: 'steel', cost: 400, reqAttack: 10 },
@@ -498,6 +539,8 @@ async function pickpocket(ctx: ScriptContext, stats: Stats): Promise<boolean> {
 let lastStyleChange = 0;
 let currentStyleIndex = 0;
 let lastSetStyle = -1;
+let cantReachCount = 0;
+let lastCantReachCheck = 0;
 
 function findCombatTarget(ctx: ScriptContext): NearbyNpc | null {
     const state = ctx.state();
@@ -636,6 +679,33 @@ async function mainLoop(ctx: ScriptContext, stats: Stats): Promise<void> {
         }
         else if (stats.phase === 'combat') {
             await cycleCombatStyle(ctx);
+
+            // Check for "can't reach" spam and relocate if stuck
+            const now = Date.now();
+            if (now - lastCantReachCheck > 5000) {
+                const recentMsgs = currentState.gameMessages.slice(-5);
+                const cantReachMsgs = recentMsgs.filter(m => /can't reach/i.test(m.text)).length;
+                if (cantReachMsgs >= 3) {
+                    cantReachCount++;
+                    if (cantReachCount >= 2) {
+                        // Move to a random nearby spot
+                        const player = currentState.player;
+                        if (player) {
+                            const offsetX = (Math.random() - 0.5) * 10;
+                            const offsetZ = (Math.random() - 0.5) * 10;
+                            const newX = Math.floor(player.worldX + offsetX);
+                            const newZ = Math.floor(player.worldZ + offsetZ);
+                            ctx.log('Relocating to avoid obstacles -> (' + newX + ', ' + newZ + ')');
+                            await ctx.sdk.sendWalk(newX, newZ);
+                            cantReachCount = 0;
+                            await new Promise(r => setTimeout(r, 1500));
+                        }
+                    }
+                } else {
+                    cantReachCount = 0;
+                }
+                lastCantReachCheck = now;
+            }
 
             const player = currentState.player;
             if (player) {
