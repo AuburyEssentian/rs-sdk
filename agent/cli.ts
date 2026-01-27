@@ -115,6 +115,10 @@ async function stopAgent(botUsername: string): Promise<boolean> {
     }
 }
 
+// Game canvas size (must match the canvas element in bot.ejs)
+const GAME_WIDTH = 765;
+const GAME_HEIGHT = 503;
+
 // Browser launch helper
 async function launchBrowser(botName: string, headless: boolean = DEFAULT_HEADLESS): Promise<{ browser: Browser; page: Page }> {
     const browser = await puppeteer.launch({
@@ -123,11 +127,13 @@ async function launchBrowser(botName: string, headless: boolean = DEFAULT_HEADLE
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--mute-audio',
+            // Set window size to match game canvas (avoids dead area)
+            `--window-size=${GAME_WIDTH},${GAME_HEIGHT}`,
         ]
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1024, height: 768 });
+    await page.setViewport({ width: GAME_WIDTH, height: GAME_HEIGHT });
     page.setDefaultTimeout(60000);
 
     // Navigate to bot URL - NO tst=1 so agent panel is visible

@@ -32,6 +32,10 @@ export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 let sharedBrowser: Browser | null = null;
 let sharedBrowserRefCount = 0;
 
+// Game canvas size (must match the canvas element in bot.ejs)
+const GAME_WIDTH = 765;
+const GAME_HEIGHT = 503;
+
 // Chrome args optimized for lower resource usage
 const LIGHTWEIGHT_CHROME_ARGS = [
     '--no-sandbox',
@@ -57,6 +61,8 @@ const LIGHTWEIGHT_CHROME_ARGS = [
     '--safebrowsing-disable-auto-update',
     '--disable-infobars',
     '--disable-features=TranslateUI',
+    // Set window size to match game canvas (avoids dead area)
+    `--window-size=${GAME_WIDTH},${GAME_HEIGHT}`,
 ];
 
 /**
@@ -206,8 +212,8 @@ export async function launchBotBrowser(
 
     const page = await browser.newPage();
 
-    // Optimize page for lower resource usage
-    await page.setViewport({ width: 800, height: 600 });  // Minimal viewport
+    // Set viewport to match game canvas exactly
+    await page.setViewport({ width: GAME_WIDTH, height: GAME_HEIGHT });
     page.setDefaultTimeout(60000);  // 60s timeout for all operations
 
     // Add crash/error handlers to detect page issues
