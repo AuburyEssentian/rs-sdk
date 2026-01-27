@@ -102,6 +102,14 @@ export interface FletchResult {
     product?: InventoryItem;
 }
 
+export interface CraftLeatherResult {
+    success: boolean;
+    message: string;
+    xpGained?: number;
+    itemsCrafted?: number;
+    reason?: 'no_needle' | 'no_leather' | 'no_thread' | 'interface_not_opened' | 'level_too_low' | 'timeout' | 'no_xp_gained';
+}
+
 export interface OpenBankResult {
     success: boolean;
     message: string;
@@ -1638,6 +1646,166 @@ export class BotActions {
                 return { success: false, message: 'Fletching dialog closed without crafting' };
             }
             return { success: false, message: 'Timeout waiting for fletching to complete' };
+        }
+    }
+
+    /**
+     * Crafts leather items using needle and leather.
+     *
+     * @param product - Product to make: 'gloves' (default), 'boots', 'cowl', 'vambraces', 'body', 'chaps'
+     * @param timeout - Maximum time to wait for crafting to complete (default: 10000ms)
+     *
+     * Prerequisites:
+     * - Needle and leather must be in inventory
+     * - Thread must be in inventory (consumed during crafting)
+     * - Crafting level must be high enough for the product:
+     *   - Leather Gloves: level 1 (13.8 XP)
+     *   - Leather Boots: level 7 (16.25 XP)
+     *   - Leather Cowl: level 9 (18.5 XP)
+     *   - Leather Vambraces: level 11 (22 XP)
+     *   - Leather Body: level 14 (25 XP)
+     *   - Leather Chaps: level 18 (27 XP)
+     *
+     * The leather crafting interface (ID 2311) has buttons in this order:
+     * Index 1: unknown (may not work)
+     * Index 2: Leather gloves
+     * Index 3: Leather boots
+     * ... etc
+     */
+    async craftLeather(
+        product: 'gloves' | 'boots' | 'cowl' | 'vambraces' | 'body' | 'chaps' = 'gloves',
+        timeout: number = 10000
+    ): Promise<CraftLeatherResult> {
+        // Find required items
+        const needle = this.sdk.findInventoryItem(/needle/i);
+        if (!needle) {
+            return { success: false, message: 'No needle in inventory', reason: 'no_needle' };
+        }
+
+        const leather = this.sdk.findInventoryItem(/^leather$/i);
+        if (!leather) {
+            return { success: false, message: 'No leather in inventory', reason: 'no_leather' };
+        }
+
+        const thread = this.sdk.findInventoryItem(/thread/i);
+        if (!thread) {
+            return { success: false, message: 'No thread in inventory', reason: 'no_thread' };
+        }
+
+        // Check crafting level
+        const craftingLevel = this.sdk.getSkill('Crafting')?.baseLevel ?? 1;
+        const levelRequirements: Record<string, number> = {
+            gloves: 1,
+            boots: 7,
+            cowl: 9,
+            vambraces: 11,
+            body: 14,
+            chaps: 18,
+        };
+
+        const requiredLevel = levelRequirements[product] ?? 1;
+        if (craftingLevel < requiredLevel) {
+            return {
+                success: false,
+                message: `Crafting level ${craftingLevel} too low for ${product} (need ${requiredLevel})`,
+                reason: 'level_too_low'
+            };
+        }
+
+        // Map product to interface button index
+        // Based on testing: index 2 = gloves (confirmed working in test/crafting.ts)
+        const buttonIndex: Record<string, number> = {
+            gloves: 2,
+            boots: 3,
+            cowl: 4,
+            vambraces: 5,
+            body: 6,
+            chaps: 7,
+        };
+
+        const targetIndex = buttonIndex[product] ?? 2;
+        const craftingXpBefore = this.sdk.getSkill('Crafting')?.experience ?? 0;
+        const leatherCountBefore = this.sdk.getInventory().filter(i => /^leather$/i.test(i.name)).reduce((sum, i) => sum + i.count, 0);
+
+        // Use needle on leather to open crafting interface
+        await this.sdk.sendUseItemOnItem(needle.slot, leather.slot);
+
+        // Wait for crafting interface to open (interface ID 2311)
+        try {
+            await this.sdk.waitForCondition(s =>
+                s.interface?.isOpen && s.interface.interfaceId === 2311,
+                5000
+            );
+        } catch {
+            // Check if dialog opened instead
+            if (this.sdk.getState()?.dialog?.isOpen) {
+                return { success: false, message: 'Dialog opened instead of crafting interface', reason: 'interface_not_opened' };
+            }
+            return { success: false, message: 'Crafting interface did not open', reason: 'interface_not_opened' };
+        }
+
+        // Click the appropriate button
+        await this.sdk.sendClickInterface(targetIndex);
+
+        // Wait for crafting to complete (XP gain or leather consumed)
+        try {
+            await this.sdk.waitForCondition(state => {
+                const craftingXp = state.skills.find(s => s.name === 'Crafting')?.experience ?? 0;
+                if (craftingXp > craftingXpBefore) {
+                    return true;  // XP gained = success
+                }
+
+                // Check if leather was consumed
+                const currentLeather = state.inventory.filter(i => /^leather$/i.test(i.name)).reduce((sum, i) => sum + i.count, 0);
+                if (currentLeather < leatherCountBefore) {
+                    return true;  // Leather used = likely success (check XP after)
+                }
+
+                // Dismiss level-up dialogs
+                if (state.dialog?.isOpen) {
+                    const options = state.dialog.options;
+                    const isLevelUp = options.some(o => /continue|congratulations/i.test(o.text));
+                    if (isLevelUp) {
+                        this.sdk.sendClickDialog(0).catch(() => {});
+                    }
+                }
+
+                return false;
+            }, timeout);
+
+            // Calculate results
+            const craftingXpAfter = this.sdk.getSkill('Crafting')?.experience ?? 0;
+            const xpGained = craftingXpAfter - craftingXpBefore;
+            const leatherCountAfter = this.sdk.getInventory().filter(i => /^leather$/i.test(i.name)).reduce((sum, i) => sum + i.count, 0);
+            const leatherUsed = leatherCountBefore - leatherCountAfter;
+
+            if (xpGained === 0) {
+                return {
+                    success: false,
+                    message: `Clicked ${product} but no XP gained (level ${craftingLevel}, need ${requiredLevel})`,
+                    reason: 'no_xp_gained'
+                };
+            }
+
+            return {
+                success: true,
+                message: `Crafted leather ${product} (+${xpGained} XP)`,
+                xpGained,
+                itemsCrafted: leatherUsed
+            };
+        } catch {
+            const craftingXpAfter = this.sdk.getSkill('Crafting')?.experience ?? 0;
+            const xpGained = craftingXpAfter - craftingXpBefore;
+
+            if (xpGained > 0) {
+                return {
+                    success: true,
+                    message: `Crafted leather ${product} (+${xpGained} XP)`,
+                    xpGained
+                };
+            }
+
+            return { success: false, message: 'Timeout waiting for crafting to complete', reason: 'timeout' };
         }
     }
 
