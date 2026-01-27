@@ -353,6 +353,36 @@ When writing arc scripts, look at existing code for patterns and examples:
 
 These are valuable references for how to interact with the game, handle edge cases, and structure automation logic.
 
+## Script Boilerplate
+
+Here's a minimal `script.ts` example:
+
+```typescript
+import { runArc } from '../../../arc-runner';
+
+runArc({
+    characterName: 'my_character',
+    arcName: 'kill-rat',
+    goal: 'Kill a rat in Lumbridge',
+    timeLimit: 60_000,             // 1 minute
+    stallTimeout: 25_000,
+}, async (ctx) => {
+    // ctx.state() - game state (player, inventory, nearby NPCs, etc.)
+    // ctx.sdk.sendXxx() - send actions to the game
+    // ctx.log() / ctx.warn() / ctx.error() - logging
+    // ctx.progress() - reset stall timer
+    // ctx.bot - high-level helpers (dismissBlockingUI, etc.)
+
+    const rat = ctx.state()?.nearbyNpcs.find(n => /rat/i.test(n.name));
+    if (rat) {
+        ctx.log(`Attacking ${rat.name}`);
+        await ctx.sdk.sendInteractNpc(rat.index, 0); // 0 = "Attack"
+    }
+});
+```
+
+Run with: `bun run bot_arcs/<character>/arcs/<arc-name>/script.ts`
+
 ## Starting a New Character
 
 1. Create folder: `bot_arcs/<username>/`

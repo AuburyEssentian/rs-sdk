@@ -137,6 +137,15 @@ export interface ShopItem {
     id: number;
     name: string;
     count: number;
+    baseCost: number;   // ObjType.cost - base item value
+    buyPrice: number;   // Calculated buy price (what player pays to shop)
+    sellPrice: number;  // Calculated sell price (what shop pays player)
+}
+
+export interface ShopConfig {
+    buyMultiplier: number;   // varp 127 - used when selling TO shop
+    sellMultiplier: number;  // varp 128 - used when buying FROM shop
+    haggle: number;          // varp 129 - price delta per stock
 }
 
 export interface ShopState {
@@ -144,6 +153,7 @@ export interface ShopState {
     title: string;
     shopItems: ShopItem[];      // Items the shop is selling
     playerItems: ShopItem[];    // Player inventory items (for selling)
+    shopConfig?: ShopConfig;
 }
 
 /** Combat state tracking for player */
@@ -996,17 +1006,36 @@ export class BotStateCollector {
                 }
             } catch { /* ignore */ }
 
-            // Collect shop items from the shop inventory
-            shopState.shopItems = this.collectInventoryItems(SHOP_TEMPLATE_INV_ID);
+            // Read shop configuration from varps (127=shop_buy, 128=shop_sell, 129=shop_haggle)
+            const varps = c.varps || [];
+            const shopConfig: ShopConfig = {
+                buyMultiplier: varps[127] || 60,    // Default from shopkeeper.param
+                sellMultiplier: varps[128] || 100,  // Default from shopkeeper.param
+                haggle: varps[129] || 10,           // Default from shopkeeper.param
+            };
+            shopState.shopConfig = shopConfig;
+
+            // Collect shop items from the shop inventory (with prices)
+            shopState.shopItems = this.collectInventoryItems(SHOP_TEMPLATE_INV_ID, shopConfig);
 
             // Collect player items from the shop side panel (for selling)
-            shopState.playerItems = this.collectInventoryItems(SHOP_TEMPLATE_SIDE_INV_ID);
+            shopState.playerItems = this.collectInventoryItems(SHOP_TEMPLATE_SIDE_INV_ID, shopConfig);
         }
 
         return shopState;
     }
 
-    private collectInventoryItems(interfaceId: number): ShopItem[] {
+    /**
+     * Calculate shop price using the game's formula from shop.rs2
+     * Formula: scale(max(100, multiplier - min(1000, max(-5000, stockDiff * haggle))), 1000, baseCost)
+     */
+    private calcShopValue(baseCost: number, haggle: number, multiplier: number, stockDiff: number): number {
+        const int5Raw = Math.min(1000, Math.max(-5000, stockDiff * haggle));
+        const int5 = Math.max(100, multiplier - int5Raw);
+        return Math.floor(baseCost * int5 / 1000);
+    }
+
+    private collectInventoryItems(interfaceId: number, shopConfig?: ShopConfig): ShopItem[] {
         const items: ShopItem[] = [];
 
         try {
@@ -1021,16 +1050,33 @@ export class BotStateCollector {
 
                 if (objId > 0) {
                     let name = 'Unknown';
+                    let baseCost = 1;
                     try {
                         const obj = ObjType.get(objId - 1);
                         name = obj.name || 'Unknown';
+                        baseCost = obj.cost || 1;
                     } catch { /* ignore */ }
+
+                    // Calculate prices using shop config (stockDiff=0 for price at current stock)
+                    let buyPrice = baseCost;
+                    let sellPrice = baseCost;
+                    if (shopConfig) {
+                        // Buy price = what player pays TO buy FROM shop (uses sellMultiplier)
+                        buyPrice = this.calcShopValue(baseCost, shopConfig.haggle, shopConfig.sellMultiplier, 0);
+                        // Sell price = what player receives when selling TO shop (uses buyMultiplier)
+                        sellPrice = this.calcShopValue(baseCost, shopConfig.haggle, shopConfig.buyMultiplier, 0);
+                        // Ensure buy price is at least 1
+                        if (buyPrice < 1) buyPrice = 1;
+                    }
 
                     items.push({
                         slot,
                         id: objId - 1,
                         name,
-                        count
+                        count,
+                        baseCost,
+                        buyPrice,
+                        sellPrice
                     });
                 }
             }

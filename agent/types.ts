@@ -159,6 +159,15 @@ export interface ShopItem {
     id: number;
     name: string;
     count: number;
+    baseCost: number;   // ObjType.cost - base item value
+    buyPrice: number;   // Calculated buy price (what player pays to shop)
+    sellPrice: number;  // Calculated sell price (what shop pays player)
+}
+
+export interface ShopConfig {
+    buyMultiplier: number;   // varp 127 - used when selling TO shop
+    sellMultiplier: number;  // varp 128 - used when buying FROM shop
+    haggle: number;          // varp 129 - price delta per stock
 }
 
 export interface ShopState {
@@ -166,6 +175,7 @@ export interface ShopState {
     title: string;
     shopItems: ShopItem[];
     playerItems: ShopItem[];
+    shopConfig?: ShopConfig;
 }
 
 export interface CombatStyleOption {

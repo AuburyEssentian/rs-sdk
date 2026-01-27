@@ -5,11 +5,14 @@ scope=temp
 [shop_buy]
 type=int
 scope=temp
+transmit=yes
 
 [shop_sell]
 type=int
 scope=temp
+transmit=yes
 
 [shop_haggle]
 type=int
 scope=temp
+transmit=yes
