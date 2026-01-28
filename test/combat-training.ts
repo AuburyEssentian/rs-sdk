@@ -48,12 +48,9 @@ export async function runCombatTrainingBot(
         /axe|mace/i.test(i.name) && !/pickaxe/i.test(i.name)
     );
     if (weapon) {
-        const wieldOpt = weapon.optionsWithIndex.find(o => /wield|wear/i.test(o.text));
-        if (wieldOpt) {
-            log(`Equipping ${weapon.name}`);
-            await sdk.sendUseItem(weapon.slot, wieldOpt.opIndex);
-            await sleep(500);
-        }
+        log(`Equipping ${weapon.name}`);
+        await bot.equipItem(weapon);
+        await sleep(500);
     }
 
     // Helper to get style index for a skill from current weapon's styles
@@ -213,13 +210,10 @@ export async function runCombatTrainingBot(
                 /door/i.test(loc.name) && loc.distance <= 3
             );
             if (door) {
-                const openOpt = door.optionsWithIndex.find(o => /open/i.test(o.text));
-                if (openOpt) {
-                    log(`Turn ${turn}: Opening door at (${door.x}, ${door.z})`);
-                    await sdk.sendInteractLoc(door.x, door.z, door.id, openOpt.opIndex);
-                    await sleep(600);
-                    continue;
-                }
+                log(`Turn ${turn}: Opening door at (${door.x}, ${door.z})`);
+                await bot.openDoor(door);
+                await sleep(600);
+                continue;
             }
         }
 
@@ -248,14 +242,11 @@ export async function runCombatTrainingBot(
         if (currentHp < HEALTH_THRESHOLD) {
             const food = findFood(sdk.getInventory());
             if (food) {
-                const eatOpt = food.optionsWithIndex.find(o => /eat/i.test(o.text));
-                if (eatOpt) {
-                    log(`Turn ${turn}: Eating ${food.name} (hp=${currentHp})`);
-                    await sdk.sendUseItem(food.slot, eatOpt.opIndex);
-                    foodEaten++;
-                    await sleep(500);
-                    continue;
-                }
+                log(`Turn ${turn}: Eating ${food.name} (hp=${currentHp})`);
+                await bot.eatFood(food);
+                foodEaten++;
+                await sleep(500);
+                continue;
             }
         }
 

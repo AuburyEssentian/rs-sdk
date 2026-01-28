@@ -119,27 +119,21 @@ async function runTest(): Promise<boolean> {
             );
 
             if (ferryman) {
-                // Find talk or pay-fare option
-                const talkOpt = ferryman.optionsWithIndex.find(o =>
-                    /talk|pay-fare|travel/i.test(o.text)
-                ) || ferryman.optionsWithIndex[0];
-
-                if (talkOpt && turn === 1) {
+                if (turn === 1) {
                     console.log(`Turn ${turn}: Found ${ferryman.name} with options: ${ferryman.optionsWithIndex.map(o => o.text).join(', ')}`);
                 }
 
-                if (talkOpt) {
-                    if (turn % 10 === 1) {
-                        console.log(`Turn ${turn}: Interacting with ${ferryman.name} - ${talkOpt.text}`);
-                    }
-                    await sdk.sendInteractNpc(ferryman.index, talkOpt.opIndex);
-
-                    // Wait for dialog to open
-                    try {
-                        await sdk.waitForCondition(s => s.dialog.isOpen, 5000);
-                    } catch { /* timeout */ }
-                    continue;
+                if (turn % 10 === 1) {
+                    console.log(`Turn ${turn}: Talking to ${ferryman.name}`);
                 }
+
+                // Use high-level bot.talkTo() instead of low-level sdk.sendInteractNpc()
+                const result = await bot.talkTo(ferryman);
+                if (result.success) {
+                    // Dialog opened successfully
+                    await sleep(500);
+                }
+                continue;
             }
 
             // Also check for gangplank or ship objects

@@ -92,9 +92,15 @@ runTest({
             }
 
             // Cast Wind Strike on the NPC
-            await sdk.sendSpellOnNpc(target.index, Spells.WIND_STRIKE);
+            const castResult = await bot.castSpellOnNpc(target, Spells.WIND_STRIKE);
             casts++;
             lastCastTurn = turn;
+
+            if (castResult.success && castResult.hit) {
+                console.log(`Turn ${turn}: HIT! Gained ${castResult.xpGained} Magic XP`);
+            } else if (castResult.success && !castResult.hit) {
+                console.log(`Turn ${turn}: Splash (no damage)`);
+            }
 
             // Wait for spell animation and potential hit
             await sleep(2000);

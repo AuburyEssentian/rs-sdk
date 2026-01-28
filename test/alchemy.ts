@@ -19,9 +19,9 @@ runTest({
         position: { x: 3222, z: 3218 },  // Lumbridge
         skills: { Magic: 21 },  // Need 21 for Low Alchemy
         inventory: [
-            { id: Items.FIRE_RUNE, count: 30 },
-            { id: Items.NATURE_RUNE, count: 10 },
-            { id: Items.BRONZE_DAGGER, count: 5 },  // Items to alch
+            { id: Items.FIRE_RUNE, count: 3 },   // 1 cast needs 3 fire runes
+            { id: Items.NATURE_RUNE, count: 1 },  // 1 cast needs 1 nature rune
+            { id: Items.BRONZE_DAGGER, count: 1 },  // Items to alch (minimal)
         ],
     },
     launchOptions: { skipTutorial: false },

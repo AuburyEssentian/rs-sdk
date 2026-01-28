@@ -17,6 +17,7 @@
 
 import { runTest, dismissDialog, sleep } from './utils/test-runner';
 import { Items } from './utils/save-generator';
+import { BotActions } from '../sdk/actions';
 import type { InventoryItem } from '../sdk/types';
 
 const MAX_TURNS = 100;
@@ -48,7 +49,7 @@ runTest({
         ],
     },
     launchOptions: { skipTutorial: false },
-}, async ({ sdk }) => {
+}, async ({ sdk , bot}) => {
     console.log('Goal: Detect damage and eat food to heal');
 
     // Wait for state to fully load
@@ -90,25 +91,16 @@ runTest({
         if (damageTaken && !foodEaten && currentHp < maxHp - 10) {
             const food = findFood(sdk.getInventory());
             if (food) {
-                const eatOpt = food.optionsWithIndex.find(o => /eat/i.test(o.text));
-                if (eatOpt) {
-                    const foodCountBefore = food.count;
-                    const hpBeforeEating = currentHp;
-                    console.log(`Turn ${turn}: Eating ${food.name} (x${foodCountBefore}) at HP ${currentHp}`);
-                    await sdk.sendUseItem(food.slot, eatOpt.opIndex);
+                const hpBeforeEating = currentHp;
+                console.log(`Turn ${turn}: Eating ${food.name} (x${food.count}) at HP ${currentHp}`);
 
-                    // Wait for food count to decrease (food was consumed)
-                    try {
-                        await sdk.waitForCondition(s => {
-                            const currentFood = s.inventory.find(i => i.slot === food.slot);
-                            return !currentFood || currentFood.count < foodCountBefore;
-                        }, 3000);
-                        hpAfterEating = sdk.getSkill('Hitpoints')?.level ?? 10;
-                        foodEaten = true;
-                        console.log(`Turn ${turn}: ATE FOOD! HP: ${hpBeforeEating} -> ${hpAfterEating}`);
-                    } catch {
-                        console.log(`Turn ${turn}: Eating failed`);
-                    }
+                const result = await bot.eatFood(food);
+                if (result.success) {
+                    hpAfterEating = sdk.getSkill('Hitpoints')?.level ?? 10;
+                    foodEaten = true;
+                    console.log(`Turn ${turn}: ATE FOOD! HP: ${hpBeforeEating} -> ${hpAfterEating} (+${result.hpGained} HP)`);
+                } else {
+                    console.log(`Turn ${turn}: Eating failed: ${result.message}`);
                 }
             }
         }

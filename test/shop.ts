@@ -100,7 +100,7 @@ runTest({
     }
     console.log(`PASS: Have ${hammer.name} in inventory`);
 
-    await sdk.sendCloseShop();
+    await bot.closeShop();
 
     console.log('\n=== All tests passed ===');
     return true;

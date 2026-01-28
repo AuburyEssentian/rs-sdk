@@ -25,144 +25,69 @@ runTest({
             { id: Items.BRONZE_ARROW, count: 50 },  // Ammo slot
         ],
     },
-    launchOptions: { skipTutorial: false },
-}, async ({ sdk }) => {
+    launchOptions: { skipTutorial: true },
+}, async ({ sdk, bot }) => {
     console.log('Goal: Test equipping, swapping, and unequipping items');
 
     // --- Test 1: Equip Sword ---
     console.log(`\n--- Test 1: Equip Bronze Sword ---`);
-    const sword = sdk.findInventoryItem(/bronze sword/i);
-    if (!sword) {
-        console.log('ERROR: Bronze sword not found in inventory');
+    const result1 = await bot.equipItem(/bronze sword/i);
+    if (!result1.success) {
+        console.log(`ERROR: ${result1.message}`);
         return false;
     }
-
-    console.log(`Found sword: ${sword.name} (slot ${sword.slot})`);
-    console.log(`Options: ${sword.optionsWithIndex.map(o => `${o.opIndex}:${o.text}`).join(', ')}`);
-
-    const swordWield = sword.optionsWithIndex.find(o => /wield|wear|equip/i.test(o.text));
-    if (!swordWield) {
-        console.log('ERROR: No wield option on sword');
-        return false;
-    }
-
-    await sdk.sendUseItem(sword.slot, swordWield.opIndex);
-
-    // Wait for sword to leave inventory
-    try {
-        await sdk.waitForCondition(s =>
-            !s.inventory.some(i => /bronze sword/i.test(i.name)),
-            5000
-        );
-        console.log('PASS: Sword equipped (left inventory)');
-    } catch {
-        console.log('ERROR: Sword still in inventory after equipping');
-        return false;
-    }
+    console.log(`PASS: ${result1.message}`);
 
     // --- Test 2: Equip Shield ---
     console.log(`\n--- Test 2: Equip Wooden Shield ---`);
-    const shield = sdk.findInventoryItem(/wooden shield/i);
-    if (!shield) {
-        console.log('ERROR: Wooden shield not found in inventory');
+    const result2 = await bot.equipItem(/wooden shield/i);
+    if (!result2.success) {
+        console.log(`ERROR: ${result2.message}`);
         return false;
     }
-
-    const shieldWield = shield.optionsWithIndex.find(o => /wield|wear|equip/i.test(o.text));
-    if (!shieldWield) {
-        console.log('ERROR: No wield option on shield');
-        return false;
-    }
-
-    await sdk.sendUseItem(shield.slot, shieldWield.opIndex);
-
-    // Wait for shield to leave inventory
-    try {
-        await sdk.waitForCondition(s =>
-            !s.inventory.some(i => /wooden shield/i.test(i.name)),
-            5000
-        );
-        console.log('PASS: Shield equipped (left inventory)');
-    } catch {
-        console.log('ERROR: Shield still in inventory after equipping');
-        return false;
-    }
+    console.log(`PASS: ${result2.message}`);
 
     // --- Test 3: Swap Weapon (Sword -> Dagger) ---
     console.log(`\n--- Test 3: Swap Weapon (equip dagger, sword returns) ---`);
-    const dagger = sdk.findInventoryItem(/bronze dagger/i);
-    if (!dagger) {
-        console.log('ERROR: Bronze dagger not found in inventory');
+    const result3 = await bot.equipItem(/bronze dagger/i);
+    if (!result3.success) {
+        console.log(`ERROR: ${result3.message}`);
         return false;
     }
+    console.log(`PASS: ${result3.message}`);
 
-    const daggerWield = dagger.optionsWithIndex.find(o => /wield|wear|equip/i.test(o.text));
-    if (!daggerWield) {
-        console.log('ERROR: No wield option on dagger');
+    // Verify sword returned to inventory
+    const swordReturned = sdk.findInventoryItem(/bronze sword/i);
+    if (!swordReturned) {
+        console.log('ERROR: Sword did not return to inventory after swapping');
         return false;
     }
-
-    await sdk.sendUseItem(dagger.slot, daggerWield.opIndex);
-
-    // Wait for swap to complete
-    try {
-        await sdk.waitForCondition(state => {
-            const hasSword = state.inventory.some(i => /bronze sword/i.test(i.name));
-            const noDagger = !state.inventory.some(i => /bronze dagger/i.test(i.name));
-            return hasSword && noDagger;
-        }, 5000);
-        console.log('PASS: Dagger equipped, sword returned to inventory');
-    } catch {
-        console.log('ERROR: Weapon swap did not work as expected');
-        return false;
-    }
+    console.log('PASS: Bronze sword returned to inventory after weapon swap');
 
     // --- Test 4: Equip Two-Handed Weapon (should unequip shield) ---
     console.log(`\n--- Test 4: Equip Two-Handed Weapon (bow should unequip shield) ---`);
-    const bow = sdk.findInventoryItem(/shortbow/i);
-    if (!bow) {
-        console.log('ERROR: Shortbow not found in inventory');
+    const result4 = await bot.equipItem(/shortbow/i);
+    if (!result4.success) {
+        console.log(`ERROR: ${result4.message}`);
         return false;
     }
+    console.log(`PASS: ${result4.message}`);
 
-    const bowWield = bow.optionsWithIndex.find(o => /wield|wear|equip/i.test(o.text));
-    if (!bowWield) {
-        console.log('ERROR: No wield option on bow');
-        return false;
-    }
-
-    await sdk.sendUseItem(bow.slot, bowWield.opIndex);
-
-    // Wait for bow to equip and shield to return
-    try {
-        await sdk.waitForCondition(state => {
-            const hasShield = state.inventory.some(i => /wooden shield/i.test(i.name));
-            const noBow = !state.inventory.some(i => /shortbow/i.test(i.name));
-            return hasShield && noBow;
-        }, 5000);
-        console.log('PASS: Bow equipped (two-handed), shield returned to inventory');
-    } catch {
-        // This might not work if the game doesn't auto-unequip shields for bows
-        console.log('NOTE: Two-handed unequip may not be implemented - continuing');
+    // Verify shield returned to inventory
+    const shieldReturned = sdk.findInventoryItem(/wooden shield/i);
+    if (!shieldReturned) {
+        console.log('NOTE: Shield did not return to inventory (two-handed unequip may not be implemented)');
+    } else {
+        console.log('PASS: Wooden shield returned to inventory after equipping two-handed weapon');
     }
 
     // --- Test 5: Equip Ammo ---
     console.log(`\n--- Test 5: Equip Arrows ---`);
-    const arrows = sdk.findInventoryItem(/bronze arrow/i);
-    if (!arrows) {
-        console.log('NOTE: Arrows not found (may have been used or not present)');
+    const result5 = await bot.equipItem(/bronze arrow/i);
+    if (!result5.success) {
+        console.log(`NOTE: ${result5.message} (ammo may behave differently)`);
     } else {
-        const arrowEquip = arrows.optionsWithIndex.find(o => /wield|wear|equip/i.test(o.text));
-        if (arrowEquip) {
-            await sdk.sendUseItem(arrows.slot, arrowEquip.opIndex);
-            await sleep(600);
-
-            if (!sdk.findInventoryItem(/bronze arrow/i)) {
-                console.log('PASS: Arrows equipped');
-            } else {
-                console.log('NOTE: Arrows may still show in inventory (stackable behavior)');
-            }
-        }
+        console.log(`PASS: ${result5.message}`);
     }
 
     // --- Test 6: Verify getEquipment works ---
@@ -186,27 +111,13 @@ runTest({
         console.log('NOTE: No bow found in equipment (may have been unequipped)');
     }
 
-    // --- Test 8: Unequip an item using sendUseEquipmentItem ---
+    // --- Test 8: Unequip an item using bot.unequipItem ---
     console.log(`\n--- Test 8: Unequip Item ---`);
-    const weaponToUnequip = sdk.findEquipmentItem(/bow|dagger|sword/i);
-    if (weaponToUnequip) {
-        console.log(`Found weapon to unequip: ${weaponToUnequip.name} at slot ${weaponToUnequip.slot}`);
-        // Equipment uses option 1 to unequip (clicking the item removes it)
-        const invBefore = sdk.getInventory().length;
-        await sdk.sendUseEquipmentItem(weaponToUnequip.slot, 1);
-
-        try {
-            await sdk.waitForCondition(s =>
-                s.inventory.length > invBefore ||
-                s.inventory.some(i => i.id === weaponToUnequip.id),
-                5000
-            );
-            console.log(`PASS: Unequipped ${weaponToUnequip.name}`);
-        } catch {
-            console.log(`NOTE: Unequip may have timed out`);
-        }
+    const result8 = await bot.unequipItem(/bow|dagger|sword/i);
+    if (!result8.success) {
+        console.log(`NOTE: ${result8.message}`);
     } else {
-        console.log('NOTE: No weapon found in equipment to unequip');
+        console.log(`PASS: ${result8.message}`);
     }
 
     // --- Final Inventory Check ---
@@ -221,13 +132,13 @@ runTest({
 
     console.log(`\n=== Results ===`);
     console.log('SUCCESS: Equipment test completed');
-    console.log('- Equipped sword');
-    console.log('- Equipped shield');
-    console.log('- Swapped weapons (dagger replaced sword)');
+    console.log('- Equipped sword using bot.equipItem()');
+    console.log('- Equipped shield using bot.equipItem()');
+    console.log('- Swapped weapons (dagger replaced sword) using bot.equipItem()');
     console.log('- Tested two-handed weapon interaction');
     console.log('- Tested getEquipment()');
     console.log('- Tested findEquipmentItem()');
-    console.log('- Tested unequip with sendUseEquipmentItem()');
+    console.log('- Tested unequip with bot.unequipItem()');
 
     return true;
 });

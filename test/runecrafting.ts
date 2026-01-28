@@ -27,7 +27,7 @@ runTest({
             { id: Items.RUNE_ESSENCE, count: 1 },
         ],
     },
-    launchOptions: { skipTutorial: false },
+    launchOptions: { skipTutorial: true },
 }, async ({ sdk, bot }) => {
     console.log('Goal: Craft air runes to gain Runecrafting XP');
 

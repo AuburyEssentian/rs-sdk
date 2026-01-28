@@ -7,7 +7,8 @@ The SDK has two layers, inspired by Git's architecture:
 ### Plumbing (`index.ts` - BotSDK)
 - Low-level API that maps to the game protocol
 - Actions resolve when the game **acknowledges** the command (fast)
-- No domain knowledge - just sends commands and receives results
+- Low domain knowledge - just sends commands and receives results
+- Changes slowly, is supported by the gateway and bot client 
 
 ```typescript
 await sdk.sendInteractLoc(tree.x, tree.z, tree.id, 1);
@@ -18,6 +19,7 @@ await sdk.sendWalk(x, z, running);
 - High-level, domain-aware API that wraps plumbing
 - Actions resolve when the **effect is complete** (slower, but reliable)
 - Encodes domain knowledge and handles edge cases
+
 
 ```typescript
 await bot.chopTree();  // Waits for logs in inventory

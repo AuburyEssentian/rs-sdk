@@ -366,6 +366,15 @@ export interface CraftLeatherResult {
     reason?: 'no_needle' | 'no_leather' | 'no_thread' | 'interface_not_opened' | 'level_too_low' | 'timeout' | 'no_xp_gained';
 }
 
+export interface SmithResult {
+    success: boolean;
+    message: string;
+    xpGained?: number;
+    itemsSmithed?: number;
+    product?: InventoryItem;
+    reason?: 'no_hammer' | 'no_bars' | 'no_anvil' | 'interface_not_opened' | 'level_too_low' | 'timeout' | 'no_xp_gained';
+}
+
 export interface OpenBankResult {
     success: boolean;
     message: string;

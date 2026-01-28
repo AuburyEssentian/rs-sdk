@@ -113,10 +113,14 @@ runTest({
     );
     console.log(`Most expensive item: ${mostExpensive.name} (${mostExpensive.buyPrice}gp)`);
 
-    // buy most expensive item
-    const buyResult = await bot.buyFromShop(mostExpensive.name, 1);
+    // buy most expensive item that's in stock
+    const itemToBuy = shop.shopItems
+        .filter(item => item.count > 0)
+        .reduce((best, item) => item.buyPrice > best.buyPrice ? item : best);
+
+    const buyResult = await bot.buyFromShop(itemToBuy.name, 1);
     if (!buyResult.success) {
-        console.log(`Failed to buy ${mostExpensive.name}: ${buyResult.message}`);
+        console.log(`Failed to buy ${itemToBuy.name}: ${buyResult.message}`);
         return false;
     }
     console.log(`Bought ${buyResult.item?.name} `);
@@ -135,7 +139,7 @@ runTest({
         console.log(`\nIf you sell your scimitars: +${totalSellValue}gp`);
     }
 
-    await sdk.sendCloseShop();
+    await bot.closeShop();
 
     console.log('\n=== Demo Complete ===');
     return true;

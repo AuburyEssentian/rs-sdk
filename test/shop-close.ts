@@ -63,7 +63,7 @@ runTest({
     const dagger = sdk.findInventoryItem(/dagger/i);
     if (!dagger) {
         console.log('FAIL: No dagger in inventory');
-        await sdk.sendCloseShop();
+        await bot.closeShop();
         return false;
     }
     console.log(`Selling ${dagger.name}...`);

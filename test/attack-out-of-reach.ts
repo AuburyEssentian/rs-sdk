@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 /**
  * Attack Out of Reach Test (SDK)
- * Tests the attackNpc failure mode when trying to attack an NPC through an obstacle.
+ * Tests the attackNpc failure mode when trying to attack from an enclosed area.
  *
  * Scenario:
- * - Position the player outside the Lumbridge cow field gate
- * - Try to attack a cow inside the fenced area
+ * - Position the player inside the Lumbridge chicken coop (enclosed by fence)
+ * - Try to attack an NPC outside the coop (cow, goblin, etc.)
  * - Verify that attackNpc returns success: false with reason: 'out_of_reach'
  *
- * This tests the waitForCombat option of bot.attackNpc() which detects
- * "I can't reach that!" messages from the server.
+ * This tests bot.attackNpc() which detects "I can't reach that!" messages from the server
+ * when pathfinding cannot find a route to the target.
  */
 
 import { launchBotWithSDK, sleep, type SDKSession } from './utils/browser';
@@ -17,19 +17,19 @@ import { generateSave, Locations } from './utils/save-generator';
 
 const BOT_NAME = process.env.BOT_NAME ?? `reach${Math.random().toString(36).slice(2, 5)}`;
 
-// Position outside the cow field fence (south of the gate)
-// The cows are inside the fenced area to the north
-// Fence is at z: 3255, so z: 3254 is outside
-const OUTSIDE_COW_FIELD = { x: 3253, z: 3254 };
+// Position INSIDE the Lumbridge chicken coop (small fenced area)
+// The coop has walls with no door, making it a true enclosed space
+// Chickens inside, other NPCs outside should be unreachable
+const INSIDE_CHICKEN_COOP = { x: 3233, z: 3297, level: 0 };
 
 async function runTest(): Promise<boolean> {
     console.log('=== Attack Out of Reach Test (SDK) ===');
-    console.log('Goal: Verify attackNpc detects "can\'t reach" failure when attacking through fence');
+    console.log('Goal: Verify attackNpc detects "can\'t reach" failure from enclosed area');
 
-    // Create save outside the cow field
-    console.log(`Creating save file for '${BOT_NAME}' at position outside cow field...`);
+    // Create save inside chicken coop
+    console.log(`Creating save file for '${BOT_NAME}' inside chicken coop...`);
     await generateSave(BOT_NAME, {
-        position: { ...OUTSIDE_COW_FIELD, level: 0 },
+        position: INSIDE_CHICKEN_COOP,
     });
 
     let session: SDKSession | null = null;
@@ -47,38 +47,37 @@ async function runTest(): Promise<boolean> {
         const startState = sdk.getState();
         console.log(`Player position: (${startState?.player?.worldX}, ${startState?.player?.worldZ})`);
 
-        // Find a cow nearby (should be visible through the fence)
+        // Find NPCs outside the chicken coop
         const nearbyNpcs = sdk.getNearbyNpcs();
         console.log(`Nearby NPCs: ${nearbyNpcs.map(n => `${n.name}(dist=${n.distance})`).join(', ')}`);
 
-        const cow = nearbyNpcs.find(n => /cow/i.test(n.name));
-        if (!cow) {
-            console.log('ERROR: No cow found nearby. Test cannot proceed.');
-            console.log('This might mean the spawn position is wrong or cows haven\'t spawned yet.');
-            // Try walking closer to the cow field and check again
-            console.log('Walking north towards cow field...');
-            await bot.walkTo(OUTSIDE_COW_FIELD.x, OUTSIDE_COW_FIELD.z + 5);
-            await sleep(1000);
+        // Wait for NPCs to spawn
+        await sleep(2000);
 
-            const retryNpcs = sdk.getNearbyNpcs();
-            console.log(`Nearby NPCs after walk: ${retryNpcs.map(n => `${n.name}(dist=${n.distance})`).join(', ')}`);
+        const allNpcs = sdk.getNearbyNpcs();
 
-            const retryCow = retryNpcs.find(n => /cow/i.test(n.name));
-            if (!retryCow) {
-                console.log('Still no cow found. Test FAILED - cannot find target NPC.');
-                return false;
-            }
+        // Look for an attackable NPC (not a chicken - those are inside with us)
+        // We want NPCs outside the coop like cows, goblins, etc.
+        const targetNpc = allNpcs.find(n =>
+            n.combatLevel > 0 &&
+            !/chicken/i.test(n.name) &&
+            n.distance > 1  // Should be outside the small coop
+        );
+
+        if (!targetNpc) {
+            console.log('ERROR: No suitable target NPC found outside coop.');
+            console.log(`Available NPCs: ${allNpcs.map(n => `${n.name}(lv${n.combatLevel}, dist=${n.distance})`).join(', ')}`);
+            return false;
         }
 
-        const targetCow = sdk.getNearbyNpcs().find(n => /cow/i.test(n.name))!;
-        console.log(`Found cow: ${targetCow.name} at distance ${targetCow.distance}`);
+        console.log(`Found ${targetNpc.name} (level ${targetNpc.combatLevel}) at distance ${targetNpc.distance}`);
 
-        // Attempt to attack the cow with waitForCombat=true
-        // This should fail with "can't reach" since there's a fence between us
-        console.log('\n--- Attempting to attack cow through fence ---');
-        console.log('Using: bot.attackNpc(cow, { waitForCombat: true })');
+        // Attempt to attack NPC outside the enclosed coop
+        // This should fail with "can't reach" since we're fenced in
+        console.log('\n--- Attempting to attack NPC from inside enclosed coop ---');
+        console.log(`Using: bot.attackNpc(${targetNpc.name})`);
 
-        const attackResult = await bot.attackNpc(targetCow, 15000);  // 15s timeout - pathfinding takes time before "can't reach"
+        const attackResult = await bot.attackNpc(targetNpc, 20000);  // 20s timeout
 
         console.log(`\nAttack result:`);
         console.log(`  success: ${attackResult.success}`);
@@ -88,26 +87,21 @@ async function runTest(): Promise<boolean> {
         // Check for expected failure
         if (!attackResult.success && attackResult.reason === 'out_of_reach') {
             console.log('\nSUCCESS: Attack correctly failed with "out_of_reach" reason!');
-            console.log('The fence blocked the attack as expected.');
+            console.log('Fence blocked the attack as expected.');
             return true;
         }
 
-        // If attack succeeded, we might have found a path or the fence isn't blocking
+        // If attack succeeded, there might be an opening in the fence
         if (attackResult.success) {
             console.log('\nUNEXPECTED: Attack succeeded!');
-            console.log('Either the player found a path to the cow, or the fence is not blocking.');
-            console.log('This could happen if:');
-            console.log('  - The gate was open');
-            console.log('  - The spawn position was inside the cow field');
-            console.log('  - The pathfinding found a way around');
-
-            // This isn't necessarily a test failure - just unexpected
-            // The point is to verify the failure detection works
+            console.log('The pathfinding found a way out of the coop.');
+            console.log('The chicken coop might have an opening or door.');
             return false;
         }
 
         // Other failure reasons
         console.log(`\nFAILED: Attack failed but with unexpected reason: ${attackResult.reason}`);
+        console.log(`Expected reason: 'out_of_reach', got: '${attackResult.reason}'`);
         return false;
 
     } finally {

@@ -17,10 +17,7 @@ runTest({
     saveConfig: {
         position: AL_KHARID_BANK,
         inventory: [
-            // 5 bones - each takes a separate slot (non-stackable)
-            { id: Items.BONES, count: 1 },
-            { id: Items.BONES, count: 1 },
-            { id: Items.BONES, count: 1 },
+            // 2 bones - minimal to test if -1 deposits all or just one slot
             { id: Items.BONES, count: 1 },
             { id: Items.BONES, count: 1 },
         ],
@@ -39,8 +36,8 @@ runTest({
     console.log(`Initial inventory: ${initialInv.length} items`);
     console.log(`Bones in inventory: ${initialBones.length} (each in separate slot)`);
 
-    if (initialBones.length < 5) {
-        console.log(`FAILED: Expected 5 bones, got ${initialBones.length}`);
+    if (initialBones.length < 2) {
+        console.log(`FAILED: Expected at least 2 bones, got ${initialBones.length}`);
         return false;
     }
 
@@ -74,11 +71,11 @@ runTest({
 
     if (afterBones.length === 0) {
         console.log('\nRESULT: deposit -1 deposits ALL items of that type (even non-stackable)!');
-    } else if (afterBones.length === 4) {
+    } else if (afterBones.length === initialBones.length - 1) {
         console.log('\nRESULT: deposit -1 only deposits from ONE slot for non-stackable items');
         console.log('You need to loop through all slots to deposit multiple non-stackable items');
     } else {
-        console.log(`\nRESULT: Unexpected - deposited ${5 - afterBones.length} bones`);
+        console.log(`\nRESULT: Unexpected - deposited ${initialBones.length - afterBones.length} bones`);
     }
 
     // Close bank

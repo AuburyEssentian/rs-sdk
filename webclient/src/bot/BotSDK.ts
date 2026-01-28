@@ -2199,21 +2199,27 @@ export class BotOverlay {
                         'Failed to click interface option'
                     );
 
-                case 'clickInterfaceComponent':
-                    // Use simple IF_BUTTON for option 1 (e.g., casting spells), INV_BUTTON for inventory-style ops
-                    if ((action.optionIndex ?? 1) === 1) {
-                        return this.wrapBool(
-                            this.client.clickComponent(action.componentId),
-                            `Clicked interface component ${action.componentId}`,
-                            'Failed to click interface component'
-                        );
-                    } else {
+                case 'clickInterfaceComponent': {
+                    // Check if component has inventory operations (like smithing interface)
+                    const com = Component.types[action.componentId];
+                    const hasIops = com && com.iop && com.iop.some((op: string | null) => op);
+
+                    if (hasIops) {
+                        // Use INV_BUTTON for components with iops (smithing, etc.)
                         return this.wrapBool(
                             this.client.clickInterfaceIop(action.componentId, action.optionIndex ?? 1),
                             `Clicked interface component ${action.componentId} option ${action.optionIndex ?? 1}`,
                             'Failed to click interface component'
                         );
+                    } else {
+                        // Use simple IF_BUTTON for simple buttons (spellcasting, etc.)
+                        return this.wrapBool(
+                            this.client.clickComponent(action.componentId),
+                            `Clicked interface component ${action.componentId}`,
+                            'Failed to click interface component'
+                        );
                     }
+                }
 
                 case 'useItemOnItem':
                     return this.wrapBool(

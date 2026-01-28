@@ -115,8 +115,7 @@ async function runTest(): Promise<boolean> {
                         const targetX = player.worldX + dx;
                         const targetZ = player.worldZ + dz;
                         console.log(`Turn ${turn}: No tree nearby, wandering to (${targetX}, ${targetZ})`);
-                        await sdk.sendWalk(targetX, targetZ);
-                        await sleep(2000);  // Give time to walk
+                        await bot.walkTo(targetX, targetZ);
                     }
                 }
                 continue;

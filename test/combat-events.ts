@@ -56,14 +56,12 @@ async function runCombatEventsTest(): Promise<boolean> {
         console.log(`Initial state: hp=${target.hp}/${target.maxHp}, inCombat=${target.inCombat}, combatCycle=${target.combatCycle}\n`);
 
         // Attack the target
-        const attackOpt = target.optionsWithIndex.find(o => o.text.toLowerCase() === 'attack');
-        if (!attackOpt) {
-            console.log('FAIL: No attack option found');
+        console.log(`Attacking ${target.name}...`);
+        const attackResult = await bot.attackNpc(target);
+        if (!attackResult.success) {
+            console.log(`FAIL: Attack failed - ${attackResult.message}`);
             return false;
         }
-
-        console.log(`Attacking ${target.name}...`);
-        await sdk.sendInteractNpc(target.index, attackOpt.opIndex);
 
         // Monitor combat for up to 15 seconds, checking every 500ms
         const startTime = Date.now();
@@ -124,10 +122,7 @@ async function runCombatEventsTest(): Promise<boolean> {
                 if (newTarget && allEvents.length < 5) {
                     console.log(`[tick ${tick}] Attacking new target: ${newTarget.name}`);
                     target = newTarget;
-                    const opt = newTarget.optionsWithIndex.find(o => o.text.toLowerCase() === 'attack');
-                    if (opt) {
-                        await sdk.sendInteractNpc(newTarget.index, opt.opIndex);
-                    }
+                    await bot.attackNpc(newTarget);
                 }
             }
 

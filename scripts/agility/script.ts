@@ -180,11 +180,10 @@ async function findAndUseGate(ctx: ScriptContext): Promise<boolean> {
             await new Promise(r => setTimeout(r, 500));
         }
 
-        // Try to walk through after clicking
-        ctx.log(`  Attempting to walk through after clicking gate...`);
-        // Walk a bit further in the direction we want to go (northwest toward Taverley)
-        await ctx.bot.walkTo(gate.x - 5, gate.z + 5, 3);
-        await new Promise(r => setTimeout(r, 600));
+        // Walk through using RAW SDK walk (pathfinder doesn't know about Taverley)
+        ctx.log(`  Walking through gate using raw walk...`);
+        await ctx.sdk.sendWalk(gate.x - 15, gate.z, true);  // Walk 15 tiles west
+        await new Promise(r => setTimeout(r, 2000));
 
         // Check if position changed significantly
         const posAfter = ctx.state()?.player;
@@ -206,7 +205,13 @@ async function findAndUseGate(ctx: ScriptContext): Promise<boolean> {
     ctx.log(`Trying openDoor fallback...`);
     const doorResult = await ctx.bot.openDoor(/gate|door/i);
     if (doorResult.success) {
-        ctx.log(`  openDoor succeeded!`);
+        ctx.log(`  openDoor succeeded! Walking west through gate...`);
+        // Force walk west using raw SDK command (pathfinder may not have this area)
+        const pos = ctx.state()?.player;
+        if (pos) {
+            await ctx.sdk.sendWalk(pos.worldX - 20, pos.worldZ, true);
+            await new Promise(r => setTimeout(r, 2000));
+        }
         ctx.progress();
         return true;
     }
@@ -245,8 +250,8 @@ async function navigateFaladorToTaverley(ctx: ScriptContext): Promise<boolean> {
         // Try regular walking first
         const walkResult = await ctx.bot.walkTo(wp.x, wp.z, 8);
 
-        const pos = ctx.state()?.player;
-        const dist = distanceTo(ctx, wp.x, wp.z);
+        let pos = ctx.state()?.player;
+        let dist = distanceTo(ctx, wp.x, wp.z);
         ctx.log(`  After walk: pos=(${pos?.worldX}, ${pos?.worldZ}), dist=${dist.toFixed(0)}`);
 
         // If walk failed or we're still far, look for gates
@@ -258,8 +263,13 @@ async function navigateFaladorToTaverley(ctx: ScriptContext): Promise<boolean> {
 
             if (gateSuccess) {
                 ctx.log(`  Gate passage successful!`);
-                // Try walking again after using gate
-                await ctx.bot.walkTo(wp.x, wp.z, 8);
+                // Try raw walk west (pathfinder may not have Taverley collision data)
+                pos = ctx.state()?.player;
+                if (pos && pos.worldX > wp.x) {
+                    ctx.log(`  Using raw walk west to (${wp.x}, ${wp.z})...`);
+                    await ctx.sdk.sendWalk(wp.x, wp.z, true);
+                    await new Promise(r => setTimeout(r, 2000));
+                }
             }
         }
 
@@ -484,10 +494,25 @@ async function travelToGnomeStronghold(ctx: ScriptContext): Promise<boolean> {
     ctx.log(`\nPhase 3: Preparing for wolf zone...`);
     await eatToFull(ctx);
 
-    // Step 4: Walk directly to Gnome Stronghold (pathfinder handles wolf mountain)
+    // Step 4: Walk directly to Gnome Stronghold
+    // Use raw walking since pathfinder may not have collision data west of Taverley
     const gnomeWaypoint = WAYPOINTS_TO_GNOME[1]!;
     ctx.log(`\nPhase 4: Walking to Gnome Stronghold...`);
-    await walkToWaypoint(ctx, gnomeWaypoint.x, gnomeWaypoint.z, gnomeWaypoint.name, 15);
+
+    // Try pathfinder first, fall back to raw walking
+    const walkResult = await walkToWaypoint(ctx, gnomeWaypoint.x, gnomeWaypoint.z, gnomeWaypoint.name, 15);
+    if (!walkResult) {
+        ctx.log(`  Pathfinder failed, using raw walk...`);
+        await ctx.sdk.sendWalk(gnomeWaypoint.x, gnomeWaypoint.z, true);
+        // Wait for arrival
+        for (let i = 0; i < 60; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            const dist = distanceTo(ctx, gnomeWaypoint.x, gnomeWaypoint.z);
+            if (dist < 30) break;
+            if (i % 10 === 0) ctx.log(`  Walking... dist=${dist.toFixed(0)}`);
+            ctx.progress();
+        }
+    }
 
     // Check for death during wolf zone
     if (hasDied(ctx)) {
@@ -861,12 +886,20 @@ async function trainAgility(ctx: ScriptContext): Promise<void> {
         // Always walk to the course START (Log balance location) before each lap
         // The log balance is the first obstacle - we need to be there to start
         const LOG_BALANCE_LOCATION = { x: 2474, z: 3438 };  // Start of course
-        const distToStart = distanceTo(ctx, LOG_BALANCE_LOCATION.x, LOG_BALANCE_LOCATION.z);
+        let distToStart = distanceTo(ctx, LOG_BALANCE_LOCATION.x, LOG_BALANCE_LOCATION.z);
 
         if (distToStart > 10) {
             ctx.log(`Walking to course start (Log balance)...`);
+            // Try pathfinder first
             await ctx.bot.walkTo(LOG_BALANCE_LOCATION.x, LOG_BALANCE_LOCATION.z, 5);
-            await new Promise(r => setTimeout(r, 500));
+            distToStart = distanceTo(ctx, LOG_BALANCE_LOCATION.x, LOG_BALANCE_LOCATION.z);
+
+            // If still far, use raw walk (pathfinder may not have this area)
+            if (distToStart > 10) {
+                ctx.log(`  Using raw walk to course start...`);
+                await ctx.sdk.sendWalk(LOG_BALANCE_LOCATION.x, LOG_BALANCE_LOCATION.z, true);
+                await new Promise(r => setTimeout(r, 3000));
+            }
         }
 
         await completeLap(ctx);

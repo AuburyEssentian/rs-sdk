@@ -19,7 +19,6 @@
  */
 
 import { runTest, sleep } from './utils/test-runner';
-import type { NearbyLoc } from '../sdk/types';
 
 const LUMBRIDGE_STAIRS = { x: 3205, z: 3208 };
 
@@ -60,13 +59,9 @@ runTest({
             l.optionsWithIndex.some(o => /open/i.test(o.text))
         );
         if (door) {
-            const openOpt = door.optionsWithIndex.find(o => /open/i.test(o.text));
-            if (openOpt) {
-                console.log(`  Opening door at (${door.x}, ${door.z})`);
-                await sdk.sendInteractLoc(door.x, door.z, door.id, openOpt.opIndex);
-                await sleep(1000);
-                return true;
-            }
+            console.log(`  Opening door at (${door.x}, ${door.z})`);
+            await bot.openDoor(door);
+            return true;
         }
         return false;
     }

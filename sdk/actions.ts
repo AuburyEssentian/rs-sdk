@@ -28,6 +28,7 @@ import type {
     OpenDoorResult,
     FletchResult,
     CraftLeatherResult,
+    SmithResult,
     OpenBankResult,
     BankDepositResult,
     BankWithdrawResult
@@ -1566,6 +1567,207 @@ export class BotActions {
         }
 
         return { success: false, message: 'Crafting timed out', reason: 'timeout' };
+    }
+
+    // ============ Smithing ============
+
+    /**
+     * Smithing interface component IDs for bronze items.
+     * The smithing interface (994) uses these component IDs for each item type.
+     */
+    private static readonly SMITHING_COMPONENTS: Record<string, number> = {
+        'dagger': 1119,
+        'axe': 1120,
+        'mace': 1121,
+        'med helm': 1122,
+        'medium helm': 1122,
+        'bolts': 1123,      // Makes 10
+        'sword': 1124,
+        'scimitar': 1125,
+        'longsword': 1126,
+        'long sword': 1126,
+        'full helm': 1127,
+        'throwing knives': 1128,
+        'knives': 1128,
+        'sq shield': 1129,
+        'square shield': 1129,
+        'warhammer': 1130,
+        'war hammer': 1130,
+        'battleaxe': 1131,
+        'battle axe': 1131,
+        'chainbody': 1132,
+        'chain body': 1132,
+        'kiteshield': 1133,
+        'kite shield': 1133,
+        'claws': 1134,
+        '2h sword': 1135,
+        'two-handed sword': 1135,
+        'plateskirt': 1136,
+        'plate skirt': 1136,
+        'platelegs': 1137,
+        'plate legs': 1137,
+        'platebody': 1138,
+        'plate body': 1138,
+    };
+
+    /**
+     * Smith a bar into an item at an anvil.
+     *
+     * @param product - The item to smith (e.g., 'dagger', 'axe', 'platebody') or component ID
+     * @param options - Optional configuration
+     * @returns Result with XP gained and item created
+     *
+     * @example
+     * ```ts
+     * // Smith a bronze dagger
+     * const result = await bot.smithAtAnvil('dagger');
+     *
+     * // Smith using component ID directly
+     * const result = await bot.smithAtAnvil(1119);
+     * ```
+     */
+    async smithAtAnvil(
+        product: string | number = 'dagger',
+        options: { barPattern?: RegExp; timeout?: number } = {}
+    ): Promise<SmithResult> {
+        const { barPattern = /bar$/i, timeout = 10000 } = options;
+
+        await this.dismissBlockingUI();
+
+        // Check for hammer
+        const hammer = this.sdk.findInventoryItem(/hammer/i);
+        if (!hammer) {
+            return { success: false, message: 'No hammer in inventory', reason: 'no_hammer' };
+        }
+
+        // Check for bars
+        const bar = this.sdk.findInventoryItem(barPattern);
+        if (!bar) {
+            return { success: false, message: 'No bars in inventory', reason: 'no_bars' };
+        }
+
+        // Find anvil
+        const anvil = this.sdk.findNearbyLoc(/anvil/i);
+        if (!anvil) {
+            return { success: false, message: 'No anvil nearby', reason: 'no_anvil' };
+        }
+
+        // Determine component ID
+        let componentId: number;
+        if (typeof product === 'number') {
+            componentId = product;
+        } else {
+            const key = product.toLowerCase();
+            const directMatch = BotActions.SMITHING_COMPONENTS[key];
+            if (directMatch) {
+                componentId = directMatch;
+            } else {
+                // Try partial match
+                const matchingKey = Object.keys(BotActions.SMITHING_COMPONENTS).find(k =>
+                    k.includes(key) || key.includes(k)
+                );
+                const partialMatch = matchingKey ? BotActions.SMITHING_COMPONENTS[matchingKey] : undefined;
+                if (partialMatch) {
+                    componentId = partialMatch;
+                } else {
+                    return { success: false, message: `Unknown smithing product: ${product}`, reason: 'level_too_low' };
+                }
+            }
+        }
+
+        const smithingBefore = this.sdk.getSkill('Smithing')?.experience || 0;
+        const startTick = this.sdk.getState()?.tick || 0;
+
+        // Use bar on anvil
+        const useResult = await this.sdk.sendUseItemOnLoc(bar.slot, anvil.x, anvil.z, anvil.id);
+        if (!useResult.success) {
+            return { success: false, message: useResult.message, reason: 'no_anvil' };
+        }
+
+        // Wait for smithing interface to open
+        try {
+            await this.sdk.waitForCondition(
+                s => s.interface?.isOpen && s.interface.interfaceId === 994,
+                5000
+            );
+        } catch {
+            return { success: false, message: 'Smithing interface did not open', reason: 'interface_not_opened' };
+        }
+
+        // Click the smithing component
+        const clickResult = await this.sdk.sendClickInterfaceComponent(componentId, 1);
+        if (!clickResult.success) {
+            return { success: false, message: 'Failed to click smithing option', reason: 'interface_not_opened' };
+        }
+
+        // Wait for XP gain or timeout
+        const startTime = Date.now();
+        while (Date.now() - startTime < timeout) {
+            const state = this.sdk.getState();
+            if (!state) {
+                await new Promise(r => setTimeout(r, 200));
+                continue;
+            }
+
+            // Check for XP gain
+            const currentXp = state.skills.find(s => s.name === 'Smithing')?.experience || 0;
+            if (currentXp > smithingBefore) {
+                // Find the smithed item
+                const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts/i);
+                return {
+                    success: true,
+                    message: 'Smithed item successfully',
+                    xpGained: currentXp - smithingBefore,
+                    itemsSmithed: 1,
+                    product: smithedItem || undefined
+                };
+            }
+
+            // Check for failure messages
+            for (const msg of state.gameMessages) {
+                if (msg.tick > startTick) {
+                    const text = msg.text.toLowerCase();
+                    if (text.includes("need a smithing level") || text.includes("level to")) {
+                        return { success: false, message: 'Smithing level too low', reason: 'level_too_low' };
+                    }
+                    if (text.includes("don't have enough")) {
+                        return { success: false, message: 'Not enough bars', reason: 'no_bars' };
+                    }
+                }
+            }
+
+            // If interface closed without XP, might need to retry
+            if (!state.interface?.isOpen) {
+                const finalXp = this.sdk.getSkill('Smithing')?.experience || 0;
+                if (finalXp > smithingBefore) {
+                    const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts/i);
+                    return {
+                        success: true,
+                        message: 'Smithed item successfully',
+                        xpGained: finalXp - smithingBefore,
+                        itemsSmithed: 1,
+                        product: smithedItem || undefined
+                    };
+                }
+            }
+
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        // Final XP check
+        const finalXp = this.sdk.getSkill('Smithing')?.experience || 0;
+        if (finalXp > smithingBefore) {
+            const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts/i);
+            return {
+                success: true,
+                message: 'Smithed item successfully',
+                xpGained: finalXp - smithingBefore,
+                itemsSmithed: 1,
+                product: smithedItem || undefined
+            };
+        }
+
+        return { success: false, message: 'Smithing timed out', reason: 'timeout' };
     }
 
     // ============ Resolution Helpers ============

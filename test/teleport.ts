@@ -26,6 +26,14 @@ runTest({
 }, async ({ sdk }) => {
     console.log('Goal: Cast Varrock Teleport');
 
+    // Wait for save file to load (position should be at Lumbridge, not 0,0)
+    await sdk.waitForCondition(s => {
+        const x = s.player?.worldX ?? 0;
+        const z = s.player?.worldZ ?? 0;
+        return x > 0 && z > 0;
+    }, 5000);
+    await sleep(500);  // Extra delay for inventory/skills to sync
+
     const startX = sdk.getState()?.player?.worldX ?? 0;
     const startZ = sdk.getState()?.player?.worldZ ?? 0;
     console.log(`Starting position: (${startX}, ${startZ})`);

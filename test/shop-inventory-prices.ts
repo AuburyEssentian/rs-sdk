@@ -174,7 +174,7 @@ runTest({
         }
     }
 
-    await sdk.sendCloseShop();
+    await bot.closeShop();
 
     console.log('\n=== All tests passed ===');
     return true;
