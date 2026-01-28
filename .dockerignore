@@ -1,6 +1,6 @@
 .git/
 node_modules/
-agent/node_modules/
+gateway/node_modules/
 webclient/node_modules/
 scripts/
 bot_arcs/

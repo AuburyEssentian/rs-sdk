@@ -9,7 +9,6 @@ WORKDIR /opt/server
 # Copy vendored repositories
 COPY content /opt/server/content
 COPY webclient /opt/server/webclient
-COPY javaclient /opt/server/javaclient
 COPY engine /opt/server/engine
 COPY gateway /opt/server/gateway
 
