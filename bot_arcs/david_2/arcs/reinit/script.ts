@@ -15,8 +15,7 @@ runArc({
     timeLimit: 2 * 60 * 1000,
     stallTimeout: 60_000,
     initializeFromPreset: {
-        ...TestPresets.freshSpawn,
-        skipTutorial: true,
+        ...TestPresets.LUMBRIDGE_SPAWN,
     },
 }, async (ctx) => {
     ctx.log('=== Character Reinitialized ===');
@@ -26,11 +25,11 @@ runArc({
     for (let i = 0; i < 30; i++) {
         ctx.progress();
         state = ctx.state();
-        if (state?.player?.worldX > 0) break;
+        if (state?.player && state.player.worldX > 0) break;
         await new Promise(r => setTimeout(r, 1000));
     }
 
-    if (state?.player?.worldX > 0) {
+    if (state?.player && state.player.worldX > 0) {
         ctx.log(`SUCCESS! Position: (${state.player.worldX}, ${state.player.worldZ})`);
         ctx.log(`Total Level: ${state.skills.reduce((sum, s) => sum + s.baseLevel, 0)}`);
         ctx.log(`Inventory: ${state.inventory.length} items`);

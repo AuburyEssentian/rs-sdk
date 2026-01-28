@@ -172,7 +172,7 @@ runArc({
         }
 
         // Check if we're in combat
-        const inCombat = state.combat?.inCombat ?? false;
+        const inCombat = state.player?.combat?.inCombat ?? false;
 
         if (inCombat) {
             // Cycle styles every 20 seconds for more balanced training

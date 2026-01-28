@@ -27,7 +27,7 @@ runArc({
     let state = ctx.state();
     for (let i = 0; i < 30; i++) {
         state = ctx.state();
-        if (state?.player?.worldX > 0 && state?.player?.worldZ > 0) {
+        if (state?.player && state.player.worldX > 0 && state.player.worldZ > 0) {
             break;
         }
         ctx.progress();

@@ -21,7 +21,7 @@ runArc({
     // Wait for valid game state
     let state = ctx.state();
     let retries = 0;
-    while ((!state.player || state.player.worldX === 0) && retries < 30) {
+    while ((!state?.player || state.player.worldX === 0) && retries < 30) {
         ctx.log(`Waiting for valid game state... (attempt ${retries + 1})`);
         await new Promise(r => setTimeout(r, 1000));
         state = ctx.state();
@@ -29,12 +29,12 @@ runArc({
         ctx.progress();
     }
 
-    if (!state.player || state.player.worldX === 0) {
+    if (!state?.player || state.player.worldX === 0) {
         ctx.error('Failed to get valid game state after 30 seconds');
         return;
     }
 
-    ctx.log(`Starting position: (${state.player?.worldX}, ${state.player?.worldZ})`);
+    ctx.log(`Starting position: (${state.player.worldX}, ${state.player.worldZ})`);
 
     // Verify we have a fishing net
     const hasNet = state.inventory.some(i => /fishing net/i.test(i.name));
@@ -60,14 +60,14 @@ runArc({
         state = ctx.state();
 
         // Skip invalid states
-        if (!state.player || state.player.worldX === 0) {
+        if (!state?.player || state.player.worldX === 0) {
             ctx.log('Invalid state, waiting...');
             await new Promise(r => setTimeout(r, 1000));
             continue;
         }
 
         // Handle any dialogs
-        if (state.dialog.isOpen) {
+        if (state.dialog?.isOpen) {
             ctx.log('Dismissing dialog');
             await ctx.sdk.sendClickDialog(0);
             await new Promise(r => setTimeout(r, 500));
@@ -89,6 +89,7 @@ runArc({
 
     // Check what fishing spots are available
     state = ctx.state();
+    if (!state) return;
     const allSpots = state.nearbyNpcs.filter(npc => /fishing\s*spot/i.test(npc.name));
     if (allSpots.length > 0) {
         ctx.log(`Found ${allSpots.length} fishing spots:`);
@@ -108,14 +109,14 @@ runArc({
         state = ctx.state();
 
         // Skip invalid states
-        if (!state.player || state.player.worldX === 0) {
+        if (!state?.player || state.player.worldX === 0) {
             ctx.log('Invalid state, waiting...');
             await new Promise(r => setTimeout(r, 1000));
             continue;
         }
 
         // Handle dialogs (level-ups, etc)
-        if (state.dialog.isOpen) {
+        if (state.dialog?.isOpen) {
             ctx.log('Dismissing dialog (probably a level-up!)');
             await ctx.sdk.sendClickDialog(0);
             await new Promise(r => setTimeout(r, 500));
@@ -145,12 +146,12 @@ runArc({
                 }
             }
         } else if (fishingSpots.length > 0) {
-            ctx.warn(`Found ${fishingSpots.length} spots but none have "Net" option: ${fishingSpots[0].options.join(', ')}`);
+            ctx.warn(`Found ${fishingSpots.length} spots but none have "Net" option: ${fishingSpots[0]!.options.join(', ')}`);
             await ctx.sdk.sendWalk(DRAYNOR_FISHING.x + Math.random() * 10 - 5, DRAYNOR_FISHING.z + Math.random() * 10 - 5);
         } else {
             const driftDist = Math.sqrt(
-                Math.pow(state.player.worldX - DRAYNOR_FISHING.x, 2) +
-                Math.pow(state.player.worldZ - DRAYNOR_FISHING.z, 2)
+                Math.pow(state.player!.worldX - DRAYNOR_FISHING.x, 2) +
+                Math.pow(state.player!.worldZ - DRAYNOR_FISHING.z, 2)
             );
 
             if (driftDist > 10) {

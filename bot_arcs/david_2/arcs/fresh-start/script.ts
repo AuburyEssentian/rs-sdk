@@ -45,7 +45,7 @@ runArc({
     let state = ctx.state();
     for (let i = 0; i < 30; i++) {
         state = ctx.state();
-        if (state?.player?.worldX > 0) break;
+        if (state?.player && state.player.worldX > 0) break;
         ctx.progress();
         await new Promise(r => setTimeout(r, 1000));
     }
@@ -57,7 +57,7 @@ runArc({
 
     // Log initial stats
     const getSkillLevel = (name: string) =>
-        state.skills.find(s => s.name === name)?.baseLevel ?? 1;
+        state?.skills.find(s => s.name === name)?.baseLevel ?? 1;
 
     ctx.log(`Position: (${state.player.worldX}, ${state.player.worldZ})`);
     ctx.log(`Starting stats - Attack: ${getSkillLevel('Attack')}, Strength: ${getSkillLevel('Strength')}, Defence: ${getSkillLevel('Defence')}`);
@@ -149,7 +149,7 @@ runArc({
         }
 
         // Check if in combat
-        const inCombat = state.combat?.inCombat ?? false;
+        const inCombat = state.player?.combat?.inCombat ?? false;
         const isAnimating = state.player?.animId !== -1;
 
         if (inCombat || isAnimating) {
@@ -166,7 +166,7 @@ runArc({
             .sort((a, b) => a.distance - b.distance);
 
         if (potentialTargets.length > 0) {
-            const target = potentialTargets[0];
+            const target = potentialTargets[0]!;
             try {
                 const attackOpt = target.optionsWithIndex.find(o => /attack/i.test(o.text));
                 if (attackOpt) {

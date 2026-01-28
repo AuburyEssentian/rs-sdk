@@ -23,13 +23,13 @@ runArc({
 
     // Wait for valid state
     let state = ctx.state();
-    while (!state.player || state.player.worldX === 0) {
+    while (!state?.player || state.player.worldX === 0) {
         await new Promise(r => setTimeout(r, 1000));
         state = ctx.state();
         ctx.progress();
     }
 
-    ctx.log(`Starting at (${state.player?.worldX}, ${state.player?.worldZ})`);
+    ctx.log(`Starting at (${state.player.worldX}, ${state.player.worldZ})`);
 
     // Check inventory
     const hasAxe = state.inventory.some(i => /axe/i.test(i.name));
@@ -45,8 +45,8 @@ runArc({
     let logsChopped = 0;
     let logsBurned = 0;
     let lastStatusTime = Date.now();
-    const startWcLvl = state.skills.find(s => s.name === 'Woodcutting')?.baseLevel ?? 1;
-    const startFmLvl = state.skills.find(s => s.name === 'Firemaking')?.baseLevel ?? 1;
+    const startWcLvl = state?.skills.find(s => s.name === 'Woodcutting')?.baseLevel ?? 1;
+    const startFmLvl = state?.skills.find(s => s.name === 'Firemaking')?.baseLevel ?? 1;
 
     ctx.log(`Starting levels - Woodcutting: ${startWcLvl}, Firemaking: ${startFmLvl}`);
 
@@ -56,14 +56,14 @@ runArc({
         state = ctx.state();
 
         // Skip invalid states
-        if (!state.player || state.player.worldX === 0) {
+        if (!state?.player || state.player.worldX === 0) {
             ctx.log('Invalid state, waiting...');
             await new Promise(r => setTimeout(r, 1000));
             continue;
         }
 
         // Handle dialogs
-        if (state.dialog.isOpen) {
+        if (state.dialog?.isOpen) {
             ctx.log('Dismissing dialog');
             await ctx.sdk.sendClickDialog(0);
             await new Promise(r => setTimeout(r, 500));
@@ -76,15 +76,14 @@ runArc({
 
         if (logs.length > 0 && tinderbox && hasTinderbox) {
             // Burn some logs!
-            const logItem = logs[0];
+            const logItem = logs[0]!;
             ctx.log(`Burning ${logItem.name}...`);
 
-            // Use tinderbox on logs
-            // First use tinderbox, then use on logs
+            // Use tinderbox on logs - use item-on-item interaction
             try {
-                await ctx.sdk.sendUseItem(tinderbox.slot);
+                await ctx.sdk.sendUseItem(tinderbox.slot, 0);  // Use tinderbox
                 await new Promise(r => setTimeout(r, 300));
-                await ctx.sdk.sendUseItemOn(logItem.slot);
+                await ctx.sdk.sendUseItem(logItem.slot, 0);  // On log
                 await new Promise(r => setTimeout(r, 3000));  // Wait for burning animation
                 logsBurned++;
             } catch (e) {
@@ -108,17 +107,17 @@ runArc({
                 // No trees nearby - walk a bit
                 ctx.log('No trees nearby, looking around...');
                 await ctx.sdk.sendWalk(
-                    state.player.worldX + Math.random() * 10 - 5,
-                    state.player.worldZ + Math.random() * 10 - 5
+                    state.player!.worldX + Math.random() * 10 - 5,
+                    state.player!.worldZ + Math.random() * 10 - 5
                 );
                 await new Promise(r => setTimeout(r, 2000));
             }
         }
 
         // Drop logs if inventory is full and we don't want to keep them
-        if (state.inventory.length >= 27) {
+        if (state!.inventory.length >= 27) {
             const logsToKeep = 5;  // Keep some for burning
-            const allLogs = state.inventory.filter(i => /logs$/i.test(i.name));
+            const allLogs = state!.inventory.filter(i => /logs$/i.test(i.name));
             if (allLogs.length > logsToKeep) {
                 const logsToDrop = allLogs.slice(logsToKeep);
                 ctx.log(`Inventory full, dropping ${logsToDrop.length} logs`);
@@ -131,8 +130,8 @@ runArc({
 
         // Status update every 30 seconds
         if (Date.now() - lastStatusTime > 30_000) {
-            const wcLvl = state.skills.find(s => s.name === 'Woodcutting')?.baseLevel ?? 1;
-            const fmLvl = state.skills.find(s => s.name === 'Firemaking')?.baseLevel ?? 1;
+            const wcLvl = state?.skills.find(s => s.name === 'Woodcutting')?.baseLevel ?? 1;
+            const fmLvl = state?.skills.find(s => s.name === 'Firemaking')?.baseLevel ?? 1;
             ctx.log(`Status: WC ${wcLvl} (was ${startWcLvl}), FM ${fmLvl} (was ${startFmLvl})`);
             ctx.log(`  Logs chopped: ${logsChopped}, Logs burned: ${logsBurned}`);
             lastStatusTime = Date.now();

@@ -115,7 +115,7 @@ runArc({
         ctx.log(`Shop open with ${shopState.shopItems.length} items:`);
         for (const item of shopState.shopItems) {
             if (/axe/i.test(item.name)) {
-                ctx.log(`  ${item.name} - ${item.price}gp (stock: ${item.count})`);
+                ctx.log(`  ${item.name} - ${item.buyPrice}gp (stock: ${item.count})`);
             }
         }
     }

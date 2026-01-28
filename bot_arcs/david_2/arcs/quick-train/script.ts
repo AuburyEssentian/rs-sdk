@@ -16,7 +16,7 @@ runArc({
     let state = ctx.state();
     for (let i = 0; i < 30; i++) {
         state = ctx.state();
-        if (state?.player?.worldX > 0) break;
+        if (state?.player && state.player.worldX > 0) break;
         ctx.progress();
         await new Promise(r => setTimeout(r, 1000));
     }
@@ -49,7 +49,7 @@ runArc({
         }
 
         // Skip if already in combat
-        if (state.combat?.inCombat || state.player?.animId !== -1) {
+        if (state.player?.combat?.inCombat || state.player?.animId !== -1) {
             await new Promise(r => setTimeout(r, 1000));
             continue;
         }

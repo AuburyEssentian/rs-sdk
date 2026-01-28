@@ -86,7 +86,7 @@ runArc({
                 ctx.log('Walk failed, trying click walk...');
                 // Try clicking to walk
                 try {
-                    await ctx.sdk.sendWalkHere(targetX, targetZ);
+                    await ctx.sdk.sendWalk(targetX, targetZ);
                 } catch (e) {
                     ctx.log('Click walk also failed');
                 }
