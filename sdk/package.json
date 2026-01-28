@@ -13,7 +13,9 @@
   "files": [
     "index.ts",
     "actions.ts",
-    "types.ts"
+    "types.ts",
+    "pathfinding.ts",
+    "collision-data.json"
   ],
   "keywords": [
     "rs-agent",
@@ -23,6 +25,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "@2004scape/rsmod-pathfinder": "github:MaxBittker/rsmod-pathfinder#df7ec08"
+  },
   "peerDependencies": {
     "typescript": "^5"
   }

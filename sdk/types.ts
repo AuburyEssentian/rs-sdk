@@ -262,12 +262,6 @@ export interface SDKConfig {
     host?: string;
     /** Gateway port (default: 7780) */
     port?: number;
-    /** Web API host for pathfinding (default: same as host) */
-    webHost?: string;
-    /** Web API port for pathfinding (default: 8888, or 443 if useHttps) */
-    webPort?: number;
-    /** Use HTTPS for web API calls (default: false) */
-    useHttps?: boolean;
     actionTimeout?: number;
     autoReconnect?: boolean;
     reconnectMaxRetries?: number;

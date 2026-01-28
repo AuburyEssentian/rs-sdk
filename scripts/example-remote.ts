@@ -21,7 +21,6 @@ import { BotSDK, BotActions } from '../sdk/actions';
 // Configuration from environment
 const GATEWAY_HOST = process.env.GATEWAY_HOST || 'localhost';
 const GATEWAY_PORT = parseInt(process.env.GATEWAY_PORT || '7780');
-const WEB_PORT = parseInt(process.env.WEB_PORT || '8888');
 const BOT_USERNAME = process.env.BOT_USERNAME || 'default';
 
 async function main() {
@@ -33,8 +32,7 @@ async function main() {
     const sdk = new BotSDK({
         botUsername: BOT_USERNAME,
         host: GATEWAY_HOST,
-        port: GATEWAY_PORT,
-        webPort: WEB_PORT
+        port: GATEWAY_PORT
     });
 
     // Set up connection monitoring

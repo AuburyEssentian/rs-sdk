@@ -2,20 +2,17 @@
 
 ## Overview
 
-RS-Agent is a multi-layered bot automation framework. The architecture separates concerns into distinct layers: protocol (plumbing), domain logic (porcelain), and autonomous control (agent).
+RS-Agent is a multi-layered bot automation framework. The architecture separates concerns into distinct layers: protocol (plumbing) and domain logic (porcelain).
 
 ```mermaid
 flowchart TB
     subgraph Clients["Clients"]
         WebClient["Web Client :8888"]
-        UI["UI Panel"]
         RemoteSDK["Remote SDK Client"]
     end
 
-
     subgraph Core["Gateway :7780"]
         SyncMod["SyncModule"]
-        CtrlMod["ControllerModule"]
     end
 
     subgraph SDKLayer["SDK Layer (can run locally or remotely)"]
@@ -28,14 +25,10 @@ flowchart TB
         Runs["runs/*.jsonl"]
     end
 
-    UI <-->|"start / stop / log"| CtrlMod
-    Claude -->|"tool_use: code"| MCP
-    MCP -->|"bot.chopTree()"| Porcelain
     Porcelain -->|"sendInteractLoc()"| SDK
     SDK <-->|"ws://host:7780"| SyncMod
     RemoteSDK <-->|"ws://host:7780"| SyncMod
     SyncMod <-->|"action / actionResult"| WebClient
-    CtrlMod -->|"events.jsonl"| Runs
     SyncMod -->|"player.json"| Files
 ```
 
@@ -47,8 +40,8 @@ The SDK follows Git's two-layer model:
 
 | Layer | File | Resolves When | Use Case |
 |-------|------|---------------|----------|
-| **Plumbing** | `sdk.ts` | Game acknowledges action | Fast, low-level protocol |
-| **Porcelain** | `bot-actions.ts` | Effect is verified | Reliable, domain-aware |
+| **Plumbing** | `sdk/index.ts` | Game acknowledges action | Fast, low-level protocol |
+| **Porcelain** | `sdk/actions.ts` | Effect is verified | Reliable, domain-aware |
 
 ### Plumbing Layer
 
@@ -78,13 +71,13 @@ bot.openDoor(target)       // Waits for door animation
 
 ```mermaid
 sequenceDiagram
-    participant Agent
+    participant Script
     participant Porcelain as BotActions
     participant SDK as BotSDK
     participant Sync
     participant Bot as Bot Client
 
-    Agent->>Porcelain: bot.chopTree()
+    Script->>Porcelain: bot.chopTree()
     Porcelain->>SDK: sendInteractLoc()
     SDK->>Sync: sdk_action (actionId)
     Sync->>Bot: action
@@ -94,7 +87,7 @@ sequenceDiagram
     Porcelain->>SDK: waitForCondition()
     Note over Porcelain,SDK: Poll until logs appear
     SDK-->>Porcelain: success
-    Porcelain-->>Agent: complete
+    Porcelain-->>Script: complete
 ```
 
 ---
@@ -136,41 +129,6 @@ classDiagram
 
 ---
 
-## Agent System
-
-The Claude Agent SDK service maintains persistent sessions with code execution capabilities.
-
-```mermaid
-flowchart LR
-    subgraph Session["BotSession"]
-        SDK2["BotSDK"]
-        Bot["BotActions"]
-        History["conversationHistory"]
-    end
-
-    subgraph Tools["MCP Tools"]
-        Code["code"]
-        Bash["bash"]
-    end
-
-    Claude["Claude Agent"] -->|"await bot.mineTin()"| Tools
-    Tools -->|"execute()"| Session
-    Session -->|"sdk_action"| Sync["Sync :7780"]
-```
-
-### Agent Loop
-
-1. Receive goal from controller
-2. Inject initial state as context
-3. Run query loop:
-   - Analyze state delta
-   - Generate SDK code
-   - Execute via MCP
-   - Update state
-4. Repeat until goal achieved
-
----
-
 ## Remote Client Support
 
 The SDK supports remote connections out of the box. Users can run scripts from anywhere that connect to a remote gateway.
@@ -198,13 +156,11 @@ flowchart LR
 ### Remote Connection Example
 
 ```typescript
-import { BotSDK } from '@rs-agent/sdk';
-import { BotActions } from '@rs-agent/sdk/actions';
+import { BotSDK, BotActions } from '../sdk/actions';
 
 const sdk = new BotSDK({
-    botUsername: 'player1',
-    host: 'game-server.example.com',  // Remote server
-    port: 7780
+    botUsername: 'mybot',
+    gatewayUrl: 'wss://rs-sdk-demo.fly.dev/agent'
 });
 
 await sdk.connect();
@@ -220,9 +176,9 @@ await bot.burnLogs();
 | Option | Default | Description |
 |--------|---------|-------------|
 | `botUsername` | required | Bot to control |
-| `host` | `'localhost'` | Gateway hostname |
-| `port` | `7780` | Gateway port |
-| `webPort` | `8888` | Game engine port (for pathfinding API) |
+| `gatewayUrl` | - | Full gateway URL (e.g., `wss://server/agent`) |
+| `host` | `'localhost'` | Gateway hostname (if not using gatewayUrl) |
+| `port` | `7780` | Gateway port (if not using gatewayUrl) |
 | `actionTimeout` | `30000` | Action timeout in ms |
 | `autoReconnect` | `true` | Auto-reconnect on disconnect |
 | `reconnectMaxRetries` | `Infinity` | Max reconnection attempts |
@@ -249,10 +205,10 @@ await sdk.waitForConnection(60000);
 
 | Component | Path | Purpose |
 |-----------|------|---------|
-| **Gateway** | `agent/gateway.ts` | Unified WebSocket router (sync + controller) |
-| **SDK** | `agent/sdk.ts` | Low-level protocol mapping |
-| **BotActions** | `agent/bot-actions.ts` | Domain-aware API |
-| **Types** | `agent/types.ts` | Shared type definitions |
+| **Gateway** | `agent/gateway.ts` | WebSocket router for bot/SDK communication |
+| **SDK** | `sdk/index.ts` | Low-level protocol mapping (plumbing) |
+| **BotActions** | `sdk/actions.ts` | Domain-aware API (porcelain) |
+| **Types** | `sdk/types.ts` | Shared type definitions |
 
 ---
 
@@ -297,6 +253,7 @@ flowchart TB
 
 - `browser.ts` — Puppeteer session management, tutorial skip
 - `save-generator.ts` — Pre-configured save files with positions, items, skills
+- `test-runner.ts` — Test execution and orchestration
 
 ---
 
@@ -304,7 +261,7 @@ flowchart TB
 
 | Port | Service | Protocol |
 |------|---------|----------|
-| 7780 | Gateway | WebSocket (bot/SDK/UI) |
+| 7780 | Gateway | WebSocket (bot/SDK) |
 | 8888 | Engine | HTTP/WS |
 
 ---
@@ -360,19 +317,6 @@ await bot.someAction()
 ## File Structure
 
 ```
-agent/
-├── gateway.ts            # Unified WebSocket router
-├── bot-actions.ts        # Domain API (porcelain)
-├── sdk.ts                # Protocol layer (plumbing)
-├── types.ts              # Shared types
-├── run-recorder.ts       # Logging
-└── agent-state/          # Per-bot state files
-    └── <botname>/
-        ├── player.json
-        ├── skills.json
-        ├── inventory.json
-        └── world.md
-
 sdk/                          # Standalone SDK package - SOURCE OF TRUTH
 ├── package.json              # npm package config
 ├── index.ts                  # BotSDK (plumbing layer)
@@ -381,18 +325,26 @@ sdk/                          # Standalone SDK package - SOURCE OF TRUTH
 └── README.md                 # Installation & usage docs
 
 agent/
+├── gateway.ts                # WebSocket router for bot/SDK communication
 ├── sdk.ts                    # Re-exports from sdk/
 ├── bot-actions.ts            # Re-exports from sdk/
-├── gateway.ts                # Unified WebSocket router
 ├── types.ts                  # Game protocol types
+├── run-recorder.ts           # Logging
 └── agent-state/              # Per-bot state files
+    └── <botname>/
+        ├── player.json
+        ├── skills.json
+        ├── inventory.json
+        └── world.md
 
-remote/                       # Example remote client scripts
-└── woodcutting.ts            # Remote woodcutting example
+scripts/                      # Example scripts and automation
+├── example-remote.ts         # Remote connection example
+└── <task>/script.ts          # Task-specific scripts
 
 test/
 ├── utils/
-│   ├── browser.ts        # Puppeteer helpers
-│   └── save-generator.ts # Test save creation
-└── *.ts                  # 40+ test files
+│   ├── browser.ts            # Puppeteer helpers
+│   ├── save-generator.ts     # Test save creation
+│   └── test-runner.ts        # Test execution utilities
+└── *.ts                      # 45+ test files
 ```

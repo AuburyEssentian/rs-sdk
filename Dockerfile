@@ -21,8 +21,8 @@ RUN bun install
 # Copy default env
 RUN cp .env.example .env
 
-# Patch web.ts to bind to 0.0.0.0 for fly.io compatibility
-RUN sed -i 's/port: Environment.WEB_PORT,/port: Environment.WEB_PORT, hostname: "0.0.0.0",/' src/web.ts
+# Patch web/index.ts to bind to 0.0.0.0 for fly.io compatibility
+RUN sed -i 's/port: Environment.WEB_PORT,/port: Environment.WEB_PORT, hostname: "0.0.0.0",/' src/web/index.ts
 
 # Pre-build the game data
 RUN bun run build

@@ -15,6 +15,7 @@ import type {
     SDKConfig,
     ConnectionState
 } from './types';
+import * as pathfinding from './pathfinding';
 
 interface SyncToSDKMessage {
     type: 'sdk_connected' | 'sdk_state' | 'sdk_action_result' | 'sdk_error' | 'sdk_screenshot_response';
@@ -57,15 +58,11 @@ export class BotSDK {
     private intentionalDisconnect = false;
 
     constructor(config: SDKConfig) {
-        const useHttps = config.useHttps ?? !!config.gatewayUrl?.startsWith('wss://');
         this.config = {
             botUsername: config.botUsername,
             gatewayUrl: config.gatewayUrl || '',
             host: config.host || 'localhost',
             port: config.port || 7780,
-            webHost: config.webHost || config.host || 'localhost',
-            webPort: config.webPort || (useHttps ? 443 : 8888),
-            useHttps: useHttps,
             actionTimeout: config.actionTimeout || 30000,
             autoReconnect: config.autoReconnect ?? true,
             reconnectMaxRetries: config.reconnectMaxRetries ?? Infinity,
@@ -73,6 +70,9 @@ export class BotSDK {
             reconnectMaxDelay: config.reconnectMaxDelay ?? 30000
         };
         this.sdkClientId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // Initialize pathfinding on first SDK creation
+        pathfinding.initPathfinding();
     }
 
     // ============ Connection ============
@@ -541,30 +541,41 @@ export class BotSDK {
         });
     }
 
-    // ============ Server-Side Pathfinding ============
+    // ============ Local Pathfinding ============
 
-    async sendFindPath(
+    findPath(
         destX: number,
         destZ: number,
         maxWaypoints: number = 500
-    ): Promise<{ success: boolean; waypoints: Array<{ x: number; z: number; level: number }>; reachedDestination?: boolean; error?: string }> {
+    ): { success: boolean; waypoints: Array<{ x: number; z: number; level: number }>; reachedDestination?: boolean; error?: string } {
         const state = this.getState();
         if (!state?.player) {
             return { success: false, waypoints: [], error: 'No player state available' };
         }
 
         const { worldX: srcX, worldZ: srcZ, level } = state.player;
-        const protocol = this.config.useHttps ? 'https' : 'http';
-        const portSuffix = (this.config.useHttps && this.config.webPort === 443) || (!this.config.useHttps && this.config.webPort === 80) ? '' : `:${this.config.webPort}`;
-        const url = `${protocol}://${this.config.webHost}${portSuffix}/api/findPath?srcX=${srcX}&srcZ=${srcZ}&destX=${destX}&destZ=${destZ}&level=${level}&maxWaypoints=${maxWaypoints}`;
 
-        try {
-            const response = await fetch(url);
-            const result = await response.json();
-            return result;
-        } catch (e: any) {
-            return { success: false, waypoints: [], error: e.message };
+        // Check if zones are allocated
+        if (!pathfinding.isZoneAllocated(level, srcX, srcZ) || !pathfinding.isZoneAllocated(level, destX, destZ)) {
+            return { success: false, waypoints: [], error: 'Zone not allocated (no collision data)' };
         }
+
+        const waypoints = pathfinding.findLongPath(level, srcX, srcZ, destX, destZ, maxWaypoints);
+        const lastWaypoint = waypoints[waypoints.length - 1];
+        const reachedDestination = lastWaypoint !== undefined &&
+            lastWaypoint.x === destX &&
+            lastWaypoint.z === destZ;
+
+        return { success: true, waypoints, reachedDestination };
+    }
+
+    // Alias for backwards compatibility
+    async sendFindPath(
+        destX: number,
+        destZ: number,
+        maxWaypoints: number = 500
+    ): Promise<{ success: boolean; waypoints: Array<{ x: number; z: number; level: number }>; reachedDestination?: boolean; error?: string }> {
+        return this.findPath(destX, destZ, maxWaypoints);
     }
 
     // ============ Plumbing: State Waiting ============

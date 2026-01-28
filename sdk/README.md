@@ -26,9 +26,7 @@ import { BotActions } from './rs-sdk/actions';
 // Connect to the public demo server (ephemeral save files!)
 const sdk = new BotSDK({
     botUsername: 'mybot123',
-    gatewayUrl: 'wss://rs-sdk-demo.fly.dev/agent',
-    webHost: 'rs-sdk-demo.fly.dev',
-    useHttps: true
+    gatewayUrl: 'wss://rs-sdk-demo.fly.dev/agent'
 });
 
 await sdk.connect();
@@ -85,11 +83,10 @@ await page.goto('https://rs-sdk-demo.fly.dev/bot?bot=mybot123&password=test');
 | `gatewayUrl` | - | Full WebSocket URL (e.g. `wss://server.com/agent`) |
 | `host` | `'localhost'` | Gateway hostname (ignored if gatewayUrl set) |
 | `port` | `7780` | Gateway port (ignored if gatewayUrl set) |
-| `webHost` | same as host | Host for pathfinding API |
-| `webPort` | `8888` or `443` | Port for pathfinding API |
-| `useHttps` | `false` | Use HTTPS for API calls |
 | `actionTimeout` | `30000` | Action timeout in ms |
 | `autoReconnect` | `true` | Auto-reconnect on disconnect |
+
+
 
 ## Two-Layer API
 
