@@ -762,6 +762,66 @@ export class Client extends GameShell {
     }
 
     /**
+     * Set character design parameters
+     * @param gender true for male, false for female
+     * @param body array of 7 body kit indices (or null to keep current)
+     * @param colors array of 5 color indices (or null to keep current)
+     */
+    setCharacterDesign(gender: boolean, body: number[] | null, colors: number[] | null): boolean {
+        this.designGender = gender;
+        this.validateCharacterDesign();
+
+        if (body && body.length === 7) {
+            for (let i = 0; i < 7; i++) {
+                this.designKits[i] = body[i];
+            }
+        }
+
+        if (colors && colors.length === 5) {
+            for (let i = 0; i < 5; i++) {
+                this.designColours[i] = colors[i];
+            }
+        }
+
+        this.updateDesignModel = true;
+        return true;
+    }
+
+    /**
+     * Randomize character design with valid random values
+     * @param gender optional gender (true=male, false=female), random if not provided
+     */
+    randomizeCharacterDesign(gender?: boolean): boolean {
+        // Randomize gender if not specified
+        this.designGender = gender ?? Math.random() < 0.5;
+
+        // First validate to get default kits for this gender
+        this.validateCharacterDesign();
+
+        // Now randomize each body part from valid options
+        for (let part = 0; part < 7; part++) {
+            const validKits: number[] = [];
+            for (let j = 0; j < IdkType.count; j++) {
+                if (!IdkType.types[j].disable && IdkType.types[j].type === part + (this.designGender ? 0 : 7)) {
+                    validKits.push(j);
+                }
+            }
+            if (validKits.length > 0) {
+                this.designKits[part] = validKits[Math.floor(Math.random() * validKits.length)];
+            }
+        }
+
+        // Randomize colors (using known color counts: 12, 16, 16, 6, 8)
+        const colorCounts = [12, 16, 16, 6, 8];
+        for (let i = 0; i < 5; i++) {
+            this.designColours[i] = Math.floor(Math.random() * colorCounts[i]);
+        }
+
+        this.updateDesignModel = true;
+        return true;
+    }
+
+    /**
      * Find an NPC by name in the nearby NPC list
      * Returns the NPC index for use with talkToNpc, or -1 if not found
      */
@@ -2302,27 +2362,26 @@ export class Client extends GameShell {
 
     /**
      * Enable AI agent mode - shows agent panel and connects to sync service
+     * @deprecated Agent UI has been removed
      */
     enableAgentMode(): void {
-        if (this.botOverlay) {
-            this.botOverlay.toggleAgentMode();
-        }
+        // Agent UI removed
     }
 
     /**
      * Toggle AI agent mode on/off
+     * @deprecated Agent UI has been removed
      */
     toggleAgentMode(): void {
-        if (this.botOverlay) {
-            this.botOverlay.toggleAgentMode();
-        }
+        // Agent UI removed
     }
 
     /**
      * Check if AI agent mode is enabled (panel visible)
+     * @deprecated Agent UI has been removed
      */
     isAgentModeEnabled(): boolean {
-        return this.botOverlay?.isAgentPanelVisible() || false;
+        return false;
     }
 
     // === END AGENT MODE PUBLIC METHODS ===
@@ -6432,12 +6491,7 @@ export class Client extends GameShell {
         // Update Bot SDK overlay
         if (this.botOverlay) {
             this.botOverlay.update();
-        }
-
-        // Tick Agent Mode (sends state, executes actions)
-        // Tick agent panel for sync service communication
-        if (this.botOverlay) {
-            this.botOverlay.tickAgentPanel();
+            this.botOverlay.tick();
         }
 
         this.sceneDelta = 0;

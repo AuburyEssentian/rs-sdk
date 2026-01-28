@@ -180,20 +180,9 @@
                 document.getElementById('bot-password').value = savedPass;
             }
 
-            // Load goal from URL ?goal= param
-            const botGoal = urlParams.get('goal');
-            if (botGoal && window.gameClient && window.gameClient.agentPanel) {
-                window.gameClient.agentPanel.setGoal(botGoal);
-            }
-            // Store goal for later if client not ready yet
-            if (botGoal) {
-                window.pendingGoal = botGoal;
-            }
-
             // Store URL params for auto-initialization after client loads
             window.urlParams = {
                 password: urlPassword,
-                agentMode: urlParams.get('agentMode') === 'true',
                 fps: urlParams.has('fps') ? parseInt(urlParams.get('fps'), 10) : null
             };
         }
@@ -204,7 +193,6 @@
             const urlParams = new URLSearchParams(window.location.search);
             const params = {
                 password: urlParams.get('password'),
-                agentMode: urlParams.get('agentMode') === 'true',
                 fps: urlParams.has('fps') ? parseInt(urlParams.get('fps'), 10) : null
             };
 
@@ -233,13 +221,6 @@
                 if (params.fps && client.setTargetedFramerate) {
                     client.setTargetedFramerate(params.fps);
                     console.log('[Bot] Set FPS to', params.fps);
-                }
-
-                // Enable agent mode if specified
-                if (params.agentMode && client.enableAgentMode) {
-                    client.enableAgentMode();
-                    document.getElementById('bot-status').textContent = 'Agent mode enabled';
-                    console.log('[Bot] Agent mode enabled');
                 }
             }
         }
@@ -333,7 +314,7 @@
             <div class="bot-status" id="bot-status">Ready</div>
         </div>
 
-        <!-- SDK Panel container (AgentPanel mounts here) -->
+        <!-- SDK Panel container -->
         <div id="sdk-panel-container"></div>
     </center>
 
@@ -364,7 +345,7 @@
         (() => {
             clientInstance = new Client(<%= nodeid %>, <%= lowmem %>, <%= members %>);
             window.gameClient = clientInstance;
-            // Auto-initialize from URL params (login, agentMode, fps)
+            // Auto-initialize from URL params (login, fps)
             autoInitFromUrlParams();
         })();
 

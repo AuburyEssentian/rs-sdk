@@ -237,7 +237,7 @@ function renderAgentTranscript(runName: string, meta: RunMetadata, events: RunEv
             font-size: 30px;
             cursor: pointer;
         }
-        /* Highlight.js custom theme - matching AgentPanel */
+        /* Highlight.js custom theme */
         .hljs { background: transparent; color: #808080; }
         .hljs-keyword { color: #907090; }
         .hljs-built_in { color: #709080; }
@@ -298,11 +298,9 @@ export type WebSocketData = {
     client: WSClientSocket,
     remoteAddress: string,
     isAgentProxy?: boolean,
-    isAgentControllerProxy?: boolean,
     agentWs?: WebSocket,
     agentReady?: boolean,
-    agentQueue?: string[],
-    botUsername?: string  // Username for multi-bot routing
+    agentQueue?: string[]
 };
 
 export type WebSocketRoutes = {
@@ -315,34 +313,15 @@ export async function startWeb() {
         async fetch(req, server) {
             const url = new URL(req.url ?? `', 'http://${req.headers.get('host')}`);
 
-            // Gateway status endpoint (HTTP proxy)
-            if (url.pathname === '/gateway/status') {
-                try {
-                    const response = await fetch('http://localhost:7780/status');
-                    const data = await response.text();
-                    return new Response(data, {
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                } catch (_err) {
-                    return new Response(JSON.stringify({ error: 'Gateway not available' }), {
-                        status: 503,
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                }
-            }
-
-            // Agent WebSocket proxy endpoint
+            // Agent SDK WebSocket proxy endpoint
             if (url.pathname === '/agent' || url.pathname === '/agent/') {
                 const upgradeHeader = req.headers.get('upgrade');
                 if (upgradeHeader?.toLowerCase() === 'websocket') {
-                    // Extract bot username from query param for multi-bot support
-                    const botUsername = url.searchParams.get('bot') || 'default';
                     const upgraded = server.upgrade(req, {
                         data: {
                             client: new WSClientSocket(),
                             remoteAddress: getIp(req),
-                            isAgentProxy: true,
-                            botUsername
+                            isAgentProxy: true
                         }
                     });
 
@@ -352,31 +331,7 @@ export async function startWeb() {
 
                     return new Response(null, { status: 404 });
                 }
-                return new Response('WebSocket endpoint for AI agent (supports ?bot=username for multi-bot)', { status: 200 });
-            }
-
-            // Agent Controller WebSocket proxy endpoint
-            if (url.pathname === '/agent-controller' || url.pathname === '/agent-controller/') {
-                const upgradeHeader = req.headers.get('upgrade');
-                if (upgradeHeader?.toLowerCase() === 'websocket') {
-                    // Extract bot username from query param for multi-bot support
-                    const botUsername = url.searchParams.get('bot') || 'default';
-                    const upgraded = server.upgrade(req, {
-                        data: {
-                            client: new WSClientSocket(),
-                            remoteAddress: getIp(req),
-                            isAgentControllerProxy: true,
-                            botUsername
-                        }
-                    });
-
-                    if (upgraded) {
-                        return undefined;
-                    }
-
-                    return new Response(null, { status: 404 });
-                }
-                return new Response('WebSocket endpoint for agent controller UI (supports ?bot=username for multi-bot)', { status: 200 });
+                return new Response('WebSocket endpoint for SDK connections', { status: 200 });
             }
 
             if (url.pathname === '/' || url.pathname === '/bot' || url.pathname === '/bot/') {
@@ -1503,60 +1458,15 @@ ${runs.length === 0 ? '<div class="empty">No runs yet for this script</div>' : '
             }
         },
         websocket: {
-            maxPayloadLength: 16 * 1024 * 1024, // 16MB for screenshot responses
             open(ws) {
-                // Handle agent proxy connections
+                // Handle agent SDK proxy connections
                 if (ws.data.isAgentProxy) {
-                    // Connect to internal agent service
                     const agentWs = new WebSocket('ws://localhost:7780');
                     ws.data.agentWs = agentWs;
                     ws.data.agentReady = false;
                     ws.data.agentQueue = [];
 
                     agentWs.onopen = () => {
-                        // Agent connection established - flush queued messages
-                        ws.data.agentReady = true;
-                        for (const msg of ws.data.agentQueue || []) {
-                            agentWs.send(msg);
-                        }
-                        ws.data.agentQueue = [];
-                    };
-
-                    agentWs.onmessage = (event) => {
-                        // Forward agent messages to client
-                        try {
-                            ws.send(event.data);
-                        } catch (_) {
-                            agentWs.close();
-                        }
-                    };
-
-                    agentWs.onclose = () => {
-                        try {
-                            ws.close();
-                        } catch (_) {}
-                    };
-
-                    agentWs.onerror = (err) => {
-                        console.error('Agent WebSocket error:', err);
-                        try {
-                            ws.close();
-                        } catch (_) {}
-                    };
-
-                    return;
-                }
-
-                // Handle agent controller proxy connections (now via gateway)
-                if (ws.data.isAgentControllerProxy) {
-                    // Connect to gateway service with bot username (UI connection)
-                    const botUsername = ws.data.botUsername || 'default';
-                    const agentWs = new WebSocket(`ws://localhost:7780?bot=${botUsername}`);
-                    ws.data.agentWs = agentWs;
-                    ws.data.agentReady = false;
-                    ws.data.agentQueue = [];
-
-                    agentWs.onopen = () => {
                         ws.data.agentReady = true;
                         for (const msg of ws.data.agentQueue || []) {
                             agentWs.send(msg);
@@ -1579,7 +1489,7 @@ ${runs.length === 0 ? '<div class="empty">No runs yet for this script</div>' : '
                     };
 
                     agentWs.onerror = (err) => {
-                        console.error('Agent Controller WebSocket error:', err);
+                        console.error('Agent SDK WebSocket error:', err);
                         try {
                             ws.close();
                         } catch (_) {}
@@ -1622,18 +1532,17 @@ ${runs.length === 0 ? '<div class="empty">No runs yet for this script</div>' : '
                 ws.data.client.init(ws, ws.data.remoteAddress ?? ws.remoteAddress);
             },
             message(ws, message: Buffer) {
-                // Handle agent proxy connections
-                if (ws.data.isAgentProxy || ws.data.isAgentControllerProxy) {
+                // Handle agent SDK proxy connections
+                if (ws.data.isAgentProxy) {
                     try {
                         const msgStr = message.toString();
                         if (ws.data.agentReady && ws.data.agentWs?.readyState === WebSocket.OPEN) {
                             ws.data.agentWs.send(msgStr);
                         } else {
-                            // Queue message until agent connection is ready
                             ws.data.agentQueue?.push(msgStr);
                         }
                     } catch (err) {
-                        console.error('Agent proxy message error:', err);
+                        console.error('Agent SDK proxy message error:', err);
                         ws.close();
                     }
                     return;
@@ -1662,8 +1571,8 @@ ${runs.length === 0 ? '<div class="empty">No runs yet for this script</div>' : '
                 }
             },
             close(ws) {
-                // Handle agent proxy connections
-                if (ws.data.isAgentProxy || ws.data.isAgentControllerProxy) {
+                // Handle agent SDK proxy connections
+                if (ws.data.isAgentProxy) {
                     try {
                         ws.data.agentWs?.close();
                     } catch (_) {}

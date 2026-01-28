@@ -6,15 +6,12 @@
     "rsbot": "./cli.ts"
   },
   "scripts": {
-    "agent": "bun run agent-service.ts",
-    "agent:dev": "bun run --watch agent-service.ts",
     "gateway": "bun run gateway.ts",
     "gateway:dev": "bun run --watch gateway.ts",
     "cli": "bun run cli.ts",
     "login": "bun run login.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.14",
     "@anthropic-ai/sdk": "^0.39.0",
     "puppeteer": "^24.0.0"
   },

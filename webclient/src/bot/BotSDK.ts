@@ -10,7 +10,6 @@ import ObjType from '#/config/ObjType.js';
 import NpcType from '#/config/NpcType.js';
 import LocType from '#/config/LocType.js';
 import type LinkList from '#/datastruct/LinkList.js';
-import { AgentPanel } from './AgentPanel.js';
 
 // Skill names in order of their indices
 export const SKILL_NAMES: string[] = [
@@ -216,6 +215,18 @@ export interface CombatEvent {
     targetIndex: number;
 }
 
+export interface DialogState {
+    isOpen: boolean;
+    options: Array<{ index: number; text: string }>;
+    isWaiting: boolean;
+}
+
+export interface InterfaceState {
+    isOpen: boolean;
+    interfaceId: number;
+    options: Array<{ index: number; text: string }>;
+}
+
 export interface BotState {
     tick: number;
     player: PlayerState | null;
@@ -233,6 +244,14 @@ export interface BotState {
     inGame: boolean;
     /** Recent combat events (damage, kills) - bounded to last ~50 ticks */
     combatEvents: CombatEvent[];
+    /** Dialog state (NPC chat, options) */
+    dialog: DialogState;
+    /** Interface state (crafting menus, etc.) */
+    interface: InterfaceState;
+    /** Whether a modal interface is open */
+    modalOpen: boolean;
+    /** The ID of the modal interface (-1 if none) */
+    modalInterface: number;
 }
 
 // State collector class
@@ -271,8 +290,42 @@ export class BotStateCollector {
             menuActions: this.collectMenuActions(),
             shop: this.collectShopState(),
             inGame: c.ingame || false,
-            combatEvents: [...this.combatEvents] // Return copy of events
+            combatEvents: [...this.combatEvents], // Return copy of events
+            dialog: this.collectDialogState(),
+            interface: this.collectInterfaceState(),
+            modalOpen: (c.viewportInterfaceId ?? -1) !== -1,
+            modalInterface: c.viewportInterfaceId ?? -1
         };
+    }
+
+    private collectDialogState(): DialogState {
+        const c = this.client as any;
+        const isOpen = c.chatInterfaceId !== -1;
+        const isWaiting = c.pressedContinueOption || false;
+
+        // Get dialog options using client's method if available
+        let options: Array<{ index: number; text: string }> = [];
+        if (isOpen && typeof this.client.getDialogOptions === 'function') {
+            const rawOptions = this.client.getDialogOptions();
+            options = rawOptions.map((opt: any) => ({ index: opt.index, text: opt.text }));
+        }
+
+        return { isOpen, options, isWaiting };
+    }
+
+    private collectInterfaceState(): InterfaceState {
+        const c = this.client as any;
+        const interfaceId = c.viewportInterfaceId ?? -1;
+        const isOpen = interfaceId !== -1;
+
+        // Get interface options using client's method if available
+        let options: Array<{ index: number; text: string }> = [];
+        if (isOpen && typeof this.client.getInterfaceOptions === 'function') {
+            const rawOptions = this.client.getInterfaceOptions();
+            options = rawOptions.map((opt: any) => ({ index: opt.index, text: opt.text }));
+        }
+
+        return { isOpen, interfaceId, options };
     }
 
     private collectCombatEvents(currentTick: number): void {
@@ -1261,22 +1314,14 @@ export function formatBotState(state: BotState): string {
     return lines.join('\n');
 }
 
-// Extended world state interface for agent (includes dialog/modal/interface)
+// Extended world state interface for agent (includes extra debug info)
 export interface BotWorldState extends BotState {
-    dialog: {
-        isOpen: boolean;
-        options: Array<{ index: number; text: string }>;
-        isWaiting: boolean;
+    dialog: DialogState & {
         allComponents?: Array<{ id: number; type: number; buttonType: number; option: string; text: string }>;
     };
-    interface: {
-        isOpen: boolean;
-        interfaceId: number;
-        options: Array<{ index: number; text: string }>;
+    interface: InterfaceState & {
         debugInfo: string[];
     };
-    modalOpen: boolean;
-    modalInterface: number;
 }
 
 // Format world state for agent - includes dialog/modal info
@@ -1437,14 +1482,64 @@ export interface PacketLogEntry {
     data: string;
 }
 
-// HTML Overlay class for displaying state
+// Extract bot username from URL query params
+function getBotUsername(): string {
+    if (typeof window === 'undefined') return 'default';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('bot') || 'default';
+}
+
+// SDK action types (matches AgentPanel)
+type BotAction =
+    | { type: 'none'; reason: string }
+    | { type: 'wait'; reason: string; ticks?: number }
+    | { type: 'talkToNpc'; npcIndex: number; reason: string }
+    | { type: 'interactNpc'; npcIndex: number; optionIndex: number; reason: string }
+    | { type: 'clickDialogOption'; optionIndex: number; reason: string }
+    | { type: 'clickInterfaceOption'; optionIndex: number; reason: string }
+    | { type: 'clickInterfaceComponent'; componentId: number; optionIndex?: number; reason: string }
+    | { type: 'acceptCharacterDesign'; reason: string }
+    | { type: 'skipTutorial'; reason: string }
+    | { type: 'walkTo'; x: number; z: number; running?: boolean; reason: string }
+    | { type: 'useInventoryItem'; slot: number; optionIndex: number; reason: string }
+    | { type: 'dropItem'; slot: number; reason: string }
+    | { type: 'pickupItem'; x: number; z: number; itemId: number; reason: string }
+    | { type: 'interactGroundItem'; x: number; z: number; itemId: number; optionIndex: number; reason: string }
+    | { type: 'interactLoc'; x: number; z: number; locId: number; optionIndex: number; reason: string }
+    | { type: 'useItemOnItem'; sourceSlot: number; targetSlot: number; reason: string }
+    | { type: 'useItemOnLoc'; itemSlot: number; x: number; z: number; locId: number; reason: string }
+    | { type: 'useEquipmentItem'; slot: number; optionIndex: number; reason: string }
+    | { type: 'shopBuy'; slot: number; amount: number; reason: string }
+    | { type: 'shopSell'; slot: number; amount: number; reason: string }
+    | { type: 'closeShop'; reason: string }
+    | { type: 'closeModal'; reason: string }
+    | { type: 'setCombatStyle'; style: number; reason: string }
+    | { type: 'spellOnNpc'; npcIndex: number; spellComponent: number; reason: string }
+    | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
+    | { type: 'setTab'; tabIndex: number; reason: string }
+    | { type: 'say'; message: string; reason: string }
+    | { type: 'bankDeposit'; slot: number; amount: number; reason: string }
+    | { type: 'bankWithdraw'; slot: number; amount: number; reason: string };
+
+// HTML Overlay class for displaying state and SDK actions
 export class BotOverlay {
     private container: HTMLDivElement;
     private content: HTMLPreElement;
+    private actionLog: HTMLPreElement;
     private collector: BotStateCollector;
     private visible: boolean = true;
-    private minimized: boolean = true;
+    private minimized: boolean = false;  // Show state by default
     private client: Client;
+
+    // SDK sync connection
+    private syncWs: WebSocket | null = null;
+    private syncReconnectTimer: number | null = null;
+    private syncConnected: boolean = false;
+    private pendingAction: BotAction | null = null;
+    private currentActionId: string | null = null;
+    private waitTicks: number = 0;
+    private actionLogEntries: string[] = [];
+    private static readonly MAX_LOG_ENTRIES = 50;
 
     // Packet log panel
     private packetLogContainer: HTMLDivElement;
@@ -1452,13 +1547,12 @@ export class BotOverlay {
     private packetLogVisible: boolean = false;
     private packetLogEnabled: boolean = false;
 
-    // Agent SDK panel
-    private agentPanel: AgentPanel;
-
     constructor(client: Client) {
         this.client = client;
         this.collector = new BotStateCollector(client);
-        this.agentPanel = new AgentPanel(client);
+
+        // Connect to gateway for SDK actions
+        this.connectSync();
 
         // Create overlay container
         this.container = document.createElement('div');
@@ -1486,25 +1580,51 @@ export class BotOverlay {
         header.innerHTML = `
             <span style="font-weight: bold;">BOT SDK</span>
             <div>
-                <button id="bot-agent" style="background: none; border: 1px solid #FFD700; color: #FFD700; cursor: pointer; padding: 2px 8px; margin-right: 4px; font-size: 10px; font-weight: bold;">AGENT</button>
                 <button id="bot-packets" style="background: none; border: 1px solid #04A800; color: #04A800; cursor: pointer; padding: 2px 8px; font-size: 10px;">PKT</button>
             </div>
         `;
 
-        // Create content area
+        // Create content area (world state)
         this.content = document.createElement('pre');
         this.content.id = 'bot-sdk-content';
         this.content.style.cssText = `
             margin: 0;
             padding: 10px;
             overflow-y: auto;
+            max-height: 300px;
             white-space: pre-wrap;
             word-wrap: break-word;
-            display: none;
         `;
+
+        // Create action log area
+        const actionHeader = document.createElement('div');
+        actionHeader.style.cssText = `
+            padding: 4px 10px;
+            background: rgba(4, 168, 0, 0.15);
+            border-top: 1px solid rgba(4, 168, 0, 0.3);
+            font-weight: bold;
+            font-size: 10px;
+        `;
+        actionHeader.textContent = 'SDK ACTIONS';
+
+        this.actionLog = document.createElement('pre');
+        this.actionLog.id = 'bot-sdk-actions';
+        this.actionLog.style.cssText = `
+            margin: 0;
+            padding: 10px;
+            overflow-y: auto;
+            max-height: 150px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #FFD700;
+            font-size: 10px;
+        `;
+        this.actionLog.textContent = '(waiting for SDK actions...)';
 
         this.container.appendChild(header);
         this.container.appendChild(this.content);
+        this.container.appendChild(actionHeader);
+        this.container.appendChild(this.actionLog);
 
         // Mount to sdk-panel-container if it exists, otherwise fall back to body
         const sdkContainer = document.getElementById('sdk-panel-container');
@@ -1576,14 +1696,12 @@ export class BotOverlay {
 
         // Setup event handlers
         const packetsBtn = document.getElementById('bot-packets');
-        const agentBtn = document.getElementById('bot-agent');
         const pktToggle = document.getElementById('pkt-toggle');
         const pktClear = document.getElementById('pkt-clear');
         const pktCopy = document.getElementById('pkt-copy');
         const pktClose = document.getElementById('pkt-close');
 
         packetsBtn?.addEventListener('click', () => this.togglePacketLog());
-        agentBtn?.addEventListener('click', () => this.toggleAgentMode());
         pktToggle?.addEventListener('click', () => this.togglePacketLogging());
         pktClear?.addEventListener('click', () => this.clearPacketLog());
         pktCopy?.addEventListener('click', () => this.copyPacketLog());
@@ -1632,40 +1750,35 @@ export class BotOverlay {
         });
     }
 
-    // Agent SDK panel toggle
-    toggleAgentMode(): void {
-        this.agentPanel.toggle();
-    }
-
-    // Tick the agent panel (called from client's main loop)
-    tickAgentPanel(): void {
-        this.agentPanel.tick();
-    }
-
-    // Check if agent panel is visible
-    isAgentPanelVisible(): boolean {
-        return this.agentPanel.isVisible();
-    }
-
     // Packet log panel methods
     togglePacketLog(): void {
         this.packetLogVisible = !this.packetLogVisible;
         this.packetLogContainer.style.display = this.packetLogVisible ? 'block' : 'none';
+
+        // Auto-enable logging when opening, auto-disable when closing
+        if (this.packetLogVisible && !this.packetLogEnabled) {
+            this.setPacketLogging(true);
+        } else if (!this.packetLogVisible && this.packetLogEnabled) {
+            this.setPacketLogging(false);
+        }
     }
 
     togglePacketLogging(): void {
-        this.packetLogEnabled = !this.packetLogEnabled;
-        this.client.setPacketLogging(this.packetLogEnabled);
+        this.setPacketLogging(!this.packetLogEnabled);
+    }
+
+    private setPacketLogging(enabled: boolean): void {
+        this.packetLogEnabled = enabled;
+        this.client.setPacketLogging(enabled);
 
         const toggleBtn = document.getElementById('pkt-toggle');
         if (toggleBtn) {
-            toggleBtn.textContent = this.packetLogEnabled ? 'ON' : 'OFF';
-            toggleBtn.style.background = this.packetLogEnabled ? '#FF6600' : '#333';
-            toggleBtn.style.color = this.packetLogEnabled ? '#000' : '#FF6600';
+            toggleBtn.textContent = enabled ? 'ON' : 'OFF';
+            toggleBtn.style.background = enabled ? '#FF6600' : '#333';
+            toggleBtn.style.color = enabled ? '#000' : '#FF6600';
         }
 
-        if (this.packetLogEnabled) {
-            // Set up callback for real-time updates
+        if (enabled) {
             this.client.setPacketLogCallback((entry) => this.addPacketLogEntry(entry));
             this.packetLogContent.textContent = '--- Packet logging started ---\n';
         } else {
@@ -1713,7 +1826,12 @@ export class BotOverlay {
 
     toggleMinimize(): void {
         this.minimized = !this.minimized;
-        this.content.style.display = this.minimized ? 'none' : 'block';
+        const display = this.minimized ? 'none' : 'block';
+        this.content.style.display = display;
+        this.actionLog.style.display = display;
+        // Also hide/show the action header (it's the 3rd child)
+        const actionHeader = this.container.children[2] as HTMLElement;
+        if (actionHeader) actionHeader.style.display = display;
         this.container.style.maxHeight = this.minimized ? 'auto' : '600px';
     }
 
@@ -1747,7 +1865,536 @@ export class BotOverlay {
         return this.collector.collectState();
     }
 
+    // ============ SDK Sync Connection ============
+
+    private connectSync(): void {
+        if (this.syncWs) return;
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const botUsername = getBotUsername();
+        // Connect as bot (no ?bot= param - that's for SDK/UI connections)
+        const url = `${protocol}//${host}/agent`;
+
+        try {
+            this.syncWs = new WebSocket(url);
+
+            this.syncWs.onopen = () => {
+                this.syncConnected = true;
+                console.log(`[BotOverlay] Connected to gateway, registering as '${botUsername}'`);
+                this.logAction('connected', 'Connected to SDK gateway');
+
+                // Clear any stale pending actions from previous sessions
+                // This prevents agents from getting stuck in broken states
+                if (this.pendingAction) {
+                    console.log(`[BotOverlay] Clearing stale pending action on connect: ${this.pendingAction.type}`);
+                }
+                this.pendingAction = null;
+                this.waitTicks = 0;
+
+                // Register as bot with gateway
+                this.sendSync({ type: 'connected', username: botUsername, clientId: `${botUsername}-${Date.now()}` });
+            };
+
+            this.syncWs.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    this.handleSyncMessage(msg);
+                } catch (e) {
+                    console.error('[BotSDK] Failed to parse sync message:', e);
+                }
+            };
+
+            this.syncWs.onclose = () => {
+                this.syncConnected = false;
+                this.syncWs = null;
+                this.logAction('disconnected', 'Disconnected from SDK gateway');
+                // Reconnect after delay
+                if (this.syncReconnectTimer) clearTimeout(this.syncReconnectTimer);
+                this.syncReconnectTimer = window.setTimeout(() => this.connectSync(), 3000);
+            };
+
+            this.syncWs.onerror = () => {
+                // Will trigger onclose
+            };
+        } catch (e) {
+            console.error('[BotSDK] Failed to connect to sync:', e);
+        }
+    }
+
+    private sendSync(msg: any): void {
+        if (this.syncWs?.readyState === WebSocket.OPEN) {
+            this.syncWs.send(JSON.stringify(msg));
+        }
+    }
+
+    private handleSyncMessage(msg: any): void {
+        if (msg.type === 'action') {
+            console.log(`[BotOverlay] Received action: ${msg.action?.type} (${msg.actionId})`);
+            this.pendingAction = msg.action;
+            this.currentActionId = msg.actionId || null;
+            this.logAction(msg.action.type, this.formatAction(msg.action));
+        } else if (msg.type === 'status') {
+            console.log(`[BotOverlay] Gateway status: ${msg.status}`);
+        } else if (msg.type === 'screenshot_request') {
+            this.captureAndSendScreenshot(msg.screenshotId);
+        }
+    }
+
+    private captureAndSendScreenshot(screenshotId?: string): void {
+        // Import canvas from graphics module
+        const canvasEl = (window as any).gameCanvas || document.querySelector('canvas');
+        if (!canvasEl) return;
+
+        try {
+            // Capture canvas only (not full page) as PNG
+            const dataUrl = canvasEl.toDataURL('image/png');
+
+            // Send screenshot back via sync service
+            this.sendSync({
+                type: 'screenshot_response',
+                dataUrl,
+                screenshotId
+            });
+        } catch (e) {
+            console.error('[BotOverlay] Failed to capture screenshot:', e);
+        }
+    }
+
+    private formatAction(action: BotAction): string {
+        switch (action.type) {
+            case 'walkTo': return `Walk to (${action.x}, ${action.z})`;
+            case 'interactNpc': return `Interact NPC #${action.npcIndex} opt ${action.optionIndex}`;
+            case 'talkToNpc': return `Talk to NPC #${action.npcIndex}`;
+            case 'interactLoc': return `Interact loc ${action.locId} at (${action.x}, ${action.z})`;
+            case 'useInventoryItem': return `Use inv slot ${action.slot} opt ${action.optionIndex}`;
+            case 'dropItem': return `Drop slot ${action.slot}`;
+            case 'pickupItem': return `Pickup item ${action.itemId} at (${action.x}, ${action.z})`;
+            case 'interactGroundItem': return `Interact ground item ${action.itemId} at (${action.x}, ${action.z})`;
+            case 'clickDialogOption': return `Dialog option ${action.optionIndex}`;
+            case 'useItemOnItem': return `Use slot ${action.sourceSlot} on ${action.targetSlot}`;
+            case 'shopBuy': return `Buy slot ${action.slot} x${action.amount}`;
+            case 'shopSell': return `Sell slot ${action.slot} x${action.amount}`;
+            case 'wait': return `Wait ${action.ticks || 1} ticks`;
+            case 'acceptCharacterDesign': return 'Accept character design';
+            case 'skipTutorial': return 'Skip tutorial';
+            case 'say': return `Say: ${action.message}`;
+            default: return action.type;
+        }
+    }
+
+    private logAction(type: string, detail: string): void {
+        const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const entry = `[${time}] ${type}: ${detail}`;
+        this.actionLogEntries.unshift(entry);
+        if (this.actionLogEntries.length > BotOverlay.MAX_LOG_ENTRIES) {
+            this.actionLogEntries.pop();
+        }
+        this.actionLog.textContent = this.actionLogEntries.join('\n');
+    }
+
+    // Sync throttling - only send state every N ticks
+    private syncTickCounter: number = 0;
+    private static readonly SYNC_INTERVAL_TICKS: number = 10; // Sync every 10 ticks (~500ms at 20 ticks/sec)
+
+    // Called from client's main loop to execute pending actions
+    tick(): void {
+        // Handle wait ticks
+        if (this.waitTicks > 0) {
+            this.waitTicks--;
+            if (this.waitTicks === 0 && this.currentActionId) {
+                this.sendActionResult({ success: true, message: 'Wait complete' });
+            }
+            return;
+        }
+
+        // Execute pending action
+        if (this.pendingAction) {
+            const action = this.pendingAction;
+            this.pendingAction = null;
+
+            console.log(`[BotOverlay] Executing action: ${action.type}`);
+            const result = this.executeAction(action);
+            console.log(`[BotOverlay] Action result: ${result.success ? 'success' : 'failed'} - ${result.message}`);
+
+            // Handle wait action specially
+            if (action.type === 'wait' && result.success) {
+                this.waitTicks = action.ticks || 1;
+                return;
+            }
+
+            this.sendActionResult(result);
+
+            // Send state immediately after action for fresh feedback
+            this.syncTickCounter = 0;
+            this.sendState();
+            return;
+        }
+
+        // Send current state to sync service (throttled)
+        this.syncTickCounter++;
+        if (this.syncTickCounter >= BotOverlay.SYNC_INTERVAL_TICKS) {
+            this.syncTickCounter = 0;
+            this.sendState();
+        }
+    }
+
+    private collectWorldState(): BotWorldState | null {
+        if (!this.collector || !this.client) return null;
+
+        const baseState = this.collector.collectState();
+        const c = this.client as any;
+
+        // Get dialog state - include componentId for direct clicking
+        const dialogOptions: Array<{ index: number; text: string; componentId?: number; buttonType?: number }> = [];
+        const allDialogComponents: Array<{ id: number; type: number; buttonType: number; option: string; text: string }> = [];
+        if (c.chatInterfaceId !== -1) {
+            const options = this.client.getDialogOptions();
+            for (const opt of options) {
+                dialogOptions.push({
+                    index: opt.index,
+                    text: opt.text,
+                    componentId: opt.componentId,
+                    buttonType: opt.buttonType
+                });
+            }
+            // Also get ALL components for debugging
+            if (typeof this.client.debugDialogComponents === 'function') {
+                const debugComps = this.client.debugDialogComponents();
+                for (const comp of debugComps) {
+                    allDialogComponents.push(comp);
+                }
+            }
+        }
+
+        // Collect interface options (for crafting menus like fletching)
+        const interfaceOptions: Array<{ index: number; text: string }> = [];
+        if (this.client.isViewportInterfaceOpen()) {
+            const options = this.client.getInterfaceOptions();
+            for (const opt of options) {
+                interfaceOptions.push({ index: opt.index, text: opt.text });
+            }
+        }
+
+        return {
+            ...baseState,
+            dialog: {
+                isOpen: this.client.isDialogOpen(),
+                options: dialogOptions,
+                isWaiting: this.client.isWaitingForDialog(),
+                allComponents: allDialogComponents
+            },
+            interface: {
+                isOpen: this.client.isViewportInterfaceOpen(),
+                interfaceId: this.client.getViewportInterface(),
+                options: interfaceOptions,
+                debugInfo: this.client.isViewportInterfaceOpen()
+                    ? this.client.getInterfaceDebugInfo(this.client.getViewportInterface())
+                    : []
+            },
+            modalOpen: this.client.isModalOpen(),
+            modalInterface: this.client.getModalInterface()
+        };
+    }
+
+    private sendState(): void {
+        // Don't send state until we've sent the 'connected' message
+        if (!this.syncConnected) return;
+        if (!this.syncWs || this.syncWs.readyState !== WebSocket.OPEN) return;
+
+        const state = this.collectWorldState();
+        if (!state) return;
+
+        // Include formatted state for display
+        const formattedState = formatWorldStateForAgent(state as BotWorldState, 'SDK Control');
+        this.sendSync({
+            type: 'state',
+            state,
+            formattedState
+        });
+    }
+
+    private sendActionResult(result: { success: boolean; message: string }): void {
+        if (this.currentActionId) {
+            this.sendSync({ type: 'actionResult', actionId: this.currentActionId, result });
+            this.logAction(result.success ? 'success' : 'failed', result.message);
+            this.currentActionId = null;
+        }
+    }
+
+    // Helper to wrap boolean client methods
+    private wrapBool(result: boolean, successMsg: string, failMsg: string): { success: boolean; message: string } {
+        return result ? { success: true, message: successMsg } : { success: false, message: failMsg };
+    }
+
+    private executeAction(action: BotAction): { success: boolean; message: string } {
+        try {
+            switch (action.type) {
+                case 'none':
+                    return { success: true, message: 'No action' };
+
+                case 'wait':
+                    return { success: true, message: `Waiting ${action.ticks || 1} ticks` };
+
+                case 'walkTo':
+                    return this.wrapBool(
+                        this.client.walkTo(action.x, action.z, action.running ?? true),
+                        `Walking to (${action.x}, ${action.z})`,
+                        'Failed to walk'
+                    );
+
+                case 'talkToNpc':
+                    return this.wrapBool(
+                        this.client.talkToNpc(action.npcIndex),
+                        `Talking to NPC #${action.npcIndex}`,
+                        'Failed to talk to NPC'
+                    );
+
+                case 'interactNpc':
+                    return this.wrapBool(
+                        this.client.interactNpc(action.npcIndex, action.optionIndex),
+                        `Interacting with NPC #${action.npcIndex}`,
+                        'Failed to interact with NPC'
+                    );
+
+                case 'interactLoc':
+                    return this.wrapBool(
+                        this.client.interactLoc(action.x, action.z, action.locId, action.optionIndex),
+                        `Interacting with loc ${action.locId}`,
+                        'Failed to interact with location'
+                    );
+
+                case 'useInventoryItem':
+                    return this.wrapBool(
+                        this.client.useInventoryItem(action.slot, action.optionIndex),
+                        `Using inventory slot ${action.slot}`,
+                        'Failed to use inventory item'
+                    );
+
+                case 'dropItem':
+                    return this.wrapBool(
+                        this.client.dropInventoryItem(action.slot),
+                        `Dropping item at slot ${action.slot}`,
+                        'Failed to drop item'
+                    );
+
+                case 'pickupItem':
+                    return this.wrapBool(
+                        this.client.pickupGroundItem(action.x, action.z, action.itemId),
+                        `Picking up item ${action.itemId}`,
+                        'Failed to pickup item'
+                    );
+
+                case 'clickDialogOption':
+                    return this.wrapBool(
+                        this.client.clickDialogOption(action.optionIndex),
+                        `Clicked dialog option ${action.optionIndex}`,
+                        'Failed to click dialog option'
+                    );
+
+                case 'clickInterfaceOption':
+                    return this.wrapBool(
+                        this.client.clickInterfaceOption(action.optionIndex),
+                        `Clicked interface option ${action.optionIndex}`,
+                        'Failed to click interface option'
+                    );
+
+                case 'clickInterfaceComponent':
+                    // Use simple IF_BUTTON for option 1 (e.g., casting spells), INV_BUTTON for inventory-style ops
+                    if ((action.optionIndex ?? 1) === 1) {
+                        return this.wrapBool(
+                            this.client.clickComponent(action.componentId),
+                            `Clicked interface component ${action.componentId}`,
+                            'Failed to click interface component'
+                        );
+                    } else {
+                        return this.wrapBool(
+                            this.client.clickInterfaceIop(action.componentId, action.optionIndex ?? 1),
+                            `Clicked interface component ${action.componentId} option ${action.optionIndex ?? 1}`,
+                            'Failed to click interface component'
+                        );
+                    }
+
+                case 'useItemOnItem':
+                    return this.wrapBool(
+                        this.client.useItemOnItem(action.sourceSlot, action.targetSlot),
+                        `Using slot ${action.sourceSlot} on ${action.targetSlot}`,
+                        'Failed to use item on item'
+                    );
+
+                case 'useItemOnLoc':
+                    return this.wrapBool(
+                        this.client.useItemOnLoc(action.itemSlot, action.x, action.z, action.locId),
+                        `Using item on location`,
+                        'Failed to use item on location'
+                    );
+
+                case 'useEquipmentItem':
+                    // Use INV_BUTTON for equipment (not OPHELD) - triggers inv_button1 script for unequip
+                    return this.wrapBool(
+                        this.client.clickEquipmentSlot(action.slot, action.optionIndex),
+                        `Using equipment slot ${action.slot}`,
+                        'Failed to use equipment item'
+                    );
+
+                case 'shopBuy':
+                    return this.wrapBool(
+                        this.client.shopBuy(action.slot, action.amount),
+                        `Buying from slot ${action.slot}`,
+                        'Failed to buy from shop'
+                    );
+
+                case 'shopSell':
+                    return this.wrapBool(
+                        this.client.shopSell(action.slot, action.amount),
+                        `Selling from slot ${action.slot}`,
+                        'Failed to sell to shop'
+                    );
+
+                case 'closeShop':
+                    return this.wrapBool(
+                        this.client.closeShop(),
+                        'Closed shop',
+                        'Failed to close shop'
+                    );
+
+                case 'closeModal':
+                    return this.wrapBool(
+                        this.client.closeModal(),
+                        'Closed modal',
+                        'Failed to close modal'
+                    );
+
+                case 'setCombatStyle':
+                    return this.wrapBool(
+                        this.client.setCombatStyle(action.style),
+                        `Set combat style to ${action.style}`,
+                        'Failed to set combat style'
+                    );
+
+                case 'spellOnNpc':
+                    return this.wrapBool(
+                        this.client.spellOnNpc(action.npcIndex, action.spellComponent),
+                        `Casting spell on NPC #${action.npcIndex}`,
+                        'Failed to cast spell on NPC'
+                    );
+
+                case 'spellOnItem':
+                    return this.wrapBool(
+                        this.client.spellOnItem(action.slot, action.spellComponent),
+                        `Casting spell on item slot ${action.slot}`,
+                        'Failed to cast spell on item'
+                    );
+
+                case 'setTab':
+                    return this.wrapBool(
+                        this.client.setTab(action.tabIndex),
+                        `Switched to tab ${action.tabIndex}`,
+                        'Failed to switch tab'
+                    );
+
+                case 'bankDeposit':
+                    return this.wrapBool(
+                        this.client.bankDeposit(action.slot, action.amount),
+                        `Depositing from slot ${action.slot}`,
+                        'Failed to deposit'
+                    );
+
+                case 'bankWithdraw':
+                    return this.wrapBool(
+                        this.client.bankWithdraw(action.slot, action.amount),
+                        `Withdrawing from slot ${action.slot}`,
+                        'Failed to withdraw'
+                    );
+
+                case 'acceptCharacterDesign':
+                    return this.wrapBool(
+                        this.client.acceptCharacterDesign(),
+                        'Character design accepted',
+                        'Failed to accept character design'
+                    );
+
+                case 'skipTutorial': {
+                    // Inline tutorial skip logic (mirrors Client.skipTutorial but synchronous)
+                    if (!this.client.ingame) {
+                        return { success: false, message: 'Not in game yet' };
+                    }
+
+                    // If a dialog is open, try to interact with it
+                    if (this.client.isDialogOpen()) {
+                        if (this.client.isWaitingForDialog()) {
+                            return { success: false, message: 'Waiting for dialog response...' };
+                        }
+
+                        const options = this.client.getDialogOptions();
+                        if (options.length > 0) {
+                            // Look for "Yes please" or similar affirmative option
+                            for (let i = 0; i < options.length; i++) {
+                                const text = options[i].text.toLowerCase();
+                                if (text.includes('yes')) {
+                                    this.client.clickDialogOption(i + 1);
+                                    return { success: true, message: `Selected: ${options[i].text}` };
+                                }
+                            }
+                            // If no clear yes option, just click option 1
+                            this.client.clickDialogOption(1);
+                            return { success: true, message: `Selected: ${options[0]?.text || 'option 1'}` };
+                        }
+
+                        // No options available, click continue
+                        if (this.client.clickDialogOption(0)) {
+                            return { success: true, message: 'Clicked continue' };
+                        }
+                        return { success: false, message: 'Dialog open but cannot interact' };
+                    }
+
+                    // Find and talk to RuneScape Guide
+                    const guideIndex = this.client.findNpcByName('RuneScape Guide');
+                    if (guideIndex >= 0) {
+                        this.client.talkToNpc(guideIndex);
+                        return { success: true, message: 'Talking to RuneScape Guide' };
+                    }
+
+                    // Try other common tutorial NPC names
+                    const alternateNames = ['Guide', 'Tutorial'];
+                    for (const name of alternateNames) {
+                        const idx = this.client.findNpcByName(name);
+                        if (idx >= 0) {
+                            this.client.talkToNpc(idx);
+                            return { success: true, message: `Talking to ${name}` };
+                        }
+                    }
+
+                    return { success: false, message: 'No tutorial NPC found nearby' };
+                }
+
+                case 'interactGroundItem':
+                    return this.wrapBool(
+                        this.client.interactGroundItem(action.x, action.z, action.itemId, action.optionIndex),
+                        `Interacting with ground item ${action.itemId}`,
+                        'Failed to interact with ground item'
+                    );
+
+                case 'say':
+                    return this.wrapBool(
+                        this.client.say(action.message),
+                        `Said: ${action.message}`,
+                        'Failed to send message'
+                    );
+
+                default:
+                    return { success: false, message: `Unknown action type: ${(action as any).type}` };
+            }
+        } catch (e) {
+            return { success: false, message: `Error: ${e}` };
+        }
+    }
+
     destroy(): void {
+        // Clean up sync connection
+        if (this.syncReconnectTimer) clearTimeout(this.syncReconnectTimer);
+        if (this.syncWs) this.syncWs.close();
+
         // Clean up packet log callback
         if (this.packetLogEnabled) {
             this.client.setPacketLogCallback(null);

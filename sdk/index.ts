@@ -17,16 +17,24 @@ import type {
 } from './types';
 
 interface SyncToSDKMessage {
-    type: 'sdk_connected' | 'sdk_state' | 'sdk_action_result' | 'sdk_error';
+    type: 'sdk_connected' | 'sdk_state' | 'sdk_action_result' | 'sdk_error' | 'sdk_screenshot_response';
     success?: boolean;
     state?: BotWorldState;
     actionId?: string;
     result?: ActionResult;
     error?: string;
+    screenshotId?: string;
+    dataUrl?: string;
 }
 
 interface PendingAction {
     resolve: (result: ActionResult) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+}
+
+interface PendingScreenshot {
+    resolve: (dataUrl: string) => void;
     reject: (error: Error) => void;
     timeout: ReturnType<typeof setTimeout>;
 }
@@ -36,6 +44,7 @@ export class BotSDK {
     private ws: WebSocket | null = null;
     private state: BotWorldState | null = null;
     private pendingActions = new Map<string, PendingAction>();
+    private pendingScreenshots = new Map<string, PendingScreenshot>();
     private stateListeners = new Set<(state: BotWorldState) => void>();
     private connectionListeners = new Set<(state: ConnectionState, attempt?: number) => void>();
     private connectPromise: Promise<void> | null = null;
@@ -497,6 +506,41 @@ export class BotSDK {
         return this.sendAction({ type: 'bankWithdraw', slot, amount, reason: 'SDK' });
     }
 
+    // ============ Screenshot ============
+
+    /**
+     * Request a screenshot from the bot client.
+     * Returns the screenshot as a data URL (data:image/png;base64,...).
+     * @param timeout - Timeout in milliseconds (default 10000)
+     */
+    async sendScreenshot(timeout: number = 10000): Promise<string> {
+        if (this.connectionState === 'reconnecting') {
+            console.log(`[BotSDK] Waiting for reconnection before requesting screenshot`);
+            await this.waitForConnection();
+        }
+
+        if (!this.isConnected()) {
+            throw new Error(`Not connected (state: ${this.connectionState})`);
+        }
+
+        const screenshotId = `ss-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        return new Promise((resolve, reject) => {
+            const timeoutHandle = setTimeout(() => {
+                this.pendingScreenshots.delete(screenshotId);
+                reject(new Error('Screenshot request timed out'));
+            }, timeout);
+
+            this.pendingScreenshots.set(screenshotId, { resolve, reject, timeout: timeoutHandle });
+
+            this.send({
+                type: 'sdk_screenshot_request',
+                username: this.config.botUsername,
+                screenshotId
+            });
+        });
+    }
+
     // ============ Server-Side Pathfinding ============
 
     async sendFindPath(
@@ -612,6 +656,36 @@ export class BotSDK {
                     this.pendingActions.delete(message.actionId);
                     pending.reject(new Error(message.error || 'Unknown error'));
                 }
+            }
+            if (message.screenshotId) {
+                const pending = this.pendingScreenshots.get(message.screenshotId);
+                if (pending) {
+                    clearTimeout(pending.timeout);
+                    this.pendingScreenshots.delete(message.screenshotId);
+                    pending.reject(new Error(message.error || 'Screenshot error'));
+                }
+            }
+        }
+
+        if (message.type === 'sdk_screenshot_response' && message.dataUrl) {
+            // Try to find by screenshotId first, then fall back to any pending
+            let pending: PendingScreenshot | undefined;
+            if (message.screenshotId) {
+                pending = this.pendingScreenshots.get(message.screenshotId);
+                if (pending) {
+                    this.pendingScreenshots.delete(message.screenshotId);
+                }
+            }
+            // If no screenshotId or not found, resolve the first pending screenshot
+            if (!pending && this.pendingScreenshots.size > 0) {
+                const [firstId, firstPending] = this.pendingScreenshots.entries().next().value;
+                pending = firstPending;
+                this.pendingScreenshots.delete(firstId);
+            }
+
+            if (pending) {
+                clearTimeout(pending.timeout);
+                pending.resolve(message.dataUrl);
             }
         }
     }

@@ -17,11 +17,9 @@ Demo Production server running on Fly.io with game server, web client, and bot S
 
 | Endpoint | Description |
 |----------|-------------|
-| `wss://rs-sdk-demo.fly.dev/agent` | Bot/SDK WebSocket connection |
-| `wss://rs-sdk-demo.fly.dev/agent?bot=<name>` | Multi-bot SDK connection |
-| `wss://rs-sdk-demo.fly.dev/agent-controller` | UI WebSocket (agent control panel) |
-| `wss://rs-sdk-demo.fly.dev/agent-controller?bot=<name>` | Multi-bot UI connection |
-| `https://rs-sdk-demo.fly.dev/gateway/status` | Gateway status (JSON) |
+| `wss://rs-sdk-demo.fly.dev/` | Game WebSocket connection |
+| `wss://rs-sdk-demo.fly.dev/bot` | Bot client WebSocket connection |
+| `wss://rs-sdk-demo.fly.dev/agent` | SDK WebSocket connection (proxies to gateway) |
 
 ### APIs
 
@@ -76,7 +74,4 @@ fly logs -a rs-sdk-demo
 
 # SSH into machine
 fly ssh console -a rs-sdk-demo
-
-# Check status
-curl https://rs-sdk-demo.fly.dev/gateway/status
 ```

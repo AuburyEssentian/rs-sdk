@@ -34,7 +34,7 @@ let sharedBrowserRefCount = 0;
 
 // Game canvas size (must match the canvas element in bot.ejs)
 const GAME_WIDTH = 765;
-const GAME_HEIGHT = 540;
+const GAME_HEIGHT = 600;
 
 // Chrome args optimized for lower resource usage
 const LIGHTWEIGHT_CHROME_ARGS = [
@@ -257,6 +257,20 @@ export async function launchBotBrowser(
 
     console.log(`[Browser] Bot '${name}' logged in and in-game`);
 
+    // Randomize character appearance and send to server
+    const randomized = await page.evaluate(() => {
+        const client = (window as any).gameClient;
+        if (client?.randomizeCharacterDesign && client?.acceptCharacterDesign) {
+            client.randomizeCharacterDesign();
+            client.acceptCharacterDesign();
+            return true;
+        }
+        return false;
+    });
+    if (randomized) {
+        console.log(`[Browser] Randomized character appearance`);
+    }
+
     return {
         browser,
         page,
@@ -296,15 +310,9 @@ export function isOnTutorialIsland(x: number, z: number): boolean {
 /**
  * Skip tutorial using SDK.
  * Returns true if tutorial was skipped successfully.
+ * Note: Character appearance is now randomized in launchBotBrowser, not here.
  */
 export async function skipTutorial(sdk: BotSDK, maxAttempts: number = 30): Promise<boolean> {
-    // Accept character design if modal is open
-    const state = sdk.getState();
-    if (state?.modalOpen && state.modalInterface === 269) {
-        await sdk.sendAcceptCharacterDesign();
-        await sleep(500);
-    }
-
     // Check if we're in tutorial (on Tutorial Island specifically)
     const isInTutorial = () => {
         const s = sdk.getState();
@@ -351,7 +359,7 @@ export async function launchBotWithSDK(
 
     // Skip tutorial if requested
     if (shouldSkipTutorial) {
-        const success = await skipTutorial(sdk);
+        const success = await skipTutorial(sdk, 30);
         if (!success) {
             await sdk.disconnect();
             await browser.cleanup();

@@ -273,6 +273,5 @@ varps[281] = 1000;  // Tutorial complete
 | `agent/bot-actions.ts` | Porcelain layer - high-level domain-aware actions |
 | `agent/gateway.ts` | Unified WebSocket router (sync + controller) |
 | `agent/agent-service.ts` | Claude Agent SDK service |
-| `webclient/src/bot/AgentPanel.ts` | Client-side action handling |
 | `webclient/src/client/Client.ts` | Low-level client methods (clickInterfaceIop, etc.) |
 | `test/utils/save-generator.ts` | Generate pre-configured save files for tests |

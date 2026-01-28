@@ -28,6 +28,7 @@ export default [
     },
     {
         rules: {
+            'no-empty': 'warn',
             indent: ['error', 4, { SwitchCase: 1 }],
             quotes: ['error', 'single', { avoidEscape: true }],
             semi: ['error', 'always'],

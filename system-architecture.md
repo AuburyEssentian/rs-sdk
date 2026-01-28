@@ -12,10 +12,6 @@ flowchart TB
         RemoteSDK["Remote SDK Client"]
     end
 
-    subgraph Agent["Agent Layer"]
-        Claude["Claude Agent SDK :7782"]
-        MCP["MCP Tools"]
-    end
 
     subgraph Core["Gateway :7780"]
         SyncMod["SyncModule"]
@@ -256,10 +252,7 @@ await sdk.waitForConnection(60000);
 | **Gateway** | `agent/gateway.ts` | Unified WebSocket router (sync + controller) |
 | **SDK** | `agent/sdk.ts` | Low-level protocol mapping |
 | **BotActions** | `agent/bot-actions.ts` | Domain-aware API |
-| **Agent Service** | `agent/agent-service.ts` | Claude integration |
-| **CLI** | `agent/cli.ts` | Command-line interface |
 | **Types** | `agent/types.ts` | Shared type definitions |
-| **Recorder** | `agent/run-recorder.ts` | Conversation logging |
 
 ---
 
@@ -312,7 +305,6 @@ flowchart TB
 | Port | Service | Protocol |
 |------|---------|----------|
 | 7780 | Gateway | WebSocket (bot/SDK/UI) |
-| 7782 | Agent SDK | WebSocket |
 | 8888 | Engine | HTTP/WS |
 
 ---
@@ -369,11 +361,9 @@ await bot.someAction()
 
 ```
 agent/
-├── agent-service.ts      # Claude agent service
 ├── gateway.ts            # Unified WebSocket router
 ├── bot-actions.ts        # Domain API (porcelain)
 ├── sdk.ts                # Protocol layer (plumbing)
-├── cli.ts                # CLI tool
 ├── types.ts              # Shared types
 ├── run-recorder.ts       # Logging
 └── agent-state/          # Per-bot state files
@@ -394,10 +384,7 @@ agent/
 ├── sdk.ts                    # Re-exports from sdk/
 ├── bot-actions.ts            # Re-exports from sdk/
 ├── gateway.ts                # Unified WebSocket router
-├── agent-service.ts          # Claude agent service
-├── cli.ts                    # CLI tool
 ├── types.ts                  # Game protocol types
-├── run-recorder.ts           # Logging
 └── agent-state/              # Per-bot state files
 
 remote/                       # Example remote client scripts

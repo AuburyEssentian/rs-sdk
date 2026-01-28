@@ -1,16 +1,15 @@
 <div align="center">
-    <h1>Lost City</h1>
+    <h1>RS-SDK</h1>
 </div>
 
-> [!NOTE]
-> Learn about our history and ethos on our forum: https://lostcity.rs/t/faq-what-is-lost-city/16
+rs-sdk is a typescript library for connecting to and driving bots on a research-oriented implimentation of economic role-playing mmo environment.
 
-This is a higher-level repository contains LostCity base game engine, web client, Java client, game content, plus our own AI agent system.
+> [!NOTE]
+> RS-SDK is a fork and extension of the base LostCity engine and client. LostCity is an amazing project without which this would not be possible. 
+> Find their original code here or read their history and ethos on their forum: https://lostcity.rs/t/faq-what-is-lost-city/16
+
 
 ## Getting Started
-
-> [!IMPORTANT]
-> If you run into issues, please see  [common issues](#common-issues).
 
 ```sh
 # Quick start (interactive menu)
@@ -36,7 +35,6 @@ This is a higher-level repository contains LostCity base game engine, web client
 | `content/` | Game assets - maps, models, scripts, sprites, music |
 | `webclient/` | TypeScript web client with BotSDK for automation |
 | `javaclient/` | Java applet client (original decompiled code) |
-| `agent/` | AI agent system - Claude Agent SDK integration for bot automation |
 | `test/` | Test scripts for bot automation and shop interactions |
 | `runs/` | Agent run logs and state snapshots |
 
@@ -64,7 +62,7 @@ Browser-based game client ported to TypeScript.
 webclient/
 ├── src/
 │   ├── client/    # Standard client code
-│   └── bot/       # Bot-specific modules (AgentPanel, BotSDK)
+│   └── bot/       # Bot-specific modules (BotSDK)
 ├── out/           # Built client bundles
 │   ├── standard/  # Standard client output
 │   └── bot/       # Bot client output
@@ -81,8 +79,6 @@ agent/
 ├── gateway.ts         # Unified WebSocket router (sync + controller)
 ├── sdk.ts             # Low-level protocol API (plumbing)
 ├── bot-actions.ts     # High-level domain API (porcelain)
-├── agent-service.ts   # Claude Agent SDK service
-├── cli.ts             # CLI for launching/controlling agents
 └── login.ts           # Automated login helper
 ```
 
@@ -98,7 +94,7 @@ agent/
 │  :8888           │                    │                  │
 │ - Game server    │                    │ - Browser-based  │
 │ - World state    │                    │ - Renders game   │
-│ - Player logic   │                    │ - AgentPanel UI  │
+│ - Player logic   │                    │ - Bot SDK        │
 └──────────────────┘                    └────────┬─────────┘
                                                  │
                                                  │ WebSocket
@@ -112,18 +108,7 @@ agent/
 │  - State sync            │  - Agent lifecycle            │
 │  - Action relay          │  - Start/stop/logs            │
 └────────────────────────────────────────────────────────┬─┘
-                                                         │
-                                                         │ WebSocket
-                                                         ▼
-┌──────────────────────────────────────────────────────────┐
-│               Agent Service (agent/agent-service.ts)     │
-│                           :7782                          │
-├──────────────────────────────────────────────────────────┤
-│  - Claude Agent SDK                                      │
-│  - MCP tools (code, bash)                                │
-│  - BotSDK + BotActions                                   │
-│  - Goal-driven execution                                 │
-└──────────────────────────────────────────────────────────┘
+
 ```
 
 ---
@@ -232,7 +217,15 @@ cd agent && bun cli.ts status
 
 ---
 
+## Gameplay Modifications
 
+This server has a few modifications from the original game to make development and bot testing easier:
+
+- **Faster leveling** - The XP curve is flattened and sped up so high-level skills don't take as long to train
+- **Infinite run energy** - Players never run out of energy (enabled by default, can be toggled off)
+- **No random events** - Anti-bot random events can be disabled via config
+
+---
 
 ## License
 This project is licensed under the [MIT License](https://opensource.org/licenses/MIT). See the [LICENSE](LICENSE) file for details.
