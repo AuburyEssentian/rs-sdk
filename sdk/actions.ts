@@ -393,138 +393,114 @@ export class BotActions {
     }
 
     async walkTo(x: number, z: number, tolerance: number = 3): Promise<ActionResult> {
-        const startState = this.sdk.getState();
-        if (!startState?.player) {
-            return { success: false, message: 'No player state' };
+        const state = this.sdk.getState();
+        if (!state?.player) return { success: false, message: 'No player state' };
+
+        const distanceTo = (p: { worldX: number; worldZ: number } | undefined) =>
+            p ? Math.sqrt(Math.pow(x - p.worldX, 2) + Math.pow(z - p.worldZ, 2)) : Infinity;
+
+        if (distanceTo(state.player) <= tolerance) {
+            return { success: true, message: 'Already at destination' };
         }
 
-        const startX = startState.player.worldX;
-        const startZ = startState.player.worldZ;
-
-        const startDist = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(z - startZ, 2));
-        if (startDist <= tolerance) {
-            return { success: true, message: `Already at (${x}, ${z})` };
-        }
-
-        const MAX_PATH_QUERIES = 80;
+        // With 512x512 search grid, paths can cover ~256 tiles per query
+        // For longer walks, we re-query after completing each path segment
+        const MAX_QUERIES = 25;
         let stuckCount = 0;
+        let lastQueryX = state.player.worldX;
+        let lastQueryZ = state.player.worldZ;
 
-        for (let query = 0; query < MAX_PATH_QUERIES; query++) {
-            const currentState = this.sdk.getState();
-            if (!currentState?.player) {
-                return { success: false, message: 'Lost player state' };
-            }
+        for (let query = 0; query < MAX_QUERIES; query++) {
+            const current = this.sdk.getState()?.player;
+            if (!current) return { success: false, message: 'Lost player state' };
 
-            const currentX = currentState.player.worldX;
-            const currentZ = currentState.player.worldZ;
-
-            const distToGoal = Math.sqrt(Math.pow(x - currentX, 2) + Math.pow(z - currentZ, 2));
+            const distToGoal = distanceTo(current);
             if (distToGoal <= tolerance) {
-                return { success: true, message: `Arrived at (${currentX}, ${currentZ})` };
+                return { success: true, message: `Arrived at (${current.worldX}, ${current.worldZ})` };
             }
 
-            let pathResult = await this.sdk.sendFindPath(x, z, 500);
-
-            if ((!pathResult.waypoints || pathResult.waypoints.length === 0) && distToGoal > 40) {
-                const INTERMEDIATE_DISTANCES = [60, 40, 25];
-                const PERPENDICULAR_OFFSETS = [0, 15, -15, 30, -30];
-
-                const dirX = (x - currentX) / distToGoal;
-                const dirZ = (z - currentZ) / distToGoal;
-                const perpX = -dirZ;
-                const perpZ = dirX;
-
-                intermediateSearch:
-                for (const dist of INTERMEDIATE_DISTANCES) {
-                    if (dist >= distToGoal) continue;
-
-                    for (const offset of PERPENDICULAR_OFFSETS) {
-                        const intermediateX = Math.round(currentX + dirX * dist + perpX * offset);
-                        const intermediateZ = Math.round(currentZ + dirZ * dist + perpZ * offset);
-
-                        pathResult = await this.sdk.sendFindPath(intermediateX, intermediateZ, 500);
-                        if (pathResult.waypoints && pathResult.waypoints.length > 0) {
-                            break intermediateSearch;
-                        }
-                    }
+            const path = await this.sdk.sendFindPath(x, z, 500);
+            if (!path.success || !path.waypoints?.length) {
+                // No path - might be blocked, try one more query after a moment
+                await new Promise(r => setTimeout(r, 500));
+                const retryPath = await this.sdk.sendFindPath(x, z, 500);
+                if (!retryPath.success || !retryPath.waypoints?.length) {
+                    return { success: false, message: `No path to (${x}, ${z}) from (${current.worldX}, ${current.worldZ})` };
                 }
             }
 
-            if (!pathResult.success || !pathResult.waypoints || pathResult.waypoints.length === 0) {
-                await this.sdk.sendWalk(x, z, true);
-                try {
-                    await this.sdk.waitForCondition(s => {
-                        if (!s.player) return false;
-                        const d = Math.sqrt(Math.pow(x - s.player.worldX, 2) + Math.pow(z - s.player.worldZ, 2));
-                        return d <= tolerance;
-                    }, 10000);
-                    return { success: true, message: `Arrived at (${x}, ${z})` };
-                } catch {
-                    return { success: false, message: `No path found to (${x}, ${z})` };
-                }
-            }
+            const waypoints = path.waypoints!;
 
-            const waypoints = pathResult.waypoints;
+            // Walk the ENTIRE path before re-querying to avoid oscillation
+            // Only break early if we get stuck
+            let lastMoveX = current.worldX;
+            let lastMoveZ = current.worldZ;
+            let noProgressCount = 0;
 
-            const WAYPOINT_STEP = 5;
-            for (let wpIndex = Math.min(WAYPOINT_STEP - 1, waypoints.length - 1); wpIndex < waypoints.length; wpIndex += WAYPOINT_STEP) {
-                const wp = waypoints[wpIndex];
-                if (!wp) continue;
+            for (let i = 0; i < waypoints.length; i++) {
+                const wp = waypoints[i]!;
                 await this.sdk.sendWalk(wp.x, wp.z, true);
 
-                const moveResult = await this.waitForMovementComplete(wp.x, wp.z, 3);
+                // Wait for movement, but don't wait too long per waypoint
+                const moveResult = await this.waitForMovementComplete(wp.x, wp.z, 2);
 
-                if (!this.sdk.getState()?.player) {
-                    return { success: false, message: 'Lost connection during walk' };
+                const pos = this.sdk.getState()?.player;
+                if (!pos) return { success: false, message: 'Lost player state' };
+
+                // Check if we arrived at final destination
+                if (distanceTo(pos) <= tolerance) {
+                    return { success: true, message: 'Arrived' };
                 }
 
-                const newDist = Math.sqrt(Math.pow(x - moveResult.x, 2) + Math.pow(z - moveResult.z, 2));
-                if (newDist <= tolerance) {
-                    return { success: true, message: `Arrived at (${moveResult.x}, ${moveResult.z})` };
-                }
+                // Check if we're making progress along the path
+                const moved = Math.sqrt(
+                    Math.pow(pos.worldX - lastMoveX, 2) + Math.pow(pos.worldZ - lastMoveZ, 2)
+                );
 
-                if (moveResult.stoppedMoving && !moveResult.arrived) {
-                    break;
+                if (moved < 1 && moveResult.stoppedMoving) {
+                    noProgressCount++;
+                    if (noProgressCount >= 3) {
+                        // Stuck on this path, break to re-query
+                        break;
+                    }
+                } else {
+                    noProgressCount = 0;
+                    lastMoveX = pos.worldX;
+                    lastMoveZ = pos.worldZ;
                 }
             }
 
-            const lastWp = waypoints[waypoints.length - 1];
-            if (lastWp) {
-                await this.sdk.sendWalk(lastWp.x, lastWp.z, true);
-                await this.waitForMovementComplete(lastWp.x, lastWp.z, 3);
+            // Check progress since last path query
+            const after = this.sdk.getState()?.player;
+            if (!after) return { success: false, message: 'Lost player state' };
+
+            const newDist = distanceTo(after);
+            if (newDist <= tolerance) {
+                return { success: true, message: `Arrived at (${after.worldX}, ${after.worldZ})` };
             }
 
-            const afterState = this.sdk.getState();
-            const afterX = afterState?.player?.worldX ?? currentX;
-            const afterZ = afterState?.player?.worldZ ?? currentZ;
-            const newDistToGoal = Math.sqrt(Math.pow(x - afterX, 2) + Math.pow(z - afterZ, 2));
+            // Calculate actual distance moved since last query
+            const distMoved = Math.sqrt(
+                Math.pow(after.worldX - lastQueryX, 2) + Math.pow(after.worldZ - lastQueryZ, 2)
+            );
 
-            if (newDistToGoal <= tolerance) {
-                return { success: true, message: `Arrived at (${afterX}, ${afterZ})` };
-            }
+            // Update for next iteration
+            lastQueryX = after.worldX;
+            lastQueryZ = after.worldZ;
 
-            const progressMade = distToGoal - newDistToGoal;
-            if (progressMade < 5) {
+            // Stuck detection: if we moved less than 5 tiles total, increment counter
+            if (distMoved < 5) {
                 stuckCount++;
                 if (stuckCount >= 3) {
-                    return { success: false, message: `Stuck at (${afterX}, ${afterZ}) - cannot reach (${x}, ${z})` };
+                    return { success: false, message: `Stuck at (${after.worldX}, ${after.worldZ})` };
                 }
             } else {
-                stuckCount = 0;
+                stuckCount = 0; // Reset if we made good progress
             }
         }
 
-        const finalState = this.sdk.getState();
-        const finalX = finalState?.player?.worldX ?? startX;
-        const finalZ = finalState?.player?.worldZ ?? startZ;
-        const finalDist = Math.sqrt(Math.pow(x - finalX, 2) + Math.pow(z - finalZ, 2));
-
-        return {
-            success: finalDist <= tolerance,
-            message: finalDist <= tolerance
-                ? `Arrived at (${finalX}, ${finalZ})`
-                : `Could not reach (${x}, ${z}) - stopped at (${finalX}, ${finalZ})`
-        };
+        const final = this.sdk.getState()?.player;
+        return { success: false, message: `Could not reach (${x}, ${z}) - stopped at (${final?.worldX}, ${final?.worldZ})` };
     }
 
     // ============ Porcelain: Shop Actions ============
@@ -1215,6 +1191,381 @@ export class BotActions {
             await this.sdk.sendClickDialog(optionIndex);
             await new Promise(r => setTimeout(r, 600));
         }
+    }
+
+    // ============ Crafting & Fletching ============
+
+    async fletchLogs(product?: string): Promise<FletchResult> {
+        await this.dismissBlockingUI();
+
+        const knife = this.sdk.findInventoryItem(/knife/i);
+        if (!knife) {
+            return { success: false, message: 'No knife in inventory' };
+        }
+
+        const logs = this.sdk.findInventoryItem(/logs/i);
+        if (!logs) {
+            return { success: false, message: 'No logs in inventory' };
+        }
+
+        // Check if we're using oak or higher-tier logs (affects button order)
+        const isOakOrHigherLogs = /oak|willow|maple|yew|magic/i.test(logs.name);
+
+        const fletchingBefore = this.sdk.getSkill('Fletching')?.experience || 0;
+        const startTick = this.sdk.getState()?.tick || 0;
+
+        // Use knife on logs to open fletching dialog
+        const result = await this.sdk.sendUseItemOnItem(knife.slot, logs.slot);
+        if (!result.success) {
+            return { success: false, message: result.message };
+        }
+
+        // Wait for dialog/interface to open
+        try {
+            await this.sdk.waitForCondition(
+                s => s.dialog.isOpen || s.interface?.isOpen,
+                5000
+            );
+        } catch {
+            return { success: false, message: 'Fletching dialog did not open' };
+        }
+
+        // Handle product selection and crafting
+        const MAX_ATTEMPTS = 30;
+        let buttonClicked = false;
+
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            const state = this.sdk.getState();
+            if (!state) {
+                return { success: false, message: 'Lost game state' };
+            }
+
+            // Check if XP was gained (success!)
+            const currentXp = state.skills.find(s => s.name === 'Fletching')?.experience || 0;
+            if (currentXp > fletchingBefore) {
+                const craftedProduct = this.sdk.findInventoryItem(/shortbow|longbow|arrow shaft|stock/i);
+                return {
+                    success: true,
+                    message: 'Fletched logs successfully',
+                    xpGained: currentXp - fletchingBefore,
+                    product: craftedProduct || undefined
+                };
+            }
+
+            // Handle interface (make-x style)
+            if (state.interface?.isOpen) {
+                // Try to find product by text in options
+                let targetIndex = 1;
+                if (product) {
+                    const productLower = product.toLowerCase();
+                    const matchingOption = state.interface.options.find(o =>
+                        o.text.toLowerCase().includes(productLower)
+                    );
+                    if (matchingOption) {
+                        targetIndex = matchingOption.index;
+                    }
+                }
+
+                if (!buttonClicked) {
+                    await this.sdk.sendClickInterface(targetIndex);
+                    buttonClicked = true;
+                } else if (state.interface.options.length > 0 && state.interface.options[0]) {
+                    await this.sdk.sendClickInterface(state.interface.options[0].index);
+                }
+                await new Promise(r => setTimeout(r, 300));
+                continue;
+            }
+
+            // Handle dialog - use allComponents to find the right button
+            if (state.dialog.isOpen) {
+                if (!buttonClicked && product && state.dialog.allComponents) {
+                    // Find the button that matches our product by looking at allComponents text
+                    const productLower = product.toLowerCase();
+
+                    // Build a mapping of product text to button index
+                    // allComponents contains both text labels and "Ok" buttons
+                    // We need to find which "Ok" button corresponds to our product
+
+                    // Look for a component whose text matches the product
+                    const matchingComponents = state.dialog.allComponents.filter(c => {
+                        const text = c.text.toLowerCase();
+                        // Match patterns like "shortbow", "longbow", "arrow shaft"
+                        if (productLower.includes('short') && text.includes('shortbow')) return true;
+                        if (productLower.includes('long') && text.includes('longbow')) return true;
+                        if (productLower.includes('arrow') && text.includes('arrow')) return true;
+                        if (productLower.includes('shaft') && text.includes('shaft')) return true;
+                        if (productLower.includes('stock') && text.includes('stock')) return true;
+                        // Generic match
+                        return text.includes(productLower);
+                    });
+
+                    if (matchingComponents.length > 0) {
+                        // Found a matching text component - now find the associated Ok button
+                        // The Ok buttons in dialog.options should correspond to the products
+                        // Try to find the index by matching component IDs or order
+
+                        // Get all Ok buttons from options
+                        const okButtons = state.dialog.options.filter(o =>
+                            o.text.toLowerCase() === 'ok'
+                        );
+
+                        if (okButtons.length > 0) {
+                            // Try to determine which Ok button to click based on product type
+                            // Button order depends on log type:
+                            // - Regular logs: [Arrow shafts, Shortbow, Longbow] - 3 main products
+                            // - Oak/higher logs: [Shortbow, Longbow] - 2 main products (no arrow shafts option)
+                            let okIndex = 0; // Default to first
+
+                            if (productLower.includes('short')) {
+                                if (isOakOrHigherLogs) {
+                                    // Oak/higher logs: Shortbow is first (index 0)
+                                    okIndex = 0;
+                                } else {
+                                    // Regular logs: Shortbow is second (index 1, after arrow shafts)
+                                    okIndex = Math.min(1, okButtons.length - 1);
+                                }
+                            } else if (productLower.includes('long')) {
+                                if (isOakOrHigherLogs) {
+                                    // Oak/higher logs: Longbow is second (index 1)
+                                    okIndex = Math.min(1, okButtons.length - 1);
+                                } else {
+                                    // Regular logs: Longbow is third (index 2)
+                                    okIndex = Math.min(2, okButtons.length - 1);
+                                }
+                            } else if (productLower.includes('stock')) {
+                                okIndex = Math.min(3, okButtons.length - 1);
+                            }
+                            // arrow/shaft stays at 0
+
+                            const targetButton = okButtons[okIndex];
+                            if (targetButton) {
+                                await this.sdk.sendClickDialog(targetButton.index);
+                                buttonClicked = true;
+                                await new Promise(r => setTimeout(r, 300));
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                // Fallback: use index-based approach if we couldn't match by text
+                if (!buttonClicked) {
+                    // Determine fallback index based on product keyword and log type
+                    let targetButtonIndex = 1; // Default: first option
+                    if (product) {
+                        const productLower = product.toLowerCase();
+                        if (productLower.includes('short')) {
+                            // Oak/higher: shortbow is button 1; Regular: button 2
+                            targetButtonIndex = isOakOrHigherLogs ? 1 : 2;
+                        } else if (productLower.includes('long')) {
+                            // Oak/higher: longbow is button 2; Regular: button 3
+                            targetButtonIndex = isOakOrHigherLogs ? 2 : 3;
+                        } else if (productLower.includes('stock')) {
+                            targetButtonIndex = 4;
+                        }
+                        // arrow/shaft stays at 1
+                    }
+
+                    if (state.dialog.options.length >= targetButtonIndex) {
+                        await this.sdk.sendClickDialog(targetButtonIndex);
+                        buttonClicked = true;
+                        await new Promise(r => setTimeout(r, 300));
+                        continue;
+                    }
+                }
+
+                // If we already clicked or don't have enough options, click continue/first
+                if (state.dialog.options.length > 0 && state.dialog.options[0]) {
+                    await this.sdk.sendClickDialog(state.dialog.options[0].index);
+                } else {
+                    await this.sdk.sendClickDialog(0);
+                }
+                await new Promise(r => setTimeout(r, 300));
+                continue;
+            }
+
+            // Check for failure messages
+            for (const msg of state.gameMessages) {
+                if (msg.tick > startTick) {
+                    const text = msg.text.toLowerCase();
+                    if (text.includes("need a higher") || text.includes("level to")) {
+                        return { success: false, message: 'Fletching level too low' };
+                    }
+                }
+            }
+
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        // Final XP check
+        const finalXp = this.sdk.getSkill('Fletching')?.experience || 0;
+        if (finalXp > fletchingBefore) {
+            const craftedProduct = this.sdk.findInventoryItem(/shortbow|longbow|arrow shaft|stock/i);
+            return {
+                success: true,
+                message: 'Fletched logs successfully',
+                xpGained: finalXp - fletchingBefore,
+                product: craftedProduct || undefined
+            };
+        }
+
+        return { success: false, message: 'Fletching timed out' };
+    }
+
+    async craftLeather(product?: string): Promise<CraftLeatherResult> {
+        await this.dismissBlockingUI();
+
+        const needle = this.sdk.findInventoryItem(/needle/i);
+        if (!needle) {
+            return { success: false, message: 'No needle in inventory', reason: 'no_needle' };
+        }
+
+        const leather = this.sdk.findInventoryItem(/^leather$/i);
+        if (!leather) {
+            return { success: false, message: 'No leather in inventory', reason: 'no_leather' };
+        }
+
+        const thread = this.sdk.findInventoryItem(/thread/i);
+        if (!thread) {
+            return { success: false, message: 'No thread in inventory', reason: 'no_thread' };
+        }
+
+        const craftingBefore = this.sdk.getSkill('Crafting')?.experience || 0;
+        const startTick = this.sdk.getState()?.tick || 0;
+
+        // Use needle on leather to open crafting interface
+        const result = await this.sdk.sendUseItemOnItem(needle.slot, leather.slot);
+        if (!result.success) {
+            return { success: false, message: result.message };
+        }
+
+        // Wait for interface/dialog to open
+        try {
+            await this.sdk.waitForCondition(
+                s => s.dialog.isOpen || s.interface?.isOpen,
+                10000
+            );
+        } catch {
+            return { success: false, message: 'Crafting interface did not open', reason: 'interface_not_opened' };
+        }
+
+        // Handle product selection and crafting
+        const MAX_ATTEMPTS = 50;
+
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            const state = this.sdk.getState();
+            if (!state) {
+                return { success: false, message: 'Lost game state' };
+            }
+
+            // Check if XP was gained (success!)
+            const currentXp = state.skills.find(s => s.name === 'Crafting')?.experience || 0;
+            if (currentXp > craftingBefore) {
+                return {
+                    success: true,
+                    message: 'Crafted leather item successfully',
+                    xpGained: currentXp - craftingBefore,
+                    itemsCrafted: 1
+                };
+            }
+
+            // Handle interface (leather crafting interface id=2311)
+            if (state.interface?.isOpen) {
+                if (product) {
+                    // Try to find matching option by text
+                    const productOption = state.interface.options.find(o =>
+                        o.text.toLowerCase().includes(product.toLowerCase())
+                    );
+                    if (productOption) {
+                        await this.sdk.sendClickInterface(productOption.index);
+                        await new Promise(r => setTimeout(r, 300));
+                        continue;
+                    }
+                }
+
+                // Leather crafting interface (2311) uses button indices:
+                // 0=leather body (lvl 14), 1=leather chaps (lvl 18), 2=leather gloves (lvl 1)
+                // Default to gloves (index 2) for level 1 crafting
+                if (state.interface.interfaceId === 2311) {
+                    // Map product names to interface indices
+                    let optionIndex = 2; // Default: gloves (lowest level requirement)
+                    if (product) {
+                        const productLower = product.toLowerCase();
+                        if (productLower.includes('body') || productLower.includes('armour')) {
+                            optionIndex = 0;
+                        } else if (productLower.includes('chaps') || productLower.includes('legs')) {
+                            optionIndex = 1;
+                        } else if (productLower.includes('glove') || productLower.includes('vamb')) {
+                            optionIndex = 2;
+                        }
+                    }
+                    await this.sdk.sendClickInterface(optionIndex);
+                } else if (state.interface.options.length > 0 && state.interface.options[0]) {
+                    await this.sdk.sendClickInterface(state.interface.options[0].index);
+                }
+                await new Promise(r => setTimeout(r, 300));
+                continue;
+            }
+
+            // Handle dialog
+            if (state.dialog.isOpen) {
+                const craftOption = state.dialog.options.find(o =>
+                    /glove|make|craft|leather|body|chaps/i.test(o.text)
+                );
+                if (craftOption) {
+                    await this.sdk.sendClickDialog(craftOption.index);
+                } else if (state.dialog.options.length > 0 && state.dialog.options[0]) {
+                    await this.sdk.sendClickDialog(state.dialog.options[0].index);
+                } else {
+                    await this.sdk.sendClickDialog(0);
+                }
+                await new Promise(r => setTimeout(r, 300));
+                continue;
+            }
+
+            // Check for failure messages
+            for (const msg of state.gameMessages) {
+                if (msg.tick > startTick) {
+                    const text = msg.text.toLowerCase();
+                    if (text.includes("need a crafting level") || text.includes("level to")) {
+                        return { success: false, message: 'Crafting level too low', reason: 'level_too_low' };
+                    }
+                    if (text.includes("don't have") && text.includes("thread")) {
+                        return { success: false, message: 'Out of thread', reason: 'no_thread' };
+                    }
+                }
+            }
+
+            // Check if leather is gone (possibly consumed)
+            const currentLeather = this.sdk.findInventoryItem(/^leather$/i);
+            if (!currentLeather) {
+                // Check XP one more time
+                const finalXp = this.sdk.getSkill('Crafting')?.experience || 0;
+                if (finalXp > craftingBefore) {
+                    return {
+                        success: true,
+                        message: 'Crafted leather item successfully',
+                        xpGained: finalXp - craftingBefore,
+                        itemsCrafted: 1
+                    };
+                }
+            }
+
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        // Final XP check
+        const finalXp = this.sdk.getSkill('Crafting')?.experience || 0;
+        if (finalXp > craftingBefore) {
+            return {
+                success: true,
+                message: 'Crafted leather item successfully',
+                xpGained: finalXp - craftingBefore,
+                itemsCrafted: 1
+            };
+        }
+
+        return { success: false, message: 'Crafting timed out', reason: 'timeout' };
     }
 
     // ============ Resolution Helpers ============

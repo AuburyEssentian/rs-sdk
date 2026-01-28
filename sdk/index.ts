@@ -40,7 +40,7 @@ interface PendingScreenshot {
 }
 
 export class BotSDK {
-    private config: Required<SDKConfig>;
+    readonly config: Required<SDKConfig>;
     private ws: WebSocket | null = null;
     private state: BotWorldState | null = null;
     private pendingActions = new Map<string, PendingAction>();
@@ -678,9 +678,12 @@ export class BotSDK {
             }
             // If no screenshotId or not found, resolve the first pending screenshot
             if (!pending && this.pendingScreenshots.size > 0) {
-                const [firstId, firstPending] = this.pendingScreenshots.entries().next().value;
-                pending = firstPending;
-                this.pendingScreenshots.delete(firstId);
+                const entry = this.pendingScreenshots.entries().next().value;
+                if (entry) {
+                    const [firstId, firstPending] = entry;
+                    pending = firstPending;
+                    this.pendingScreenshots.delete(firstId);
+                }
             }
 
             if (pending) {
