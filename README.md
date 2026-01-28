@@ -227,5 +227,19 @@ This server has a few modifications from the original game to make development a
 
 ---
 
+## Disclaimer
+
+This is a free, open-source, community-run project.
+
+The goal is strictly education and scientific research.
+
+LostCity Server was written from scratch after many hours of research and peer review. Everything you see is completely and transparently open source.
+
+We have not been endorsed by, authorized by, or officially communicated with Jagex Ltd. on our efforts here.
+
+You cannot play Old School RuneScape here, buy RuneScape gold, or access any of the official game's services!
+
+---
+
 ## License
 This project is licensed under the [MIT License](https://opensource.org/licenses/MIT). See the [LICENSE](LICENSE) file for details.

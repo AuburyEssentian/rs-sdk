@@ -17,12 +17,18 @@ Test with sonnet.
 
 
 
-nice readme with callout towards LostCity 
 
 
 
-spec for remote usage.
 
+Remote usage works but needs to be refined. 
+connection management/reconnection 
+
+Repo needs to be a prompt that's all compatible, clean up scripts
+choose a scriptrunner + feedback paradigmn
+consider typescript MCP again
 
 
 save file Download/upload flow! (no guarantees for save file durabilitiy  
+
+hiscores

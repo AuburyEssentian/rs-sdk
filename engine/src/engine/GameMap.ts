@@ -379,9 +379,9 @@ export function findPath(level: number, srcX: number, srcZ: number, destX: numbe
     return rsmod.findPath(level, srcX, srcZ, destX, destZ, 1, 1, 1, 0, -1, true, 0, 25, CollisionType.NORMAL);
 }
 
-// Long-distance pathfinding with configurable max waypoints (for bot/agent navigation)
+// Long-distance pathfinding with 512x512 search grid (for bot/agent navigation)
 export function findLongPath(level: number, srcX: number, srcZ: number, destX: number, destZ: number, maxWaypoints: number = 500): Uint32Array {
-    return rsmod.findPath(level, srcX, srcZ, destX, destZ, 1, 1, 1, 0, -1, true, 0, maxWaypoints, CollisionType.NORMAL);
+    return rsmod.findLongPath(level, srcX, srcZ, destX, destZ, 1, 1, 1, 0, -1, true, 0, maxWaypoints, CollisionType.NORMAL);
 }
 
 export function findPathToEntity(level: number, srcX: number, srcZ: number, destX: number, destZ: number, srcSize: number, destWidth: number, destHeight: number): Uint32Array {
