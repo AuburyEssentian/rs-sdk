@@ -88,7 +88,7 @@ runArc({
             }
         } else if (fishingSpots.length > 0) {
             // Any fishing spot will do
-            const spot = fishingSpots[0];
+            const spot = fishingSpots[0]!;
             const netOpt = spot.optionsWithIndex.find(o => /^net$/i.test(o.text));
             if (netOpt) {
                 await ctx.sdk.sendInteractNpc(spot.index, netOpt.opIndex);

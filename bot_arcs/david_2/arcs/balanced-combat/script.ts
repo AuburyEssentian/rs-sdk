@@ -43,7 +43,7 @@ runArc({
     let initialState = ctx.state();
     for (let i = 0; i < 60; i++) {  // Wait up to 60 seconds
         initialState = ctx.state();
-        if (initialState?.player?.worldX > 0 && initialState?.player?.worldZ > 0) {
+        if (initialState?.player && initialState.player.worldX > 0 && initialState.player.worldZ > 0) {
             ctx.log(`State loaded after ${i+1} seconds`);
             break;
         }
@@ -177,13 +177,13 @@ runArc({
             );
             if (food) {
                 ctx.log(`Eating ${food.name} (HP: ${currentHp}/${maxHp})`);
-                await ctx.bot.useItem(food);
+                await ctx.bot.eatFood(food);
                 await new Promise(r => setTimeout(r, 600));
             }
         }
 
         // Check if in combat
-        const inCombat = state.combat?.inCombat ?? false;
+        const inCombat = state.player?.combat?.inCombat ?? false;
         const isAnimating = state.player?.animId !== -1;
 
         if (inCombat || isAnimating) {
@@ -201,7 +201,7 @@ runArc({
 
         if (potentialTargets.length > 0) {
             noTargetCounter = 0;  // Reset counter
-            const target = potentialTargets[0];
+            const target = potentialTargets[0]!;
             try {
                 const attackOpt = target.optionsWithIndex.find(o => /attack/i.test(o.text));
                 if (attackOpt) {
@@ -217,7 +217,7 @@ runArc({
 
             // If no targets for 5 iterations (~10 seconds), walk to a training spot
             if (noTargetCounter >= 5) {
-                const spot = TRAINING_SPOTS[Math.floor(Math.random() * TRAINING_SPOTS.length)];
+                const spot = TRAINING_SPOTS[Math.floor(Math.random() * TRAINING_SPOTS.length)]!;
                 ctx.log(`No targets for a while - walking to ${spot.name} (${spot.x}, ${spot.z})`);
                 try {
                     await ctx.bot.walkTo(spot.x, spot.z);

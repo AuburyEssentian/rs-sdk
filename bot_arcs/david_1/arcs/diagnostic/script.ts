@@ -16,7 +16,7 @@ runArc({
     ctx.log('Waiting for state to sync...');
     for (let i = 0; i < 60; i++) {  // Wait up to 30 seconds
         const s = ctx.state();
-        if (s?.player?.worldX > 0) {
+        if (s?.player && s.player.worldX > 0) {
             ctx.log(`State loaded after ${i+1} attempts`);
             break;
         }

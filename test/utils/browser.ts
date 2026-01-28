@@ -34,7 +34,7 @@ let sharedBrowserRefCount = 0;
 
 // Game canvas size (must match the canvas element in bot.ejs)
 const GAME_WIDTH = 765;
-const GAME_HEIGHT = 503;
+const GAME_HEIGHT = 540;
 
 // Chrome args optimized for lower resource usage
 const LIGHTWEIGHT_CHROME_ARGS = [

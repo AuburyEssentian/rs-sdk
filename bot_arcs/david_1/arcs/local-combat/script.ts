@@ -29,7 +29,7 @@ function getLowestCombatStat(ctx: ScriptContext): string {
 }
 
 function getStyleForStat(stat: string): typeof STYLES[0] {
-    return STYLES.find(s => s.stat === stat) ?? STYLES[0];
+    return STYLES.find(s => s.stat === stat) || STYLES[0]!;
 }
 
 function findTarget(ctx: ScriptContext) {
@@ -68,7 +68,7 @@ runArc({
     ctx.log('Waiting for state...');
     for (let i = 0; i < 30; i++) {
         const s = ctx.state();
-        if (s?.player?.worldX > 0) {
+        if (s?.player && s.player.worldX > 0) {
             ctx.log(`State loaded after ${i+1} attempts`);
             break;
         }
@@ -89,7 +89,7 @@ runArc({
     // Set initial combat style - FORCE DEFENSIVE to catch up Defence
     // const lowestStat = getLowestCombatStat(ctx);
     // const style = getStyleForStat(lowestStat);
-    const style = STYLES[2];  // Force defensive (Defence training)
+    const style = STYLES[2]!;  // Force defensive (Defence training)
     ctx.log(`Combat style: ${style.name} (FORCED to train ${style.stat})`);
 
     try {

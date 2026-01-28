@@ -112,7 +112,7 @@ runArc({
         await new Promise(r => setTimeout(r, 2000));
         ctx.progress();
         const state = ctx.state();
-        if (state?.player?.worldX > 0) {
+        if (state?.player && state.player.worldX > 0) {
             ctx.log(`State loaded after ${(i+1)*2}s`);
             break;
         }
@@ -166,6 +166,7 @@ runArc({
 
         // Check if we've drifted too far
         const player = state.player;
+        if (!player) continue;
         const drift = Math.sqrt(
             Math.pow(player.worldX - FISHING_AREA.x, 2) +
             Math.pow(player.worldZ - FISHING_AREA.z, 2)

@@ -22,7 +22,7 @@ runArc({
     ctx.log('Waiting for state...');
     for (let i = 0; i < 30; i++) {
         const s = ctx.state();
-        if (s?.player?.worldX > 0) {
+        if (s?.player && s.player.worldX > 0) {
             ctx.log(`State loaded after ${i+1} attempts`);
             break;
         }

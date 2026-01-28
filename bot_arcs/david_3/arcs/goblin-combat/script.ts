@@ -91,7 +91,7 @@ runArc({
         }
 
         // If in combat, wait
-        const inCombat = s.combat?.inCombat ?? false;
+        const inCombat = s.player?.combat?.inCombat ?? false;
         const isAnimating = s.player?.animId !== -1;
         if (inCombat || isAnimating) {
             ctx.progress();

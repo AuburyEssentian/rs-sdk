@@ -161,7 +161,7 @@ runArc({
             .sort((a, b) => a.distance - b.distance);
 
         if (targets.length > 0) {
-            const target = targets[0];
+            const target = targets[0]!;
             const attackOpt = target.optionsWithIndex.find(o => /attack/i.test(o.text));
             if (attackOpt) {
                 ctx.log('Attacking ' + target.name + ' (lvl ' + target.combatLevel + ', dist: ' + target.distance.toFixed(1) + ')');

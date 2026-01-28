@@ -1,2 +1,8 @@
 .git/
 node_modules/
+agent/node_modules/
+webclient/node_modules/
+scripts/
+bot_arcs/
+runs/
+*.log

@@ -140,7 +140,7 @@ runArc({
         if (shop?.isOpen) {
             const pickaxe = shop.shopItems?.find(i => /bronze pickaxe/i.test(i.name));
             if (pickaxe && pickaxe.count > 0) {
-                ctx.log(`Buying ${pickaxe.name} for ${pickaxe.price ?? '?'} gp...`);
+                ctx.log(`Buying ${pickaxe.name} for ${pickaxe.buyPrice ?? '?'} gp...`);
                 await ctx.sdk.sendShopBuy(pickaxe.slot, 1);
                 await new Promise(r => setTimeout(r, 500));
                 ctx.progress();

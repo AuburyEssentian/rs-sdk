@@ -29,7 +29,7 @@ function getLowestCombatStat(ctx: ScriptContext): string {
 }
 
 function getStyleForStat(stat: string): typeof STYLES[0] {
-    return STYLES.find(s => s.stat === stat) ?? STYLES[0];
+    return STYLES.find(s => s.stat === stat) || STYLES[0]!;
 }
 
 function getCurrentHp(ctx: ScriptContext): number {
@@ -90,7 +90,7 @@ runArc({
     let stateLoaded = false;
     for (let i = 0; i < 60; i++) {  // Wait up to 30 seconds
         const s = ctx.state();
-        if (s?.player?.worldX > 0) {
+        if (s?.player && s.player.worldX > 0) {
             ctx.log(`State loaded after ${i+1} attempts`);
             stateLoaded = true;
             break;
@@ -106,7 +106,7 @@ runArc({
 
         // Try one more time
         const finalState = ctx.state();
-        if (finalState?.player?.worldX > 0) {
+        if (finalState?.player && finalState.player.worldX > 0) {
             ctx.log('State loaded after extended wait');
         } else {
             ctx.error('State still not loaded - trying to fight anyway');
@@ -183,9 +183,9 @@ runArc({
     let currentStyle = STYLES[2];  // defensive
 
     // Set initial combat style - force defensive
-    ctx.log(`Setting combat style: ${currentStyle.name} (FORCED to train ${currentStyle.stat})`);
+    ctx.log(`Setting combat style: ${currentStyle!.name} (FORCED to train ${currentStyle!.stat})`);
     try {
-        await ctx.sdk.sendSetCombatStyle(currentStyle.id);
+        await ctx.sdk.sendSetCombatStyle(currentStyle!.id);
     } catch (e) {
         ctx.warn(`Style set error: ${e}`);
     }
@@ -209,7 +209,10 @@ runArc({
             const food = ctx.state()?.inventory.find(i => /shrimp|bread/i.test(i.name));
             if (food) {
                 ctx.log(`Eating ${food.name}`);
-                await ctx.sdk.sendClickItem(food.slot);
+                const eatOpt = food.optionsWithIndex.find(o => /eat/i.test(o.text));
+                if (eatOpt) {
+                    await ctx.sdk.sendUseItem(food.slot, eatOpt.opIndex);
+                }
                 await new Promise(r => setTimeout(r, 500));
             }
         }

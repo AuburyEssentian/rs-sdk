@@ -22,13 +22,13 @@ runArc({
 
     // Wait for valid state
     let state = ctx.state();
-    while (!state.player || state.player.worldX === 0) {
+    while (!state?.player || state.player.worldX === 0) {
         await new Promise(r => setTimeout(r, 1000));
         state = ctx.state();
         ctx.progress();
     }
 
-    ctx.log(`Starting at (${state.player?.worldX}, ${state.player?.worldZ})`);
+    ctx.log(`Starting at (${state.player.worldX}, ${state.player.worldZ})`);
 
     // Define exploration waypoints around Lumbridge
     const explorationPoints = [
@@ -47,14 +47,14 @@ runArc({
         ctx.progress();
         state = ctx.state();
 
-        if (!state.player || state.player.worldX === 0) {
+        if (!state?.player || state.player.worldX === 0) {
             ctx.log('Invalid state, waiting...');
             await new Promise(r => setTimeout(r, 1000));
             continue;
         }
 
         // Handle dialogs
-        if (state.dialog.isOpen) {
+        if (state.dialog?.isOpen) {
             await ctx.sdk.sendClickDialog(0);
             await new Promise(r => setTimeout(r, 500));
             continue;
@@ -66,6 +66,7 @@ runArc({
 
         // Check for fishing spots
         state = ctx.state();
+        if (!state) continue;
         const fishingSpots = state.nearbyNpcs.filter(npc => /fishing\s*spot/i.test(npc.name));
 
         if (fishingSpots.length > 0) {
@@ -103,7 +104,7 @@ runArc({
     state = ctx.state();
     ctx.log('');
     ctx.log('=== Current Status ===');
-    ctx.log(`Position: (${state.player?.worldX}, ${state.player?.worldZ})`);
-    ctx.log(`Fishing level: ${state.skills.find(s => s.name === 'Fishing')?.baseLevel ?? 1}`);
-    ctx.log(`Inventory has net: ${state.inventory.some(i => /fishing net/i.test(i.name))}`);
+    ctx.log(`Position: (${state?.player?.worldX}, ${state?.player?.worldZ})`);
+    ctx.log(`Fishing level: ${state?.skills.find(s => s.name === 'Fishing')?.baseLevel ?? 1}`);
+    ctx.log(`Inventory has net: ${state?.inventory.some(i => /fishing net/i.test(i.name))}`);
 });

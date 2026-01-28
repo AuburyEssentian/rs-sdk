@@ -9,6 +9,7 @@ flowchart TB
     subgraph Clients["Clients"]
         WebClient["Web Client :8888"]
         UI["UI Panel"]
+        RemoteSDK["Remote SDK Client"]
     end
 
     subgraph Agent["Agent Layer"]
@@ -19,6 +20,9 @@ flowchart TB
     subgraph Core["Gateway :7780"]
         SyncMod["SyncModule"]
         CtrlMod["ControllerModule"]
+    end
+
+    subgraph SDKLayer["SDK Layer (can run locally or remotely)"]
         Porcelain["BotActions"]
         SDK["BotSDK"]
     end
@@ -32,7 +36,8 @@ flowchart TB
     Claude -->|"tool_use: code"| MCP
     MCP -->|"bot.chopTree()"| Porcelain
     Porcelain -->|"sendInteractLoc()"| SDK
-    SDK <-->|"sdk_action / sdk_state"| SyncMod
+    SDK <-->|"ws://host:7780"| SyncMod
+    RemoteSDK <-->|"ws://host:7780"| SyncMod
     SyncMod <-->|"action / actionResult"| WebClient
     CtrlMod -->|"events.jsonl"| Runs
     SyncMod -->|"player.json"| Files
@@ -170,6 +175,80 @@ flowchart LR
 
 ---
 
+## Remote Client Support
+
+The SDK supports remote connections out of the box. Users can run scripts from anywhere that connect to a remote gateway.
+
+```mermaid
+flowchart LR
+    subgraph Server["Server (remote)"]
+        Engine["Game Engine :8888"]
+        Gateway["Gateway :7780"]
+        Bot["Web Client"]
+    end
+
+    subgraph Local["Local Machine"]
+        Script["script.ts"]
+        SDK4["BotSDK"]
+        Actions["BotActions"]
+    end
+
+    Bot <-->|"state/action"| Gateway
+    SDK4 <-->|"ws://server:7780"| Gateway
+    Script --> Actions
+    Actions --> SDK4
+```
+
+### Remote Connection Example
+
+```typescript
+import { BotSDK } from '@rs-agent/sdk';
+import { BotActions } from '@rs-agent/sdk/actions';
+
+const sdk = new BotSDK({
+    botUsername: 'player1',
+    host: 'game-server.example.com',  // Remote server
+    port: 7780
+});
+
+await sdk.connect();
+const bot = new BotActions(sdk);
+
+// Control the remote bot
+await bot.chopTree();
+await bot.burnLogs();
+```
+
+### Connection Configuration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `botUsername` | required | Bot to control |
+| `host` | `'localhost'` | Gateway hostname |
+| `port` | `7780` | Gateway port |
+| `webPort` | `8888` | Game engine port (for pathfinding API) |
+| `actionTimeout` | `30000` | Action timeout in ms |
+| `autoReconnect` | `true` | Auto-reconnect on disconnect |
+| `reconnectMaxRetries` | `Infinity` | Max reconnection attempts |
+| `reconnectBaseDelay` | `1000` | Initial reconnect delay (ms) |
+| `reconnectMaxDelay` | `30000` | Max reconnect delay (ms) |
+
+### Connection States
+
+```typescript
+type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+
+// Monitor connection
+sdk.onConnectionStateChange((state, attempt) => {
+    console.log(`Connection: ${state}${attempt ? ` (attempt ${attempt})` : ''}`);
+});
+
+// Wait for connection
+await sdk.waitForConnection(60000);
+```
+
+---
+
 ## Component Map
 
 | Component | Path | Purpose |
@@ -303,6 +382,16 @@ agent/
         ├── skills.json
         ├── inventory.json
         └── world.md
+
+sdk/                          # Standalone SDK package (@rs-agent/sdk)
+├── package.json              # npm package config
+├── index.ts                  # Main export (BotSDK)
+├── actions.ts                # BotActions export
+└── types.ts                  # Type definitions
+
+scripts/                      # Example user scripts
+├── example-remote.ts         # Remote connection example
+└── ...
 
 test/
 ├── utils/

@@ -89,13 +89,13 @@ runArc({
             );
             if (food) {
                 ctx.log(`Eating ${food.name} (HP: ${currentHp}/${maxHp})`);
-                await ctx.bot.useItem(food);
+                await ctx.bot.eatFood(food);
                 await new Promise(r => setTimeout(r, 600));
             }
         }
 
         // Check if in combat
-        const inCombat = state.combat?.inCombat ?? false;
+        const inCombat = state.player?.combat?.inCombat ?? false;
         const isAnimating = state.player?.animId !== -1;
 
         if (inCombat || isAnimating) {

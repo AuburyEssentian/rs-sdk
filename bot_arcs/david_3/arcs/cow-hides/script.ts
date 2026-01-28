@@ -331,7 +331,7 @@ runArc({
         const isIdle = player?.animId === -1;
 
         // Check if we've drifted out of the cow pen
-        if (!isInsideCowPen(player.worldX, player.worldZ)) {
+        if (player && !isInsideCowPen(player.worldX, player.worldZ)) {
             ctx.log('Drifted out of cow pen, walking back...');
             await ctx.bot.walkTo(COW_FIELD.center.x, COW_FIELD.center.z);
             await new Promise(r => setTimeout(r, 1000));
