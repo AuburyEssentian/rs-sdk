@@ -524,10 +524,6 @@ export class BotSDK {
         return this.sendAction({ type: 'bankWithdraw', slot, amount, reason: 'SDK' });
     }
 
-    async sendSkipTutorial(): Promise<ActionResult> {
-        return this.sendAction({ type: 'skipTutorial', reason: 'SDK' });
-    }
-
     // ============ Screenshot ============
 
     /**

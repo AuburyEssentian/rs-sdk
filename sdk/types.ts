@@ -249,8 +249,7 @@ export type BotAction =
     | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
     | { type: 'setTab'; tabIndex: number; reason: string }
     | { type: 'bankDeposit'; slot: number; amount: number; reason: string }
-    | { type: 'bankWithdraw'; slot: number; amount: number; reason: string }
-    | { type: 'skipTutorial'; reason: string };
+    | { type: 'bankWithdraw'; slot: number; amount: number; reason: string };
 
 export interface ActionResult {
     success: boolean;

@@ -214,9 +214,6 @@ export class ActionExecutor {
                         'Failed to send message'
                     );
 
-                case 'skipTutorial':
-                    return this.client.skipTutorial();
-
                 default:
                     return { success: false, message: `Unknown action type: ${(action as any).type}` };
             }

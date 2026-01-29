@@ -264,7 +264,7 @@ export interface PacketLogEntry {
 }
 
 // SDK action types - pure primitives that map to game protocol
-// Domain logic (skipTutorial, etc.) lives in BotActions, not here
+// Domain logic lives in BotActions (sdk/actions.ts), not here
 export type BotAction =
     | { type: 'none'; reason: string }
     | { type: 'wait'; reason: string; ticks?: number }
@@ -295,5 +295,4 @@ export type BotAction =
     | { type: 'setTab'; tabIndex: number; reason: string }
     | { type: 'say'; message: string; reason: string }
     | { type: 'bankDeposit'; slot: number; amount: number; reason: string }
-    | { type: 'bankWithdraw'; slot: number; amount: number; reason: string }
-    | { type: 'skipTutorial'; reason: string };
+    | { type: 'bankWithdraw'; slot: number; amount: number; reason: string };

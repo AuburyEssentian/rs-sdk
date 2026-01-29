@@ -2296,68 +2296,6 @@ export class Client extends GameShell {
         return lines;
     }
 
-    /**
-     * Perform a complete tutorial skip sequence
-     * Talks to the RuneScape Guide to trigger the skip tutorial dialog
-     * Returns a promise that resolves when actions are queued
-     */
-    async skipTutorial(): Promise<{ success: boolean; message: string }> {
-        if (!this.ingame) {
-            return { success: false, message: 'Not in game yet' };
-        }
-
-        // If a dialog is open, try to interact with it
-        if (this.isDialogOpen()) {
-            // If we're waiting for dialog response, don't send again
-            if (this.isWaitingForDialog()) {
-                return { success: false, message: 'Waiting for dialog response...' };
-            }
-
-            const options = this.getDialogOptions();
-
-            // If there are dialog options, look for yes/skip option
-            if (options.length > 0) {
-                // Look for "Yes please" or similar affirmative option
-                for (let i = 0; i < options.length; i++) {
-                    const text = options[i].text.toLowerCase();
-                    if (text.includes('yes')) {
-                        this.clickDialogOption(i + 1);
-                        return { success: true, message: `Selected: ${options[i].text}` };
-                    }
-                }
-                // If no clear yes option, just click option 1
-                this.clickDialogOption(1);
-                return { success: true, message: `Selected: ${options[0]?.text || 'option 1'}` };
-            }
-
-            // No options available, click continue
-            if (this.clickDialogOption(0)) {
-                return { success: true, message: 'Clicked continue' };
-            }
-
-            return { success: false, message: 'Dialog open but cannot interact' };
-        }
-
-        // Find and talk to RuneScape Guide
-        const guideIndex = this.findNpcByName('RuneScape Guide');
-        if (guideIndex >= 0) {
-            this.talkToNpc(guideIndex);
-            return { success: true, message: 'Talking to RuneScape Guide' };
-        }
-
-        // Try other common tutorial NPC names
-        const alternateNames = ['Guide', 'Tutorial'];
-        for (const name of alternateNames) {
-            const idx = this.findNpcByName(name);
-            if (idx >= 0) {
-                this.talkToNpc(idx);
-                return { success: true, message: `Talking to ${name}` };
-            }
-        }
-
-        return { success: false, message: 'No tutorial NPC found nearby' };
-    }
-
     // === AGENT MODE PUBLIC METHODS ===
 
     /**

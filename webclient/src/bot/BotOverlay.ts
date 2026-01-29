@@ -96,7 +96,7 @@ export class BotOverlay implements GatewayMessageHandler {
             console.log(`[BotOverlay] Executing action: ${action.type}`);
             const resultOrPromise = this.executor.execute(action);
 
-            // Handle async actions (like skipTutorial)
+            // Handle async actions if any
             if (resultOrPromise instanceof Promise) {
                 resultOrPromise.then(result => {
                     console.log(`[BotOverlay] Async action result: ${result.success ? 'success' : 'failed'} - ${result.message}`);
