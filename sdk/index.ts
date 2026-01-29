@@ -274,13 +274,12 @@ export class BotSDK {
         } catch (error) {
             // If endpoint doesn't exist or bot not found, return disconnected status
             return {
-                username: this.config.botUsername,
-                connected: false,
+                status: 'dead',
                 inGame: false,
+                stateAge: null,
                 controllers: [],
                 observers: [],
-                lastStateTime: 0,
-                player: null
+                player: null,
             };
         }
     }
@@ -290,16 +289,14 @@ export class BotSDK {
      */
     async isBotConnected(): Promise<boolean> {
         const status = await this.checkBotStatus();
-        return status.connected;
+        return status.status !== 'dead';
     }
 
     /**
      * Determine if browser should be launched based on config and current status.
-     * - 'auto': Launch only if no fresh state data (client not actively sending)
-     * - true: Launch if bot not connected
+     * - 'auto': Launch only if session is dead or stale
+     * - true: Launch if bot not connected (dead)
      * - false: Never launch
-     *
-     * Uses gateway's session status when available for more accurate decisions.
      */
     private shouldLaunchBrowser(status: BotStatus): boolean {
         if (this.config.autoLaunchBrowser === false) {
@@ -308,7 +305,7 @@ export class BotSDK {
 
         if (this.config.autoLaunchBrowser === true) {
             // Legacy behavior: launch if not connected
-            if (!status.connected) {
+            if (status.status === 'dead') {
                 console.log(`[BotSDK] Bot not connected`);
                 return true;
             }
@@ -316,45 +313,20 @@ export class BotSDK {
             return false;
         }
 
-        // 'auto' mode: use gateway status if available, otherwise fall back to state age check
-
-        // Use gateway's pre-calculated status if available
-        if (status.status) {
-            if (status.status === 'dead') {
-                console.log(`[BotSDK] Bot session is dead`);
-                return true;
-            }
-
-            if (status.status === 'stale') {
-                console.log(`[BotSDK] Bot session is stale (no recent state updates)`);
-                // Note: this will trigger graceful takeover via save_and_disconnect
-                return true;
-            }
-
-            if (status.status === 'active') {
-                console.log(`[BotSDK] Active client detected (status: active), skipping browser launch`);
-                return false;
-            }
-        }
-
-        // Fallback for gateways that don't provide status field
-        if (!status.connected) {
-            console.log(`[BotSDK] Bot not connected`);
+        // 'auto' mode: use session status to decide
+        if (status.status === 'dead') {
+            console.log(`[BotSDK] Bot session is dead`);
             return true;
         }
 
-        // Check if state data is fresh (client actively sending)
-        // Prefer stateAge from gateway, otherwise calculate from lastStateTime
-        const stateAge = status.stateAge ?? (status.lastStateTime > 0 ? Date.now() - status.lastStateTime : Infinity);
-        const isFresh = stateAge !== null && stateAge < this.config.freshDataThreshold;
-
-        if (isFresh) {
-            console.log(`[BotSDK] Active client detected (state age: ${typeof stateAge === 'number' ? Math.round(stateAge) : stateAge}ms), skipping browser launch`);
-            return false;
+        if (status.status === 'stale') {
+            console.log(`[BotSDK] Bot session is stale (no recent state updates)`);
+            // Note: this will trigger graceful takeover via save_and_disconnect
+            return true;
         }
 
-        console.log(`[BotSDK] No fresh state data (age: ${stateAge === Infinity || stateAge === null ? 'never' : Math.round(stateAge as number) + 'ms'})`);
-        return true;
+        console.log(`[BotSDK] Active client detected, skipping browser launch`);
+        return false;
     }
 
     /**
@@ -396,7 +368,7 @@ export class BotSDK {
 
         while (Date.now() - startTime < timeoutMs) {
             const status = await this.checkBotStatus();
-            if (status.connected) {
+            if (status.status !== 'dead') {
                 console.log(`[BotSDK] Bot connected!`);
                 return;
             }

@@ -570,43 +570,26 @@ const server = Bun.serve({
         if (botStatusMatch && botStatusMatch[1]) {
             const username = decodeURIComponent(botStatusMatch[1]);
             const botSession = botSessions.get(username);
-            const now = Date.now();
 
             const controllers = SyncModule.getControllersForBot(username).map(s => s.sdkClientId);
             const observers = SyncModule.getObserversForBot(username).map(s => s.sdkClientId);
 
-            // Calculate ages if session exists
+            const isConnected = !!botSession?.ws;
             const stateAge = botSession?.lastStateReceivedAt
-                ? now - botSession.lastStateReceivedAt
-                : null;
-            const sessionDuration = botSession?.connectedAt
-                ? now - botSession.connectedAt
+                ? Date.now() - botSession.lastStateReceivedAt
                 : null;
 
-            const isConnected = !!botSession?.ws;
             const response = {
-                username,
-                // Session status
                 status: botSession ? getSessionStatus(botSession) : 'dead',
-                connected: isConnected,
-                // Timestamps
-                connectedAt: botSession?.connectedAt || null,
-                lastStateAt: botSession?.lastStateReceivedAt || null,
-                lastStateTime: botSession?.lastStateReceivedAt || 0,  // Backwards compat
-                lastHeartbeat: botSession?.lastHeartbeat || null,
-                // Calculated ages
-                stateAge,
-                sessionDuration,
-                // Game state (only valid if connected, otherwise shows last known)
                 inGame: isConnected ? (botSession?.lastState?.inGame || false) : false,
+                stateAge,
                 controllers,
                 observers,
-                // Player info (null if not connected, otherwise last known)
                 player: isConnected && botSession?.lastState?.player ? {
                     name: botSession.lastState.player.name,
                     worldX: botSession.lastState.player.worldX,
                     worldZ: botSession.lastState.player.worldZ
-                } : null
+                } : null,
             };
 
             return new Response(JSON.stringify(response, null, 2), {
@@ -614,31 +597,16 @@ const server = Bun.serve({
             });
         }
 
-        // Status endpoint
+        // Status endpoint (admin/debugging - more detailed)
         if (url.pathname === '/' || url.pathname === '/status') {
-            const now = Date.now();
             const bots: Record<string, any> = {};
             for (const [username, session] of botSessions) {
                 const isConnected = session.ws !== null;
-                const stateAge = session.lastStateReceivedAt > 0
-                    ? now - session.lastStateReceivedAt
-                    : null;
                 bots[username] = {
-                    // Session status
                     status: getSessionStatus(session),
-                    connected: isConnected,
-                    // Timestamps
-                    connectedAt: session.connectedAt,
-                    lastStateAt: session.lastStateReceivedAt || null,
-                    lastHeartbeat: session.lastHeartbeat,
-                    // Calculated ages
-                    stateAge: stateAge,
-                    sessionDuration: now - session.connectedAt,
-                    // Existing fields
-                    clientId: session.clientId,
-                    lastTick: session.lastState?.tick || 0,
-                    // Game state (only valid if connected)
                     inGame: isConnected ? (session.lastState?.inGame || false) : false,
+                    clientId: session.clientId,
+                    tick: session.lastState?.tick || 0,
                     player: isConnected ? (session.lastState?.player?.name || null) : null
                 };
             }
@@ -653,8 +621,6 @@ const server = Bun.serve({
 
             return new Response(JSON.stringify({
                 status: 'running',
-                connectedBots: botSessions.size,
-                connectedSDKs: sdkSessions.size,
                 bots,
                 sdks
             }, null, 2), {
