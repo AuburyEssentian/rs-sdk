@@ -462,30 +462,74 @@
             }
         };
 
+        // Skip tutorial step using primitive client methods
+        function doSkipTutorialStep() {
+            if (!clientInstance) {
+                return { success: false, message: 'Client not ready' };
+            }
+
+            // If dialog is open, interact with it
+            if (clientInstance.isDialogOpen && clientInstance.isDialogOpen()) {
+                if (clientInstance.isWaitingForDialog && clientInstance.isWaitingForDialog()) {
+                    return { success: false, message: 'Waiting for dialog response...' };
+                }
+
+                const options = clientInstance.getDialogOptions ? clientInstance.getDialogOptions() : [];
+                if (options.length > 0) {
+                    // Look for affirmative option
+                    for (let i = 0; i < options.length; i++) {
+                        const text = options[i].text.toLowerCase();
+                        if (text.includes('yes')) {
+                            clientInstance.clickDialogOption(i + 1);
+                            return { success: true, message: `Selected: ${options[i].text}` };
+                        }
+                    }
+                    // No clear yes option, click option 1
+                    clientInstance.clickDialogOption(1);
+                    return { success: true, message: `Selected: ${options[0]?.text || 'option 1'}` };
+                }
+
+                // Click continue
+                if (clientInstance.clickDialogOption(0)) {
+                    return { success: true, message: 'Clicked continue' };
+                }
+                return { success: false, message: 'Dialog open but cannot interact' };
+            }
+
+            // Find and talk to tutorial NPC
+            const names = ['RuneScape Guide', 'Guide', 'Tutorial'];
+            for (const name of names) {
+                const idx = clientInstance.findNpcByName ? clientInstance.findNpcByName(name) : -1;
+                if (idx >= 0) {
+                    clientInstance.talkToNpc(idx);
+                    return { success: true, message: `Talking to ${name}` };
+                }
+            }
+
+            return { success: false, message: 'No tutorial NPC found nearby' };
+        }
+
         window.skipTutorial = async function() {
-            if (!clientInstance || !clientInstance.skipTutorial) {
+            if (!clientInstance) {
                 document.getElementById('bot-status').textContent = 'Client not ready';
                 return;
             }
 
-            // Auto-retry up to 5 times with delays to handle "waiting for dialog" states
+            // Auto-retry up to 5 times with delays
             for (let attempt = 0; attempt < 5; attempt++) {
-                const result = await clientInstance.skipTutorial();
+                const result = doSkipTutorialStep();
                 document.getElementById('bot-status').textContent = result.message;
 
-                // If we're waiting for dialog, wait longer for server response
                 if (result.message.includes('Waiting')) {
                     await new Promise(r => setTimeout(r, 800));
                     continue;
                 }
 
-                // If successful action, wait a bit then try next step
                 if (result.success) {
                     await new Promise(r => setTimeout(r, 600));
                     continue;
                 }
 
-                // No NPC found or other terminal state - stop
                 break;
             }
         };
@@ -500,12 +544,12 @@
             }
 
             document.getElementById('bot-status').textContent = 'Auto-skip started (click again to stop)';
-            skipTutorialInterval = setInterval(async () => {
-                if (clientInstance && clientInstance.skipTutorial) {
-                    const result = await clientInstance.skipTutorial();
+            skipTutorialInterval = setInterval(() => {
+                if (clientInstance) {
+                    const result = doSkipTutorialStep();
                     document.getElementById('bot-status').textContent = 'Auto: ' + result.message;
                 }
-            }, 600); // Run every 600ms (every tick)
+            }, 600);
         };
 
         // Show current dialog state

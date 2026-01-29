@@ -4,7 +4,7 @@
     "": {
       "name": "server",
       "dependencies": {
-        "@2004scape/rsmod-pathfinder": "github:MaxBittker/rsmod-pathfinder#df7ec08",
+        "@2004scape/rsmod-pathfinder": "github:MaxBittker/rsmod-pathfinder#71a5588",
         "@inquirer/prompts": "^7.5.3",
         "playwright": "^1.57.0",
         "puppeteer": "^24.35.0",
@@ -18,7 +18,7 @@
     },
   },
   "packages": {
-    "@2004scape/rsmod-pathfinder": ["@2004scape/rsmod-pathfinder@github:MaxBittker/rsmod-pathfinder#df7ec08", {}, "MaxBittker-rsmod-pathfinder-df7ec08"],
+    "@2004scape/rsmod-pathfinder": ["@2004scape/rsmod-pathfinder@github:MaxBittker/rsmod-pathfinder#71a5588", {}, "MaxBittker-rsmod-pathfinder-71a5588"],
 
     "@babel/code-frame": ["@babel/code-frame@7.28.6", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-JYgintcMjRiCvS8mMECzaEn+m3PfoQiyqukOMCCVQtoJGYJw8j/8LBJEiqkHLkfwCcs74E3pbAUFNg7d9VNJ+Q=="],
 
