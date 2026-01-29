@@ -79,9 +79,6 @@ export class BotSDK {
             reconnectMaxDelay: config.reconnectMaxDelay ?? 30000
         };
         this.sdkClientId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-        // Initialize pathfinding on first SDK creation
-        pathfinding.initPathfinding();
     }
 
     // ============ Connection ============
