@@ -8,6 +8,8 @@ export interface GatewayMessageHandler {
     onScreenshotRequest(screenshotId?: string): void;
     onConnected(): void;
     onDisconnected(): void;
+    /** Called when gateway requests graceful disconnect (new session taking over) */
+    onSaveAndDisconnect(reason: string): void;
 }
 
 // Extract bot credentials from URL query params
@@ -32,6 +34,8 @@ export class GatewayConnection {
     private connected: boolean = false;
     private handler: GatewayMessageHandler;
     private botUsername: string;
+    /** When true, prevents auto-reconnect (used during graceful disconnect) */
+    private preventReconnect: boolean = false;
 
     constructor(handler: GatewayMessageHandler) {
         this.handler = handler;
@@ -76,9 +80,13 @@ export class GatewayConnection {
                 this.ws = null;
                 this.handler.onDisconnected();
 
-                // Reconnect after delay
-                if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-                this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
+                // Only reconnect if not explicitly told to disconnect
+                if (!this.preventReconnect) {
+                    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+                    this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
+                } else {
+                    console.log('[GatewayConnection] Auto-reconnect disabled (graceful disconnect)');
+                }
             };
 
             this.ws.onerror = () => {
@@ -144,6 +152,11 @@ export class GatewayConnection {
             console.log(`[GatewayConnection] Gateway status: ${msg.status}`);
         } else if (msg.type === 'screenshot_request') {
             this.handler.onScreenshotRequest(msg.screenshotId);
+        } else if (msg.type === 'save_and_disconnect') {
+            console.log(`[GatewayConnection] Received save_and_disconnect: ${msg.reason}`);
+            // Set flag to prevent auto-reconnect before calling handler
+            this.preventReconnect = true;
+            this.handler.onSaveAndDisconnect(msg.reason || 'Session being replaced');
         }
     }
 }

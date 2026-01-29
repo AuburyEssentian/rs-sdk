@@ -298,14 +298,31 @@ export interface SDKConfig {
     reconnectMaxDelay?: number;
 }
 
+/** Session status from gateway diagnostics */
+export type SessionStatus = 'active' | 'stale' | 'dead';
+
 /** Bot status from gateway /status/:username endpoint */
 export interface BotStatus {
     username: string;
+    /** Session status: active (receiving states), stale (no recent states), dead (disconnected) */
+    status?: SessionStatus;
     connected: boolean;
     inGame: boolean;
     controllers: string[];
     observers: string[];
+    /** @deprecated Use lastStateAt instead. Kept for backwards compatibility. */
     lastStateTime: number;
+    // Enhanced diagnostics (added in connection stability update)
+    /** Timestamp when bot connected to gateway */
+    connectedAt?: number;
+    /** Timestamp of last state received from bot */
+    lastStateAt?: number;
+    /** Timestamp of last message (heartbeat) from bot */
+    lastHeartbeat?: number;
+    /** Milliseconds since last state was received */
+    stateAge?: number | null;
+    /** Milliseconds since bot connected */
+    sessionDuration?: number | null;
     player: {
         name: string;
         worldX: number;

@@ -25,13 +25,14 @@ export interface BotClientMessage {
 
 // Messages from Gateway → Bot Client
 export interface SyncToBotMessage {
-    type: 'action' | 'thinking' | 'error' | 'status' | 'screenshot_request';
+    type: 'action' | 'thinking' | 'error' | 'status' | 'screenshot_request' | 'save_and_disconnect';
     action?: BotAction;
     actionId?: string;  // For correlation
     thinking?: string;
     error?: string;
     status?: string;
     screenshotId?: string;  // For screenshot_request correlation
+    reason?: string;  // For save_and_disconnect - explains why session is being replaced
 }
 
 // SDK connection mode

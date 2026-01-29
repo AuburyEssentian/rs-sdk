@@ -931,9 +931,16 @@ class World {
 
                 this.newPlayers.add(transferredPlayer);
 
-                // Now remove the old player (this also flushes to disk for backup)
-                this.removePlayer(other);
-                break;
+                // Remove the old player WITHOUT flushing to disk
+                // State is already transferred to the new player, so no need to save
+                // This avoids a race condition where the old logout could interfere with the new player's save
+                this.removePlayerWithoutSave(other);
+
+                // Skip the rest of this iteration - transferredPlayer will be processed
+                // on the next iteration of the outer loop. Without this, the original
+                // player would continue to the normal login process and get added to
+                // this.players, causing an infinite loop when transferredPlayer is processed.
+                continue player;
             }
 
             // prevent logging in when the server is shutting down
@@ -1675,6 +1682,34 @@ class World {
 
         player.addSessionLog(LoggerEventType.MODERATOR, 'Logged out');
         this.flushPlayer(player);
+
+        this.friendThread.postMessage({
+            type: 'player_logout',
+            username: player.username
+        });
+    }
+
+    // Remove player during session takeover - don't flush to disk since state is transferred to new session
+    removePlayerWithoutSave(player: Player): void {
+        if (player.pid === -1) {
+            return;
+        }
+
+        if (isClientConnected(player)) {
+            player.logout();
+            player.client.close();
+        }
+
+        rsbuf.removePlayer(player.pid);
+        this.gameMap.getZone(player.x, player.z, player.level).leave(player);
+        this.players.remove(player.pid);
+        changeNpcCollision(player.width, player.x, player.z, player.level, false);
+        player.cleanup();
+
+        player.isActive = false;
+
+        player.addSessionLog(LoggerEventType.MODERATOR, 'Logged out (session takeover)');
+        // Don't call flushPlayer - state is already transferred to the new session
 
         this.friendThread.postMessage({
             type: 'player_logout',

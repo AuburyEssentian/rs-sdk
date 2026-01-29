@@ -263,7 +263,17 @@ export default class LoginServer {
                                     .execute();
                             }
 
-                            if (!account || !(await bcrypt.compare(password.toLowerCase(), account.password))) {
+                            // DEBUG: Password check logging
+                            console.log('[DEBUG PASSWORD] player_login attempt:', {
+                                username,
+                                passwordProvided: password,
+                                passwordLowercased: password.toLowerCase(),
+                                storedHash: account?.password,
+                            });
+                            const passwordMatch = account ? await bcrypt.compare(password.toLowerCase(), account.password) : false;
+                            console.log('[DEBUG PASSWORD] bcrypt.compare result:', passwordMatch);
+
+                            if (!account || !passwordMatch) {
                                 // invalid username or password
                                 s.send(
                                     JSON.stringify({
@@ -351,15 +361,22 @@ export default class LoginServer {
                                 }
                                 return;
                             } else if (account.logged_in !== null && account.logged_in !== 0) {
-                                // already logged in elsewhere
-                                s.send(
-                                    JSON.stringify({
-                                        replyTo,
-                                        response: 3
+                                // Already logged in elsewhere - new login takes over
+                                // Clear the old session's logged_in state so the new login can proceed
+                                // The old world will handle the orphaned session gracefully on disconnect
+                                console.log(`[LOGIN] Account ${username} already logged in on world ${account.logged_in}, new login taking over`);
+                                await db.updateTable('account_login')
+                                    .set({
+                                        logged_in: 0,
+                                        login_time: null
                                     })
-                                );
-                                return;
-                            } else if (account.staffmodlevel < 2 
+                                    .where('account_id', '=', account.id)
+                                    .where('profile', '=', profile)
+                                    .executeTakeFirst();
+                                // Continue with normal login - don't return
+                            }
+
+                            if (account.staffmodlevel < 2 
                                 && account.logged_out !== null 
                                 && account.logged_out !== 0 
                                 && account.logged_out !== nodeId 
@@ -570,7 +587,17 @@ export default class LoginServer {
                             .select(['id', 'password', 'banned_until'])
                             .executeTakeFirst();
 
-                        if (!account || !(await bcrypt.compare(password.toLowerCase(), account.password))) {
+                        // DEBUG: SDK auth password check logging
+                        // console.log('[DEBUG PASSWORD] sdk_auth attempt:', {
+                        //     username,
+                        //     passwordProvided: password,
+                        //     passwordLowercased: password.toLowerCase(),
+                        //     storedHash: account?.password,
+                        // });
+                        const sdkPasswordMatch = account ? await bcrypt.compare(password.toLowerCase(), account.password) : false;
+                        // console.log('[DEBUG PASSWORD] sdk_auth bcrypt.compare result:', sdkPasswordMatch);
+
+                        if (!account || !sdkPasswordMatch) {
                             s.send(JSON.stringify({
                                 replyTo,
                                 success: false,

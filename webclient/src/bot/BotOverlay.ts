@@ -79,6 +79,26 @@ export class BotOverlay implements GatewayMessageHandler {
         this.ui.logAction('disconnected', 'Disconnected from SDK gateway');
     }
 
+    onSaveAndDisconnect(reason: string): void {
+        console.log(`[BotOverlay] Save and disconnect requested: ${reason}`);
+        this.ui.logAction('disconnecting', `Save and disconnect: ${reason}`);
+
+        // Trigger client logout - this will save to server via game protocol
+        // The logout method handles stream close which triggers server-side save
+        // GatewayConnection.preventReconnect is already set by the message handler
+        const client = this.client as any;
+        if (client && typeof client.logout === 'function') {
+            console.log('[BotOverlay] Triggering client logout for graceful disconnect');
+            client.logout().catch((e: any) => {
+                console.error('[BotOverlay] Error during logout:', e);
+            });
+        } else {
+            console.warn('[BotOverlay] No logout method available on client');
+            // Fall back to just disconnecting gateway
+            this.gateway.disconnect();
+        }
+    }
+
     // ============ Main Tick Loop ============
 
     tick(): void {

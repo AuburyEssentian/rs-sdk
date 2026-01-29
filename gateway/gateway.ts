@@ -96,6 +96,20 @@ async function authenticateSDK(username: string, password: string): Promise<{ su
 
 // ============ Types ============
 
+/**
+ * Bot Session - represents a bot client (browser) connected to the gateway.
+ *
+ * Only ONE bot session per username is allowed. When a new bot connects with
+ * the same username, the old session is gracefully disconnected via
+ * 'save_and_disconnect' message (allowing it to save state before closing).
+ *
+ * Session lifecycle:
+ * 1. Bot connects, sends 'connected' message with username
+ * 2. Gateway creates/updates BotSession, notifies SDK clients
+ * 3. Bot sends 'state' updates periodically (tracked for staleness)
+ * 4. On disconnect: session.ws = null, SDKs notified, state preserved
+ * 5. On reconnect: same username gets fresh session, state preserved
+ */
 interface BotSession {
     ws: any;
     clientId: string;
@@ -104,8 +118,34 @@ interface BotSession {
     lastStateReceivedAt: number;
     currentActionId: string | null;
     pendingScreenshotId: string | null;
+    // Session metadata for diagnostics
+    connectedAt: number;              // When bot first connected (timestamp)
+    lastHeartbeat: number;            // Last message received (any type)
 }
 
+// Session status for diagnostics
+type SessionStatus = 'active' | 'stale' | 'dead';
+
+const STALE_THRESHOLD_MS = 8000;  // 30 seconds without state = stale
+
+function getSessionStatus(session: BotSession): SessionStatus {
+    if (!session.ws) return 'dead';
+    const stateAge = Date.now() - session.lastStateReceivedAt;
+    if (stateAge > STALE_THRESHOLD_MS) return 'stale';
+    return 'active';
+}
+
+/**
+ * SDK Session - represents an SDK client connected to control/observe a bot.
+ *
+ * Multiple SDK clients can connect to the same bot simultaneously:
+ * - Multiple 'control' mode clients: Both can send actions (first-come-first-served execution)
+ * - Multiple 'observe' mode clients: Read-only, receive state updates only
+ * - Mixed: Controllers and observers can coexist
+ *
+ * The `otherControllers` count is returned on connect to help SDK clients coordinate.
+ * There is no automatic pre-emption - SDKs must coordinate externally if needed.
+ */
 interface SDKSession {
     ws: any;
     sdkClientId: string;
@@ -114,10 +154,25 @@ interface SDKSession {
 }
 
 // ============ State ============
+//
+// Session Maps:
+// - botSessions: Keyed by username (only one bot per username allowed)
+// - sdkSessions: Keyed by sdkClientId (multiple SDKs per bot allowed)
+// - wsToType: Reverse lookup from WebSocket to session type/id
+// - pendingTakeovers: Tracks new connections waiting for old session to close
 
 const botSessions = new Map<string, BotSession>();      // username -> BotSession
 const sdkSessions = new Map<string, SDKSession>();      // sdkClientId -> SDKSession
 const wsToType = new Map<any, { type: 'bot' | 'sdk'; id: string }>();
+
+// Pending takeovers: new bot waiting for old session to close
+interface PendingTakeover {
+    ws: any;
+    clientId: string;
+    username: string;
+    timeout: ReturnType<typeof setTimeout>;
+}
+const pendingTakeovers = new Map<string, PendingTakeover>();  // username -> pending new connection
 
 // ============ Sync Module ============
 
@@ -170,36 +225,68 @@ const SyncModule = {
         return null;
     },
 
+    // Helper to complete a bot connection (called immediately or after takeover completes)
+    completeBotConnection(ws: any, clientId: string, username: string, preservedState?: BotSession | null) {
+        const now = Date.now();
+        const session: BotSession = {
+            ws,
+            clientId,
+            username,
+            lastState: preservedState?.lastState || null,
+            lastStateReceivedAt: preservedState?.lastStateReceivedAt || 0,
+            currentActionId: null,
+            pendingScreenshotId: null,
+            connectedAt: now,
+            lastHeartbeat: now
+        };
+
+        botSessions.set(username, session);
+        wsToType.set(ws, { type: 'bot', id: username });
+
+        console.log(`[Gateway] Bot connected: ${clientId} (${username})`);
+
+        this.sendToBot(session, { type: 'status', status: 'Connected to gateway' });
+
+        for (const sdkSession of this.getSDKSessionsForBot(username)) {
+            this.sendToSDK(sdkSession, { type: 'sdk_connected', success: true });
+        }
+    },
+
     handleBotMessage(ws: any, message: BotClientMessage) {
         if (message.type === 'connected') {
             const username = message.username || this.extractUsernameFromClientId(message.clientId) || 'default';
             const clientId = message.clientId || `bot-${Date.now()}`;
 
             const existingSession = botSessions.get(username);
-            if (existingSession && existingSession.ws !== ws) {
-                try { existingSession.ws?.close(); } catch {}
+            if (existingSession && existingSession.ws !== ws && existingSession.ws) {
+                // Graceful takeover: ask old bot to save and disconnect, WAIT before allowing new session
+                console.log(`[Gateway] Requesting graceful disconnect for existing session: ${existingSession.clientId}`);
+                console.log(`[Gateway] New session ${clientId} will wait for old session to close`);
+
+                this.sendToBot(existingSession, {
+                    type: 'save_and_disconnect',
+                    reason: 'New session connecting'
+                });
+
+                // Store pending takeover - will be processed when old session closes
+                const oldWs = existingSession.ws;
+                const timeout = setTimeout(() => {
+                    // Timeout: force close old session and complete the pending takeover
+                    console.log(`[Gateway] Takeover timeout for ${username}, force closing old session`);
+                    if (oldWs && oldWs.readyState !== 3 /* CLOSED */) {
+                        try { oldWs.close(); } catch {}
+                    }
+                    // handleClose will process the pending takeover
+                }, 5000);  // 5 second grace period
+
+                pendingTakeovers.set(username, { ws, clientId, username, timeout });
+
+                // Don't complete the connection yet - wait for old session to close
+                return;
             }
 
-            const session: BotSession = {
-                ws,
-                clientId,
-                username,
-                lastState: existingSession?.lastState || null,
-                lastStateReceivedAt: existingSession?.lastStateReceivedAt || 0,
-                currentActionId: null,
-                pendingScreenshotId: null
-            };
-
-            botSessions.set(username, session);
-            wsToType.set(ws, { type: 'bot', id: username });
-
-            console.log(`[Gateway] Bot connected: ${clientId} (${username})`);
-
-            this.sendToBot(session, { type: 'status', status: 'Connected to gateway' });
-
-            for (const sdkSession of this.getSDKSessionsForBot(username)) {
-                this.sendToSDK(sdkSession, { type: 'sdk_connected', success: true });
-            }
+            // No existing session or same ws reconnecting - complete immediately
+            this.completeBotConnection(ws, clientId, username, existingSession);
             return;
         }
 
@@ -208,6 +295,9 @@ const SyncModule = {
 
         const session = botSessions.get(wsInfo.id);
         if (!session) return;
+
+        // Update heartbeat on any message
+        session.lastHeartbeat = Date.now();
 
         if (message.type === 'actionResult' && message.result) {
             const actionId = message.actionId || session.currentActionId || undefined;
@@ -371,8 +461,32 @@ const SyncModule = {
             const session = botSessions.get(wsInfo.id);
             if (session) {
                 console.log(`[Gateway] Bot disconnected: ${session.clientId} (${session.username})`);
+                const username = session.username;
                 session.ws = null;
 
+                // Check if there's a pending takeover waiting for this session to close
+                const pending = pendingTakeovers.get(username);
+                if (pending) {
+                    console.log(`[Gateway] Processing pending takeover for ${username}: ${pending.clientId}`);
+                    clearTimeout(pending.timeout);
+                    pendingTakeovers.delete(username);
+
+                    // Small delay to let game server finish processing the logout
+                    setTimeout(() => {
+                        // Verify pending ws is still open
+                        if (pending.ws && pending.ws.readyState === 1 /* OPEN */) {
+                            this.completeBotConnection(pending.ws, pending.clientId, pending.username, session);
+                        } else {
+                            console.log(`[Gateway] Pending connection for ${username} already closed, skipping`);
+                        }
+                    }, 700);  // 700ms delay to let game server settle
+
+                    // Don't notify SDK of disconnect since new session is taking over
+                    wsToType.delete(ws);
+                    return;
+                }
+
+                // No pending takeover - notify SDK clients of disconnect
                 for (const sdkSession of this.getSDKSessionsForBot(session.username)) {
                     this.sendToSDK(sdkSession, { type: 'sdk_error', error: 'Bot disconnected' });
                 }
@@ -456,18 +570,39 @@ const server = Bun.serve({
         if (botStatusMatch && botStatusMatch[1]) {
             const username = decodeURIComponent(botStatusMatch[1]);
             const botSession = botSessions.get(username);
+            const now = Date.now();
 
             const controllers = SyncModule.getControllersForBot(username).map(s => s.sdkClientId);
             const observers = SyncModule.getObserversForBot(username).map(s => s.sdkClientId);
 
+            // Calculate ages if session exists
+            const stateAge = botSession?.lastStateReceivedAt
+                ? now - botSession.lastStateReceivedAt
+                : null;
+            const sessionDuration = botSession?.connectedAt
+                ? now - botSession.connectedAt
+                : null;
+
+            const isConnected = !!botSession?.ws;
             const response = {
                 username,
-                connected: !!botSession?.ws,
-                inGame: botSession?.lastState?.inGame || false,
+                // Session status
+                status: botSession ? getSessionStatus(botSession) : 'dead',
+                connected: isConnected,
+                // Timestamps
+                connectedAt: botSession?.connectedAt || null,
+                lastStateAt: botSession?.lastStateReceivedAt || null,
+                lastStateTime: botSession?.lastStateReceivedAt || 0,  // Backwards compat
+                lastHeartbeat: botSession?.lastHeartbeat || null,
+                // Calculated ages
+                stateAge,
+                sessionDuration,
+                // Game state (only valid if connected, otherwise shows last known)
+                inGame: isConnected ? (botSession?.lastState?.inGame || false) : false,
                 controllers,
                 observers,
-                lastStateTime: botSession?.lastState?.tick || 0,
-                player: botSession?.lastState?.player ? {
+                // Player info (null if not connected, otherwise last known)
+                player: isConnected && botSession?.lastState?.player ? {
                     name: botSession.lastState.player.name,
                     worldX: botSession.lastState.player.worldX,
                     worldZ: botSession.lastState.player.worldZ
@@ -481,14 +616,30 @@ const server = Bun.serve({
 
         // Status endpoint
         if (url.pathname === '/' || url.pathname === '/status') {
+            const now = Date.now();
             const bots: Record<string, any> = {};
             for (const [username, session] of botSessions) {
+                const isConnected = session.ws !== null;
+                const stateAge = session.lastStateReceivedAt > 0
+                    ? now - session.lastStateReceivedAt
+                    : null;
                 bots[username] = {
-                    connected: session.ws !== null,
+                    // Session status
+                    status: getSessionStatus(session),
+                    connected: isConnected,
+                    // Timestamps
+                    connectedAt: session.connectedAt,
+                    lastStateAt: session.lastStateReceivedAt || null,
+                    lastHeartbeat: session.lastHeartbeat,
+                    // Calculated ages
+                    stateAge: stateAge,
+                    sessionDuration: now - session.connectedAt,
+                    // Existing fields
                     clientId: session.clientId,
                     lastTick: session.lastState?.tick || 0,
-                    inGame: session.lastState?.inGame || false,
-                    player: session.lastState?.player?.name || null
+                    // Game state (only valid if connected)
+                    inGame: isConnected ? (session.lastState?.inGame || false) : false,
+                    player: isConnected ? (session.lastState?.player?.name || null) : null
                 };
             }
 

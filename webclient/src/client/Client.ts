@@ -499,6 +499,7 @@ export class Client extends GameShell {
 
     // Bot SDK overlay for bot development (dynamically loaded when enabled)
     private botOverlay: InstanceType<typeof import('#/bot/index.js').BotOverlay> | null = null;
+    private botAutoLoginAttempted: boolean = false;
 
     private onDemand: OnDemand | null = null;
     ingame: boolean = false;
@@ -6059,6 +6060,21 @@ export class Client extends GameShell {
     }
 
     private async drawTitle(): Promise<void> {
+        // Auto-login from URL params when bot SDK is enabled
+        if (ENABLE_BOT_SDK && !this.botAutoLoginAttempted && this.lastProgressPercent >= 100) {
+            const botUsername = BotSDKModule.getBotUsername();
+            const botPassword = BotSDKModule.getBotPassword();
+            if (botUsername !== 'default' && botPassword) {
+                this.botAutoLoginAttempted = true;
+                console.log(`[Client] Auto-login triggered for bot: ${botUsername}`);
+                // Don't await - let it run async so we don't block drawing
+                // Engine handles session takeover if another session exists
+                this.autoLogin(botUsername, botPassword).catch(e => {
+                    console.error('[Client] Auto-login failed:', e);
+                });
+            }
+        }
+
         await this.loadTitle();
         this.imageTitle4?.bind();
         this.imageTitlebox?.draw(0, 0);
