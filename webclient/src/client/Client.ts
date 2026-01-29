@@ -72,7 +72,7 @@ declare const process: { env: { ENABLE_BOT_SDK?: string; SECURE_ORIGIN?: string;
 const ENABLE_BOT_SDK = process.env.ENABLE_BOT_SDK === 'true';
 
 // Conditional Bot SDK import - will be tree-shaken in standard build
-import * as BotSDKModule from '#/bot/BotSDK.js';
+import * as BotSDKModule from '#/bot/index.js';
 const BotOverlay = ENABLE_BOT_SDK ? BotSDKModule.BotOverlay : null;
 
 const enum Constants {
@@ -498,7 +498,7 @@ export class Client extends GameShell {
     private displayFps: boolean = false;
 
     // Bot SDK overlay for bot development (dynamically loaded when enabled)
-    private botOverlay: InstanceType<typeof import('#/bot/BotSDK.js').BotOverlay> | null = null;
+    private botOverlay: InstanceType<typeof import('#/bot/index.js').BotOverlay> | null = null;
 
     private onDemand: OnDemand | null = null;
     ingame: boolean = false;

@@ -5,4 +5,4 @@ export * from '#/client/Client.js';
 export { Client as default } from '#/client/Client.js';
 
 // Re-export Bot SDK for external access
-export * from '#/bot/BotSDK.js';
+export * from '#/bot/index.js';
