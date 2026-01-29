@@ -364,18 +364,18 @@ export class BotSDK {
         const startTime = Date.now();
         const pollInterval = 500;
 
-        console.log(`[BotSDK] Waiting for bot to connect (timeout: ${timeoutMs}ms)...`);
+        console.log(`[BotSDK] Waiting for bot to connect and load game (timeout: ${timeoutMs}ms)...`);
 
         while (Date.now() - startTime < timeoutMs) {
             const status = await this.checkBotStatus();
-            if (status.status !== 'dead') {
-                console.log(`[BotSDK] Bot connected!`);
+            if (status.status !== 'dead' && status.inGame) {
+                console.log(`[BotSDK] Bot connected and in-game!`);
                 return;
             }
             await new Promise(resolve => setTimeout(resolve, pollInterval));
         }
 
-        throw new Error(`Bot did not connect within ${timeoutMs}ms`);
+        throw new Error(`Bot did not fully load within ${timeoutMs}ms`);
     }
 
     private getStatusUrl(): string {

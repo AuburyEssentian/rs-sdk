@@ -207,7 +207,7 @@ export default class LoginServer {
                                     .insertInto('account')
                                     .values({
                                         username,
-                                        password: bcrypt.hashSync(password.toLowerCase(), 10),
+                                        password: bcrypt.hashSync(password, 10),
                                         registration_ip: remoteAddress,
                                         registration_date: toDbDate(new Date())
                                     })
@@ -263,15 +263,7 @@ export default class LoginServer {
                                     .execute();
                             }
 
-                            // DEBUG: Password check logging
-                            console.log('[DEBUG PASSWORD] player_login attempt:', {
-                                username,
-                                passwordProvided: password,
-                                passwordLowercased: password.toLowerCase(),
-                                storedHash: account?.password,
-                            });
-                            const passwordMatch = account ? await bcrypt.compare(password.toLowerCase(), account.password) : false;
-                            console.log('[DEBUG PASSWORD] bcrypt.compare result:', passwordMatch);
+                            const passwordMatch = account ? await bcrypt.compare(password, account.password) : false;
 
                             if (!account || !passwordMatch) {
                                 // invalid username or password
@@ -587,15 +579,7 @@ export default class LoginServer {
                             .select(['id', 'password', 'banned_until'])
                             .executeTakeFirst();
 
-                        // DEBUG: SDK auth password check logging
-                        // console.log('[DEBUG PASSWORD] sdk_auth attempt:', {
-                        //     username,
-                        //     passwordProvided: password,
-                        //     passwordLowercased: password.toLowerCase(),
-                        //     storedHash: account?.password,
-                        // });
-                        const sdkPasswordMatch = account ? await bcrypt.compare(password.toLowerCase(), account.password) : false;
-                        // console.log('[DEBUG PASSWORD] sdk_auth bcrypt.compare result:', sdkPasswordMatch);
+                        const sdkPasswordMatch = account ? await bcrypt.compare(password, account.password) : false;
 
                         if (!account || !sdkPasswordMatch) {
                             s.send(JSON.stringify({
