@@ -144,11 +144,6 @@ const sdk = new BotSDK({
 ## Project Structure
 
 ```
-scripts/
-├── example-remote.ts     # Reference implementation
-├── script-runner.ts      # Structured test runner
-└── <your-script>/
-    └── script.ts         # Your automation
 
 sdk/
 ├── index.ts              # BotSDK (low-level)
@@ -158,6 +153,3 @@ sdk/
 
 ## See Also
 
-- `scripts/example-remote.ts` - Full working example
-- `scripts/CLAUDE.md` - Script improvement methodology
-- `sdk/types.ts` - All available types and options

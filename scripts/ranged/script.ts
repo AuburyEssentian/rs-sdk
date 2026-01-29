@@ -258,19 +258,35 @@ async function rangedTrainingLoop(ctx: ScriptContext): Promise<void> {
     await ctx.bot.dismissBlockingUI();
 
     // Walk to chicken coop and open gate if needed
-    ctx.log('Walking to chicken coop...');
+    ctx.log('Walking to chicken coop gate...');
     await ctx.bot.walkTo(COOP_GATE.x, COOP_GATE.z);
     ctx.progress();
 
-    // Try to open the gate to enter
-    const gateResult = await ctx.bot.openDoor(/gate/i);
-    if (gateResult.success) {
-        ctx.log('Opened gate to chicken coop');
+    // Open the gate to enter - retry if needed
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const gateResult = await ctx.bot.openDoor(/gate/i);
+        if (gateResult.success) {
+            ctx.log('Opened gate to chicken coop');
+            await new Promise(r => setTimeout(r, 600)); // Wait for gate to open
+            break;
+        }
+        ctx.log(`Gate open attempt ${attempt + 1} failed, retrying...`);
+        await new Promise(r => setTimeout(r, 300));
     }
 
     // Walk inside the coop
+    ctx.log('Walking inside coop...');
     await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
     ctx.progress();
+
+    // Verify we're inside - if not, try again
+    const pos = ctx.state();
+    if (pos && (pos.player?.worldX !== CHICKEN_COOP.x || pos.player?.worldZ !== CHICKEN_COOP.z)) {
+        ctx.log(`Not at target (${pos.player?.worldX}, ${pos.player?.worldZ}), retrying entry...`);
+        await ctx.bot.openDoor(/gate/i);
+        await new Promise(r => setTimeout(r, 600));
+        await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
+    }
 
     let lastStatsLog = 0;
 
@@ -354,8 +370,9 @@ async function rangedTrainingLoop(ctx: ScriptContext): Promise<void> {
         const target = findBestTarget(ctx);
         if (!target) {
             ctx.log('No chickens nearby - walking to chicken coop...');
-            // Try to open gate if needed
+            // Try to open gate and enter
             await ctx.bot.openDoor(/gate/i);
+            await new Promise(r => setTimeout(r, 400));
             await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
             ctx.progress();
             continue;
@@ -367,6 +384,7 @@ async function rangedTrainingLoop(ctx: ScriptContext): Promise<void> {
             ctx.log(`Chicken too far (${target.distance} tiles), walking to coop...`);
             // Try to open gate first if needed
             await ctx.bot.openDoor(/gate/i);
+            await new Promise(r => setTimeout(r, 400));
             // Walk to coop
             await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
             ctx.progress();
@@ -398,12 +416,12 @@ async function rangedTrainingLoop(ctx: ScriptContext): Promise<void> {
                     await new Promise(r => setTimeout(r, 300));
                 }
             }
-            // Try opening gate if blocked
-            if (attackResult.reason === 'out_of_reach') {
-                const gateRes = await ctx.bot.openDoor(/gate/i);
-                if (gateRes.success) {
-                    ctx.log('Opened gate');
-                }
+            // Try opening gate and re-entering if blocked
+            if (attackResult.reason === 'out_of_reach' || attackResult.reason === 'timeout') {
+                ctx.log('Cannot reach target - trying to enter coop...');
+                await ctx.bot.openDoor(/gate/i);
+                await new Promise(r => setTimeout(r, 400));
+                await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
             }
             ctx.progress();
             continue;

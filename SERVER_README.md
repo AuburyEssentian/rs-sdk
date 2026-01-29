@@ -11,7 +11,6 @@ Demo Production server running on Fly.io with game server, web client, and bot S
 | `https://rs-sdk-demo.fly.dev/` | Web client (play in browser) |
 | `https://rs-sdk-demo.fly.dev/rs2.cgi` | Classic web client URL |
 | `https://rs-sdk-demo.fly.dev/bot` | Bot view client |
-| `rs-sdk-demo.fly.dev:43594` | Game server (TCP) for Java client |
 
 ### Bot SDK / Gateway
 
@@ -21,20 +20,6 @@ Demo Production server running on Fly.io with game server, web client, and bot S
 | `wss://rs-sdk-demo.fly.dev/bot` | Bot client WebSocket connection |
 | `wss://rs-sdk-demo.fly.dev/gateway` | SDK WebSocket connection (proxies to gateway) |
 
-### APIs
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/findPath?srcX=&srcZ=&destX=&destZ=&level=` | Server-side pathfinding |
-| `POST /api/screenshot` | Save screenshot (base64 PNG) |
-
-### Logs & Runs
-
-| Endpoint | Description |
-|----------|-------------|
-| `/runs` | Agent test runs viewer |
-| `/script_runs` | Script execution runs |
-| `/screenshots` | Screenshot gallery |
 
 ## SDK Connection Example
 

@@ -1,31 +1,62 @@
 # @rs-agent/sdk
 
-Standalone SDK for controlling RS-Agent bots remotely.
+SDK for controlling bots and reading game state.
 
-## Installation
+## CLI
 
-```
-### Requirements
-
-- [Bun](https://bun.sh) runtime (recommended) or Node.js 18+
-- TypeScript 5+
+Dump world state for a connected bot:
 
 ```bash
-# Install Bun (if not already installed)
-curl -fsSL https://bun.sh/install | bash
+bun sdk/cli.ts <username> <password> [--server <host>]
 ```
 
-## Quick Start
+Examples:
+```bash
+# Demo server (default)
+bun sdk/cli.ts mybot secret
 
-Create a new script file (e.g., `my-bot.ts`):
+# Local server
+bun sdk/cli.ts mybot secret --server localhost
+
+# Via env vars
+USERNAME=mybot PASSWORD=secret SERVER=localhost bun sdk/cli.ts
+```
+
+Output:
+```
+# World State
+Tick: 15095 | In Game: true
+
+## Player
+Name: Max (Combat 17)
+Position: (2965, 3374) Level 0
+In Combat: Man HP: 6/7
+  -> Dealt 3 damage (2 ticks ago)
+
+## Skills
+Attack: 34 (4,400 xp)
+Defence: 1 (0 xp)
+...
+
+## Inventory
+- Bronze sword x1 [Wield]
+
+## Nearby NPCs
+- Man (Lvl 2) HP: 6/7 [in combat] - 1 tiles [Talk-to, Attack]
+...
+```
+
+## Programmatic Usage
+
+Create a script file (e.g., `my-bot.ts`):
 
 ```typescript
-import { BotSDK } from './rs-sdk/index';
-import { BotActions } from './rs-sdk/actions';
+import { BotSDK } from './sdk';
+import { BotActions } from './sdk/actions';
 
-// Connect to the public demo server (ephemeral save files!)
 const sdk = new BotSDK({
-    botUsername: 'mybot123',
+    botUsername: 'mybot',
+    password: 'secret',
     gatewayUrl: 'wss://rs-sdk-demo.fly.dev/gateway'
 });
 
@@ -80,6 +111,7 @@ await page.goto('https://rs-sdk-demo.fly.dev/bot?bot=mybot123&password=test');
 | Option | Default | Description |
 |--------|---------|-------------|
 | `botUsername` | required | Bot to control (max 12 chars) |
+| `password` | required | Gateway authentication |
 | `gatewayUrl` | - | Full WebSocket URL (e.g. `wss://server.com/gateway`) |
 | `host` | `'localhost'` | Gateway hostname (ignored if gatewayUrl set) |
 | `port` | `7780` | Gateway port (ignored if gatewayUrl set) |

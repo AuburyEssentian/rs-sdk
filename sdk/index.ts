@@ -13,7 +13,9 @@ import type {
     GroundItem,
     DialogState,
     SDKConfig,
-    ConnectionState
+    ConnectionState,
+    SDKConnectionMode,
+    BotStatus
 } from './types';
 import * as pathfinding from './pathfinding';
 
@@ -60,9 +62,14 @@ export class BotSDK {
     constructor(config: SDKConfig) {
         this.config = {
             botUsername: config.botUsername,
+            password: config.password || '',
             gatewayUrl: config.gatewayUrl || '',
             host: config.host || 'localhost',
             port: config.port || 7780,
+            connectionMode: config.connectionMode || 'control',
+            autoLaunchBrowser: config.autoLaunchBrowser ?? false,
+            browserLaunchUrl: config.browserLaunchUrl || '',
+            browserLaunchTimeout: config.browserLaunchTimeout || 30000,
             actionTimeout: config.actionTimeout || 30000,
             autoReconnect: config.autoReconnect ?? true,
             reconnectMaxRetries: config.reconnectMaxRetries ?? Infinity,
@@ -93,6 +100,23 @@ export class BotSDK {
             this.setConnectionState('connecting');
         }
 
+        // Auto-launch browser if configured and bot not connected
+        if (this.config.autoLaunchBrowser && !isReconnect) {
+            try {
+                const status = await this.checkBotStatus();
+                if (!status.connected) {
+                    console.log(`[BotSDK] Bot not connected, launching browser...`);
+                    await this.launchBrowser();
+                    await this.waitForBotConnection();
+                } else {
+                    console.log(`[BotSDK] Bot already connected (${status.controllers.length} controllers, ${status.observers.length} observers)`);
+                }
+            } catch (error) {
+                console.error(`[BotSDK] Auto-launch failed:`, error);
+                // Continue anyway - maybe gateway is local and status endpoint doesn't work yet
+            }
+        }
+
         this.connectPromise = new Promise((resolve, reject) => {
             const url = this.config.gatewayUrl || `ws://${this.config.host}:${this.config.port}`;
             this.ws = new WebSocket(url);
@@ -107,7 +131,9 @@ export class BotSDK {
                 this.send({
                     type: 'sdk_connect',
                     username: this.config.botUsername,
-                    clientId: this.sdkClientId
+                    password: this.config.password,
+                    clientId: this.sdkClientId,
+                    mode: this.config.connectionMode
                 });
             };
 
@@ -225,6 +251,131 @@ export class BotSDK {
     onConnectionStateChange(listener: (state: ConnectionState, attempt?: number) => void): () => void {
         this.connectionListeners.add(listener);
         return () => this.connectionListeners.delete(listener);
+    }
+
+    getConnectionMode(): SDKConnectionMode {
+        return this.config.connectionMode;
+    }
+
+    // ============ Bot Status & Auto-Launch ============
+
+    /**
+     * Check bot status via gateway HTTP endpoint.
+     * Returns info about whether bot is connected and who else is controlling/observing.
+     */
+    async checkBotStatus(): Promise<BotStatus> {
+        const statusUrl = this.getStatusUrl();
+        try {
+            const response = await fetch(statusUrl);
+            if (!response.ok) {
+                throw new Error(`Status check failed: ${response.status}`);
+            }
+            return await response.json();
+        } catch (error) {
+            // If endpoint doesn't exist or bot not found, return disconnected status
+            return {
+                username: this.config.botUsername,
+                connected: false,
+                inGame: false,
+                controllers: [],
+                observers: [],
+                lastStateTime: 0,
+                player: null
+            };
+        }
+    }
+
+    /**
+     * Check if bot is currently connected to gateway.
+     */
+    async isBotConnected(): Promise<boolean> {
+        const status = await this.checkBotStatus();
+        return status.connected;
+    }
+
+    /**
+     * Launch native browser to client URL.
+     * Uses platform-specific open command (open on macOS, start on Windows, xdg-open on Linux).
+     */
+    async launchBrowser(): Promise<void> {
+        const url = this.buildClientUrl();
+        console.log(`[BotSDK] Opening browser: ${url}`);
+
+        const { exec } = await import('child_process');
+
+        const command = process.platform === 'darwin'
+            ? `open "${url}"`
+            : process.platform === 'win32'
+                ? `start "" "${url}"`
+                : `xdg-open "${url}"`;
+
+        return new Promise((resolve, reject) => {
+            exec(command, (error) => {
+                if (error) {
+                    reject(new Error(`Failed to open browser: ${error.message}`));
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
+
+    /**
+     * Wait for bot to connect to gateway after browser launch.
+     */
+    async waitForBotConnection(timeout?: number): Promise<void> {
+        const timeoutMs = timeout || this.config.browserLaunchTimeout;
+        const startTime = Date.now();
+        const pollInterval = 500;
+
+        console.log(`[BotSDK] Waiting for bot to connect (timeout: ${timeoutMs}ms)...`);
+
+        while (Date.now() - startTime < timeoutMs) {
+            const status = await this.checkBotStatus();
+            if (status.connected) {
+                console.log(`[BotSDK] Bot connected!`);
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+
+        throw new Error(`Bot did not connect within ${timeoutMs}ms`);
+    }
+
+    private getStatusUrl(): string {
+        const gatewayUrl = this.config.gatewayUrl || `http://${this.config.host}:${this.config.port}`;
+        // Convert ws:// to http:// and wss:// to https://
+        const httpUrl = gatewayUrl
+            .replace(/^ws:/, 'http:')
+            .replace(/^wss:/, 'https:')
+            .replace(/\/gateway$/, '');  // Remove /gateway suffix if present
+
+        return `${httpUrl}/status/${encodeURIComponent(this.config.botUsername)}`;
+    }
+
+    private buildClientUrl(): string {
+        if (this.config.browserLaunchUrl) {
+            const url = new URL(this.config.browserLaunchUrl);
+            url.searchParams.set('bot', this.config.botUsername);
+            url.searchParams.set('password', 'test');
+            return url.toString();
+        }
+
+        // Derive from gateway URL
+        const gatewayUrl = this.config.gatewayUrl || `ws://${this.config.host}:${this.config.port}`;
+
+        if (gatewayUrl.includes('localhost') || gatewayUrl.includes('127.0.0.1')) {
+            // Local development: assume client on port 8888
+            return `http://localhost:8888/bot?bot=${encodeURIComponent(this.config.botUsername)}&password=test`;
+        }
+
+        // Remote: assume same host with /bot path
+        const httpUrl = gatewayUrl
+            .replace(/^ws:/, 'http:')
+            .replace(/^wss:/, 'https:')
+            .replace(/\/gateway$/, '');
+
+        return `${httpUrl}/bot?bot=${encodeURIComponent(this.config.botUsername)}&password=test`;
     }
 
     async waitForConnection(timeout: number = 60000): Promise<void> {

@@ -264,19 +264,47 @@ export interface ActionResult {
 
 // ============ SDK Config ============
 
+/** Connection mode: 'control' can send actions, 'observe' is read-only */
+export type SDKConnectionMode = 'control' | 'observe';
+
 export interface SDKConfig {
     botUsername: string;
+    /** Password for gateway authentication */
+    password?: string;
     /** Full WebSocket URL (e.g. wss://server.com/gateway). Overrides host/port if set. */
     gatewayUrl?: string;
     /** Gateway hostname (default: localhost) */
     host?: string;
     /** Gateway port (default: 7780) */
     port?: number;
+    /** Connection mode: 'control' (default) can send actions, 'observe' is read-only */
+    connectionMode?: SDKConnectionMode;
+    /** Auto-launch browser if bot not connected (default: false) */
+    autoLaunchBrowser?: boolean;
+    /** Override client URL for auto-launch (derived from gatewayUrl if not set) */
+    browserLaunchUrl?: string;
+    /** Timeout waiting for bot to connect after browser launch (default: 30000ms) */
+    browserLaunchTimeout?: number;
     actionTimeout?: number;
     autoReconnect?: boolean;
     reconnectMaxRetries?: number;
     reconnectBaseDelay?: number;
     reconnectMaxDelay?: number;
+}
+
+/** Bot status from gateway /status/:username endpoint */
+export interface BotStatus {
+    username: string;
+    connected: boolean;
+    inGame: boolean;
+    controllers: string[];
+    observers: string[];
+    lastStateTime: number;
+    player: {
+        name: string;
+        worldX: number;
+        worldZ: number;
+    } | null;
 }
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
