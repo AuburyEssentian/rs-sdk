@@ -73,6 +73,8 @@ export interface NearbyNpc {
     animId: number;
     spotanimId: number;
     optionsWithIndex: NpcOption[];
+    /** Convenience array of option text strings */
+    options: string[];
 }
 
 export interface NearbyPlayer {
@@ -105,6 +107,8 @@ export interface NearbyLoc {
     z: number;
     distance: number;
     optionsWithIndex: LocOption[];
+    /** Convenience array of option text strings */
+    options: string[];
 }
 
 export interface GameMessage {

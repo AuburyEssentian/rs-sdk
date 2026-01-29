@@ -320,9 +320,10 @@ export async function skipTutorial(sdk: BotSDK, maxAttempts: number = 30): Promi
         return isOnTutorialIsland(s.player.worldX, s.player.worldZ);
     };
 
+    const bot = new BotActions(sdk);
     let attempts = 0;
     while (isInTutorial() && attempts < maxAttempts) {
-        await sdk.sendSkipTutorial();
+        await bot.skipTutorial();
         await sleep(1000);
         attempts++;
     }
