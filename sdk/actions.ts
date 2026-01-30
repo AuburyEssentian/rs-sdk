@@ -226,7 +226,6 @@ export class BotActions {
             if (!state) break;
 
             if (state.dialog.isOpen) {
-                console.log(`  [dismissBlockingUI] Dismissing dialog (attempt ${i + 1})`);
                 await this.sdk.sendClickDialog(0);
                 await this.sdk.waitForStateChange(2000).catch(() => {});
                 continue;

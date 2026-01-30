@@ -1,6 +1,7 @@
 {
   "name": "server",
   "private": true,
+  "workspaces": ["mcp"],
   "devDependencies": {
     "@types/bun": "latest"
   },

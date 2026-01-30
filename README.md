@@ -2,28 +2,24 @@
     <h1>RS-SDK</h1>
 </div>
 
-rs-sdk is a typescript library for connecting to and driving bots on a research-oriented implimentation of economic role-playing mmo environment.
+rs-sdk is a typescript library for connecting to and driving bots on a research-oriented economic role-playing mmo environment.
+
+The intended play experience is to develop botting scripts to learn automation techniques, experiment with AI agents, and explore economic systems in a controlled setting.
+## Getting Started via claude code with a random username:
+
+```sh
+bun install
+claude "start a new bot with name $(whoami)$RANDOM"```
+```
 
 > [!NOTE]
 > RS-SDK is a fork and extension of the base LostCity engine and client. LostCity is an amazing project without which this would not be possible. 
 > Find their original code here or read their history and ethos on their forum: https://lostcity.rs/t/faq-what-is-lost-city/16
 
 
-## Getting Started
-
-```sh
-# Quick start (interactive menu)
-./start.sh      # Linux/macOS
-```
-
 ## Dependencies
 
-- Git CLI - Windows users: [git-scm](https://git-scm.com/)
 - [Bun 1.2+](https://bun.sh)
-- [Java 17 or newer](https://adoptium.net/)
-
-> [!TIP]
-> If you're using VS Code (recommended), [we have an extension to install on the marketplace.](https://marketplace.visualstudio.com/items?itemName=2004scape.runescriptlanguage)
 
 ---
 
@@ -34,9 +30,7 @@ rs-sdk is a typescript library for connecting to and driving bots on a research-
 | `engine/` | Game server - handles world state, players, NPCs, game logic |
 | `content/` | Game assets - maps, models, scripts, sprites, music |
 | `webclient/` | TypeScript web client with BotSDK for automation |
-| `javaclient/` | Java applet client (original decompiled code) |
 | `test/` | Test scripts for bot automation and shop interactions |
-| `runs/` | Agent run logs and state snapshots |
 
 ### Engine (`engine/`)
 
@@ -81,34 +75,6 @@ gateway/
 └── agent-state/       # Live state files per bot
 ```
 
-
----
-
-## System Architecture
-
-```
-┌──────────────────┐                    ┌──────────────────┐
-│   Game Engine    │◄──── TCP/WS ─────► │   Bot Client     │
-│  (engine/)       │                    │  (webclient/)    │
-│  :8888           │                    │                  │
-│ - Game server    │                    │ - Browser-based  │
-│ - World state    │                    │ - Renders game   │
-│ - Player logic   │                    │ - Bot SDK        │
-└──────────────────┘                    └────────┬─────────┘
-                                                 │
-                                                 │ WebSocket
-                                                 ▼
-┌──────────────────────────────────────────────────────────┐
-│                    Gateway (gateway/gateway.ts)          │
-│                           :7780                          │
-├──────────────────────────────────────────────────────────┤
-│  SyncModule              │  ControllerModule             │
-│  - Bot ↔ SDK routing     │  - UI connections             │
-│  - State sync            │  - Agent lifecycle            │
-│  - Action relay          │  - Start/stop/logs            │
-└────────────────────────────────────────────────────────┬─┘
-
-```
 
 ---
 
@@ -198,20 +164,6 @@ cd engine && bun start
 ```sh
 cd engine && bun run dev
 # Server restarts on .ts file changes
-```
-
-### Bot Development
-```sh
-# Terminal 1: Start server
-cd engine && bun start
-
-# Terminal 2: Start gateway + agent
-cd agent && bun run gateway:dev
-cd agent && bun run agent:dev
-
-# Terminal 3: Use CLI
-cd agent && bun cli.ts launch mybot "chop trees"
-cd agent && bun cli.ts status
 ```
 
 ---
