@@ -277,6 +277,7 @@ export type BotAction =
     // clickComponentWithOption: INV_BUTTON packet - for components with inventory operations (smithing, crafting, etc.)
     | { type: 'clickComponentWithOption'; componentId: number; optionIndex: number; reason: string }
     | { type: 'acceptCharacterDesign'; reason: string }
+    | { type: 'randomizeCharacterDesign'; reason: string }
     | { type: 'walkTo'; x: number; z: number; running?: boolean; reason: string }
     | { type: 'useInventoryItem'; slot: number; optionIndex: number; reason: string }
     | { type: 'dropItem'; slot: number; reason: string }

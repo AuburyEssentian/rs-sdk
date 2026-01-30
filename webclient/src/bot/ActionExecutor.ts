@@ -212,6 +212,13 @@ export class ActionExecutor {
                         'Failed to accept character design'
                     );
 
+                case 'randomizeCharacterDesign':
+                    return this.wrapBool(
+                        this.client.randomizeCharacterDesign(),
+                        'Character design randomized',
+                        'Failed to randomize character design'
+                    );
+
                 case 'interactGroundItem':
                     return this.wrapBool(
                         this.client.interactGroundItem(action.x, action.z, action.itemId, action.optionIndex),
@@ -279,6 +286,7 @@ export function formatAction(action: BotAction): string {
         case 'shopSell': return `Sell slot ${action.slot} x${action.amount}`;
         case 'wait': return `Wait ${action.ticks || 1} ticks`;
         case 'acceptCharacterDesign': return 'Accept character design';
+        case 'randomizeCharacterDesign': return 'Randomize character design';
         case 'say': return `Say: ${action.message}`;
         default: return action.type;
     }

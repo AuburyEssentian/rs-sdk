@@ -755,6 +755,10 @@ export class BotSDK {
         return this.sendAction({ type: 'acceptCharacterDesign', reason: 'SDK' });
     }
 
+    async sendRandomizeCharacterDesign(): Promise<ActionResult> {
+        return this.sendAction({ type: 'randomizeCharacterDesign', reason: 'SDK' });
+    }
+
     async sendShopBuy(slot: number, amount: number = 1): Promise<ActionResult> {
         return this.sendAction({ type: 'shopBuy', slot, amount, reason: 'SDK' });
     }

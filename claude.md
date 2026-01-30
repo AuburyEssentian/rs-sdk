@@ -29,11 +29,7 @@ The MCP server auto-discovers via `.mcp.json` when you open the project in Claud
 
 1. Install dependencies: `bun install` (from project root)
 2. Open project in Claude Code — approve the MCP server when prompted
-3. Control your bot:
-
-```
-Execute code on "mybot" to check the state
-```
+3. Control your bot with suggestions.
 
 ### Tools
 
@@ -66,14 +62,6 @@ execute_code({
 })
 ```
 
-### Multiple Bots
-
-Control multiple bots simultaneously — each auto-connects on first use:
-
-```typescript
-execute_code({ bot_name: "woodcutter", code: "await bot.chopTree()" })
-execute_code({ bot_name: "miner", code: "await bot.mineRock()" })
-```
 
 **When to use MCP vs Scripts:**
 - **MCP**: Interactive exploration, quick tests, conversational bot control
@@ -117,6 +105,7 @@ Watch the output. After the script finishes (or fails), check state again:
 cd bots/{username} && bun --env-file=bot.env ../../sdk/cli.ts
 ```
 
+
 Record observations in `lab_log.md`, then improve the script.
 
 ## Script Duration Guidelines
@@ -125,58 +114,20 @@ Record observations in `lab_log.md`, then improve the script.
 
 | Duration | Use When |
 |----------|----------|
-| **30-60s** | New script, untested logic, debugging |
+| **10-30s** | New script, single actions, untested logic, debugging |
 | **2-5 min** | Validated approach, building confidence |
 | **10+ min** | Proven strategy, grinding runs |
 
-A failed 10-minute run wastes more time than five 1-minute diagnostic runs. **Fail fast.**
+A failed 5-minute run wastes more time than five 30 second diagnostic runs. **Fail fast and start simple.**
 
-Timeouts in scripts:
-```typescript
-// Short run for testing
-await new Promise(r => setTimeout(r, 60_000));  // 60 seconds
+Be extremely cognizant of pathing issues. It's very common to have issues because of closed doors and gates.
+Look out for "I can't reach" messages - the solution is often to open closed gates. 
 
-// Longer run once proven
-await new Promise(r => setTimeout(r, 5 * 60_000));  // 5 minutes
-```
 
 ## API Reference
 
 When using MCP `execute_code`, you have access to two objects: `bot` (high-level) and `sdk` (low-level).
 
-### Common Examples
-
-```typescript
-// Check current state
-const state = sdk.getState();
-console.log('Position:', state.player.worldX, state.player.worldZ);
-console.log('HP:', sdk.getSkill('Hitpoints')?.level);
-
-// Find and chop a tree
-const tree = sdk.findNearbyLoc(/^tree$/i);
-if (tree) await bot.chopTree(tree);
-
-// Walk somewhere
-await bot.walkTo(3200, 3200);
-
-// Attack a goblin
-const goblin = sdk.findNearbyNpc(/goblin/i);
-if (goblin) await bot.attackNpc(goblin);
-
-// Buy from shop
-await bot.openShop(/shop.*keeper/i);
-await bot.buyFromShop(/bronze axe/i, 1);
-await bot.closeShop();
-
-// Bank items
-await bot.openBank();
-await bot.depositItem(/logs/i, -1);  // -1 = deposit all
-await bot.closeBank();
-
-// Craft items
-await bot.fletchLogs('shortbow');
-await bot.smithAtAnvil('dagger');
-```
 
 ### `bot` - High-Level Actions (BotActions)
 
@@ -461,12 +412,10 @@ interface ActionResult {
 
 ---
 
-## Quick Patterns
-
 ### Dismiss Level-Up Dialogs
 
 ```typescript
-// In your main loop - always call this
+// In your main loop - always call this because level ups are blocking.
 await bot.dismissBlockingUI();
 
 // Or manually check
@@ -518,15 +467,8 @@ sdk/
 ├── cli.ts             # CLI for checking state
 └── types.ts           # Type definitions
 
-mcp/
-├── server.ts          # MCP server entry point
-├── api/
-│   ├── index.ts       # BotManager (multi-bot connections)
-│   ├── bot.ts         # High-level API docs
-│   └── sdk.ts         # Low-level API docs
-└── README.md          # MCP setup guide
 
-.mcp.json              # Claude Code auto-discovery config
+
 ```
 
 ## Troubleshooting

@@ -117,11 +117,21 @@ export class BotActions {
     /**
      * Skip tutorial by navigating dialogs and talking to tutorial NPCs.
      * This is a porcelain method - domain logic that was moved from bot client.
+     * Automatically randomizes character appearance when the design screen appears.
      */
     async skipTutorial(): Promise<ActionResult> {
         const state = this.sdk.getState();
         if (!state?.inGame) {
             return { success: false, message: 'Not in game' };
+        }
+
+        // Check for character design modal (interface 269) and handle it
+        if (state.modalOpen && state.modalInterface === 269) {
+            await this.sdk.sendRandomizeCharacterDesign();
+            await new Promise(r => setTimeout(r, 100));
+            await this.sdk.sendAcceptCharacterDesign();
+            await new Promise(r => setTimeout(r, 300));
+            return { success: true, message: 'Character design randomized and accepted' };
         }
 
         // If dialog open, navigate through it (may take multiple clicks)
