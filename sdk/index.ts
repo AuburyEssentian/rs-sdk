@@ -963,6 +963,61 @@ export class BotSDK {
         });
     }
 
+    /**
+     * Wait for a specific number of server ticks (~420ms each).
+     *
+     * @param ticks - Number of server ticks to wait
+     * @returns The state after waiting
+     */
+    async waitForTicks(ticks: number = 1): Promise<BotWorldState> {
+        if (!this.state) {
+            throw new Error('waitForTicks: no state available');
+        }
+
+        if (ticks <= 0) {
+            return this.state;
+        }
+
+        const startTick = this.state.tick;
+        const targetTick = startTick + ticks;
+
+        return new Promise((resolve, reject) => {
+            // Safety timeout: ticks * 1s + 5s buffer (server tick is ~420ms, so 1s is generous)
+            const safetyTimeout = setTimeout(() => {
+                unsubscribe();
+                reject(new Error(`waitForTicks(${ticks}) safety timeout - no state updates received`));
+            }, ticks * 1000 + 5000);
+
+            const unsubscribe = this.onStateUpdate((state) => {
+                if (state.tick >= targetTick) {
+                    clearTimeout(safetyTimeout);
+                    unsubscribe();
+                    resolve(state);
+                }
+            });
+        });
+    }
+
+    /**
+     * Wait for the next state update from the server.
+     * This is the most common waiting pattern - ensures fresh data after an action.
+     *
+     * State updates arrive once per server tick (~420ms) when PLAYER_INFO is received.
+     *
+     * @example
+     * ```ts
+     * await sdk.sendClickDialog(0);
+     * await sdk.waitForStateUpdate();  // Wait for server to confirm
+     * ```
+     *
+     * @returns The new state after the update
+     */
+    async waitForStateUpdate(): Promise<BotWorldState> {
+        return this.waitForStateChange(5000);
+    }
+
+
+
     // ============ Internal ============
 
     private send(message: object) {

@@ -130,9 +130,9 @@ export class BotActions {
             const s = this.sdk.getState();
             if (s?.modalOpen && s?.modalInterface === 3559) {
                 await this.sdk.sendRandomizeCharacterDesign();
-                await new Promise(r => setTimeout(r, 100));
+                await this.sdk.waitForTicks(1);
                 await this.sdk.sendAcceptCharacterDesign();
-                await new Promise(r => setTimeout(r, 300));
+                await this.sdk.waitForTicks(1);
                 return true;
             }
             return false;
@@ -156,7 +156,7 @@ export class BotActions {
                 }
 
                 if (currentState.dialog.isWaiting) {
-                    await new Promise(r => setTimeout(r, 300));
+                    await this.sdk.waitForTicks(1);
                     continue;
                 }
 
@@ -174,7 +174,7 @@ export class BotActions {
                 }
 
                 clickCount++;
-                await new Promise(r => setTimeout(r, 500));
+                await this.sdk.waitForTicks(1);
             }
 
             return { success: true, message: `Clicked through ${clickCount} dialogs` };
@@ -196,7 +196,7 @@ export class BotActions {
             // Wait for dialog to open
             try {
                 await this.sdk.waitForCondition(s => s.dialog.isOpen, 5000);
-                await new Promise(r => setTimeout(r, 300));
+                await this.sdk.waitForTicks(1);
 
                 // Loop through all dialog pages until closed
                 let clickCount = 0;
@@ -212,7 +212,7 @@ export class BotActions {
                     }
 
                     if (currentState.dialog.isWaiting) {
-                        await new Promise(r => setTimeout(r, 300));
+                        await this.sdk.waitForTicks(1);
                         continue;
                     }
 
@@ -230,7 +230,7 @@ export class BotActions {
                     }
 
                     clickCount++;
-                    await new Promise(r => setTimeout(r, 500));
+                    await this.sdk.waitForTicks(1);
                 }
 
                 return { success: true, message: `Clicked through ${clickCount} dialogs` };
@@ -550,8 +550,8 @@ export class BotActions {
 
             const path = await this.sdk.sendFindPath(x, z, 500);
             if (!path.success || !path.waypoints?.length) {
-                // No path - might be blocked, try one more query after a moment
-                await new Promise(r => setTimeout(r, 500));
+                // No path - might be blocked, try one more query after a tick
+                await this.sdk.waitForTicks(1);
                 const retryPath = await this.sdk.sendFindPath(x, z, 500);
                 if (!retryPath.success || !retryPath.waypoints?.length) {
                     return { success: false, message: `No path to (${x}, ${z}) from (${current.worldX}, ${current.worldZ})` };
@@ -652,7 +652,7 @@ export class BotActions {
             return { success: true, message: 'Shop closed' };
         } catch {
             await this.sdk.sendCloseShop();
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await this.sdk.waitForTicks(1);
             const finalState = this.sdk.getState();
 
             if (!finalState?.shop.isOpen && !finalState?.interface?.isOpen) {
@@ -930,7 +930,7 @@ export class BotActions {
                 if (currentState?.dialog?.isOpen) {
                     const opt = currentState.dialog.options?.[0];
                     await this.sdk.sendClickDialog(opt?.index ?? 0);
-                    await new Promise(r => setTimeout(r, 300));
+                    await this.sdk.waitForTicks(1);
                     continue;
                 }
             } catch {
@@ -959,7 +959,7 @@ export class BotActions {
             return { success: true, message: 'Bank closed' };
         } catch {
             await this.sdk.sendCloseModal();
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await this.sdk.waitForTicks(1);
 
             const finalState = this.sdk.getState();
             if (!finalState?.interface?.isOpen) {
@@ -1318,7 +1318,7 @@ export class BotActions {
             }
 
             await this.sdk.sendClickDialog(optionIndex);
-            await new Promise(r => setTimeout(r, 600));
+            await this.sdk.waitForTicks(1);
         }
     }
 
@@ -1401,7 +1401,7 @@ export class BotActions {
                 } else if (state.interface.options.length > 0 && state.interface.options[0]) {
                     await this.sdk.sendClickInterfaceOption(0);
                 }
-                await new Promise(r => setTimeout(r, 300));
+                await this.sdk.waitForTicks(1);
                 continue;
             }
 
@@ -1470,7 +1470,7 @@ export class BotActions {
                             if (targetButton) {
                                 await this.sdk.sendClickDialog(targetButton.index);
                                 buttonClicked = true;
-                                await new Promise(r => setTimeout(r, 300));
+                                await this.sdk.waitForTicks(1);
                                 continue;
                             }
                         }
@@ -1498,7 +1498,7 @@ export class BotActions {
                     if (state.dialog.options.length >= targetButtonIndex) {
                         await this.sdk.sendClickDialog(targetButtonIndex);
                         buttonClicked = true;
-                        await new Promise(r => setTimeout(r, 300));
+                        await this.sdk.waitForTicks(1);
                         continue;
                     }
                 }
@@ -1509,7 +1509,7 @@ export class BotActions {
                 } else {
                     await this.sdk.sendClickDialog(0);
                 }
-                await new Promise(r => setTimeout(r, 300));
+                await this.sdk.waitForTicks(1);
                 continue;
             }
 
@@ -1523,7 +1523,7 @@ export class BotActions {
                 }
             }
 
-            await new Promise(r => setTimeout(r, 200));
+            await this.sdk.waitForTicks(1);
         }
 
         // Final XP check
@@ -1607,7 +1607,7 @@ export class BotActions {
                     );
                     if (productOption) {
                         await this.sdk.sendClickInterfaceOption(productOption.index);
-                        await new Promise(r => setTimeout(r, 300));
+                        await this.sdk.waitForTicks(1);
                         continue;
                     }
                 }
@@ -1634,7 +1634,7 @@ export class BotActions {
                 } else if (state.interface.options.length > 0 && state.interface.options[0]) {
                     await this.sdk.sendClickInterfaceOption(0);
                 }
-                await new Promise(r => setTimeout(r, 300));
+                await this.sdk.waitForTicks(1);
                 continue;
             }
 
@@ -1650,7 +1650,7 @@ export class BotActions {
                 } else {
                     await this.sdk.sendClickDialog(0);
                 }
-                await new Promise(r => setTimeout(r, 300));
+                await this.sdk.waitForTicks(1);
                 continue;
             }
 
@@ -1682,7 +1682,7 @@ export class BotActions {
                 }
             }
 
-            await new Promise(r => setTimeout(r, 200));
+            await this.sdk.waitForTicks(1);
         }
 
         // Final XP check
@@ -1835,7 +1835,7 @@ export class BotActions {
         while (Date.now() - startTime < timeout) {
             const state = this.sdk.getState();
             if (!state) {
-                await new Promise(r => setTimeout(r, 200));
+                await this.sdk.waitForTicks(1);
                 continue;
             }
 
@@ -1881,7 +1881,7 @@ export class BotActions {
                 }
             }
 
-            await new Promise(r => setTimeout(r, 200));
+            await this.sdk.waitForTicks(1);
         }
 
         // Final XP check

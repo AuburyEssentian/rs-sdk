@@ -501,6 +501,9 @@ export class Client extends GameShell {
     private botOverlay: InstanceType<typeof import('#/bot/index.js').BotOverlay> | null = null;
     private botAutoLoginAttempted: boolean = false;
 
+    // Callback fired when a game tick is received (PLAYER_INFO packet processed)
+    private onGameTickCallback: (() => void) | null = null;
+
     private onDemand: OnDemand | null = null;
     ingame: boolean = false;
     imageModIcons: Pix8[] = [];
@@ -606,6 +609,14 @@ export class Client extends GameShell {
      */
     setPacketLogCallback(callback: ((entry: { timestamp: number; opcode: number; name: string; size: number; data: string }) => void) | null): void {
         this.packetLogCallback = callback;
+    }
+
+    /**
+     * Set a callback for when a game tick is received (PLAYER_INFO packet processed).
+     * This fires once per server tick (~420ms), allowing SDK to sync state on actual game ticks.
+     */
+    setOnGameTickCallback(callback: (() => void) | null): void {
+        this.onGameTickCallback = callback;
     }
 
     /**
@@ -8431,6 +8442,11 @@ export class Client extends GameShell {
             if (this.ptype === ServerProt.PLAYER_INFO) {
                 this.getPlayerPos(this.in, this.psize);
                 this.awaitingSync = false;
+
+                // Notify SDK of game tick (PLAYER_INFO arrives once per server tick)
+                if (this.onGameTickCallback) {
+                    this.onGameTickCallback();
+                }
 
                 this.ptype = -1;
                 return true;

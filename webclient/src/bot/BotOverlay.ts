@@ -28,9 +28,8 @@ export class BotOverlay implements GatewayMessageHandler {
     private currentActionId: string | null = null;
     private waitTicks: number = 0;
 
-    // Sync throttling
-    private syncTickCounter: number = 0;
-    private static readonly SYNC_INTERVAL_TICKS: number = 10;
+    // Server tick counter - increments once per PLAYER_INFO packet (~420ms)
+    private serverTick: number = 0;
 
     constructor(client: Client) {
         this.client = client;
@@ -47,8 +46,18 @@ export class BotOverlay implements GatewayMessageHandler {
         // Connect to gateway
         this.gateway.connect();
 
+        // Register for game tick callback - sync state on actual server ticks
+        // This fires when PLAYER_INFO packet is received (~420ms intervals)
+        (this.client as any).setOnGameTickCallback(this.onGameTick.bind(this));
+
         // Set global reference
         globalBotOverlay = this;
+    }
+
+    // Called when server tick is received (PLAYER_INFO packet processed)
+    private onGameTick(): void {
+        this.serverTick++;
+        this.sendState();
     }
 
     // ============ GatewayMessageHandler Implementation ============
@@ -124,8 +133,7 @@ export class BotOverlay implements GatewayMessageHandler {
                 resultOrPromise.then(result => {
                     console.log(`[BotOverlay] Async action result: ${result.success ? 'success' : 'failed'} - ${result.message}`);
                     this.sendActionResult(result);
-                    this.syncTickCounter = 0;
-                    this.sendState();
+                    this.sendState();  // Immediate feedback after action
                 }).catch(e => {
                     console.error(`[BotOverlay] Async action error:`, e);
                     this.sendActionResult({ success: false, message: `Error: ${e}` });
@@ -145,17 +153,12 @@ export class BotOverlay implements GatewayMessageHandler {
             this.sendActionResult(result);
 
             // Send state immediately after action for fresh feedback
-            this.syncTickCounter = 0;
             this.sendState();
             return;
         }
 
-        // Send current state to gateway (throttled)
-        this.syncTickCounter++;
-        if (this.syncTickCounter >= BotOverlay.SYNC_INTERVAL_TICKS) {
-            this.syncTickCounter = 0;
-            this.sendState();
-        }
+        // Note: Regular state sync now happens via onGameTick() callback
+        // which fires when PLAYER_INFO packet arrives (once per server tick)
     }
 
     // ============ State Collection ============
@@ -199,6 +202,7 @@ export class BotOverlay implements GatewayMessageHandler {
 
         return {
             ...baseState,
+            tick: this.serverTick,  // Override with server tick (not client frame counter)
             dialog: {
                 isOpen: this.client.isDialogOpen(),
                 options: dialogOptions,
@@ -288,6 +292,8 @@ export class BotOverlay implements GatewayMessageHandler {
     destroy(): void {
         this.gateway.disconnect();
 
+        // Clean up callbacks
+        (this.client as any).setOnGameTickCallback(null);
         if (this.ui.isPacketLoggingEnabled()) {
             this.client.setPacketLogCallback(null);
         }

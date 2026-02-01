@@ -123,23 +123,30 @@ runTest({
     // --- Test 7: Verify bot can interact with world ---
     console.log('\n--- Test 7: Verify bot can interact with world (short walk) ---');
 
-    // Get current position and walk a short distance to prove we can interact
+    // Get current position
     const currentState = sdk.getState();
     const startX = currentState?.player?.worldX ?? 3212;
     const startZ = currentState?.player?.worldZ ?? 3246;
 
-    // Walk just 5 tiles east - short enough to always succeed
-    const targetX = startX + 5;
+    // Use sendWalk directly (bypasses pathfinding which doesn't have shop interior data)
+    const targetX = startX + 2;
     const targetZ = startZ;
-    console.log(`Walking from (${startX}, ${startZ}) to (${targetX}, ${targetZ})...`);
+    console.log(`Walking from (${startX}, ${startZ}) to (${targetX}, ${targetZ}) using sendWalk...`);
 
-    const walkResult = await bot.walkTo(targetX, targetZ);
-    if (!walkResult.success) {
-        console.log(`FAIL: Could not walk after closing shop: ${walkResult.message}`);
+    await sdk.sendWalk(targetX, targetZ);
+    await sleep(1000);
+
+    const afterWalk = sdk.getState();
+    const movedX = afterWalk?.player?.worldX ?? startX;
+    const movedZ = afterWalk?.player?.worldZ ?? startZ;
+
+    if (movedX !== startX || movedZ !== startZ) {
+        console.log(`PASS: Moved to (${movedX}, ${movedZ})`);
+    } else {
+        console.log(`FAIL: Did not move - still at (${movedX}, ${movedZ})`);
         console.log('This indicates the interface might still be blocking interactions');
         return false;
     }
-    console.log(`PASS: ${walkResult.message}`);
 
     // --- Test 8: Try to chop a tree (ultimate interaction test) ---
     console.log('\n--- Test 8: Chop a tree to verify full interaction ---');
