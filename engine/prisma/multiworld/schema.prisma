@@ -159,6 +159,7 @@ model hiscore {
     type       Int
     level      Int
     value      Int
+    playtime   Int      @default(0)
     date       DateTime @default(now()) @updatedAt
 
     @@id([account_id, profile, type])
@@ -171,6 +172,7 @@ model hiscore_large {
     type       Int
     level      Int
     value      BigInt
+    playtime   Int      @default(0)
     date       DateTime @default(now()) @updatedAt
 
     @@id([account_id, profile, type])

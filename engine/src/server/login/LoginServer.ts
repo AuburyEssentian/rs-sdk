@@ -39,14 +39,15 @@ async function updateHiscores(account: { id: number, staffmodlevel: number } | u
         totalLevel += player.baseLevels[i];
     }
 
-    const existing = await db.selectFrom('hiscore_large').select('type').select('value').where('account_id', '=', account.id).where('type', '=', 0).where('profile', '=', profile).executeTakeFirst();
-    if (existing && existing.value !== totalXp) {
+    const existing = await db.selectFrom('hiscore_large').select('type').select('value').select('playtime').where('account_id', '=', account.id).where('type', '=', 0).where('profile', '=', profile).executeTakeFirst();
+    if (existing && (existing.value !== totalXp || existing.playtime !== player.playtime)) {
         await db
             .updateTable('hiscore_large')
             .set({
                 type: 0,
                 level: totalLevel,
                 value: totalXp,
+                playtime: player.playtime,
                 date: toDbDate(new Date())
             })
             .where('account_id', '=', account.id)
@@ -61,7 +62,8 @@ async function updateHiscores(account: { id: number, staffmodlevel: number } | u
                 profile,
                 type: 0,
                 level: totalLevel,
-                value: totalXp
+                value: totalXp,
+                playtime: player.playtime
             })
             .execute();
     }
@@ -75,12 +77,13 @@ async function updateHiscores(account: { id: number, staffmodlevel: number } | u
             const hiscoreType = stat + 1;
 
             // todo: can we upsert in kysely?
-            const existing = await db.selectFrom('hiscore').select('type').select('value').where('account_id', '=', account.id).where('type', '=', hiscoreType).where('profile', '=', profile).executeTakeFirst();
-            if (existing && existing.value !== player.stats[stat]) {
+            const existing = await db.selectFrom('hiscore').select('type').select('value').select('playtime').where('account_id', '=', account.id).where('type', '=', hiscoreType).where('profile', '=', profile).executeTakeFirst();
+            if (existing && (existing.value !== player.stats[stat] || existing.playtime !== player.playtime)) {
                 update.push({
                     type: hiscoreType,
                     level: player.baseLevels[stat],
                     value: player.stats[stat],
+                    playtime: player.playtime,
                     date: toDbDate(new Date())
                 });
             } else if (!existing) {
@@ -89,7 +92,8 @@ async function updateHiscores(account: { id: number, staffmodlevel: number } | u
                     profile,
                     type: hiscoreType,
                     level: player.baseLevels[stat],
-                    value: player.stats[stat]
+                    value: player.stats[stat],
+                    playtime: player.playtime
                 });
             }
         }

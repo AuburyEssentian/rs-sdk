@@ -1,4 +1,4 @@
-import type { ColumnType } from 'kysely';
+import type { ColumnType } from "kysely";
 export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
@@ -8,16 +8,16 @@ export type account = {
     id: Generated<number>;
     username: string;
     password: string;
-    password_updated: string | null;
+    password_updated: Timestamp | null;
     email: string | null;
     oauth_provider: string | null;
     registration_ip: string | null;
-    registration_date: Generated<string>;
-    muted_until: string | null;
-    banned_until: string | null;
+    registration_date: Generated<Timestamp>;
+    muted_until: Timestamp | null;
+    banned_until: Timestamp | null;
     staffmodlevel: Generated<number>;
     notes: string | null;
-    notes_updated: string | null;
+    notes_updated: Timestamp | null;
     members: Generated<number>;
     tfa_enabled: Generated<number>;
     tfa_last_code: Generated<number>;
@@ -28,9 +28,9 @@ export type account_login = {
     account_id: number;
     profile: string;
     logged_in: Generated<number>;
-    login_time: string | null;
+    login_time: Timestamp | null;
     logged_out: Generated<number>;
-    logout_time: string | null;
+    logout_time: Timestamp | null;
 };
 export type account_session = {
     id: Generated<number>;
@@ -38,7 +38,7 @@ export type account_session = {
     world: Generated<number>;
     profile: Generated<string>;
     session_uuid: string;
-    timestamp: string;
+    timestamp: Timestamp;
     coord: number;
     event: string;
     event_type: Generated<number>;
@@ -51,34 +51,36 @@ export type friendlist = {
     account_id: number;
     profile: Generated<string>;
     friend_account_id: number;
-    created: Generated<string>;
+    created: Generated<Timestamp>;
 };
 export type hiscore = {
-    profile: Generated<string>;
     account_id: number;
+    profile: Generated<string>;
     type: number;
     level: number;
     value: number;
-    date: Generated<string>;
+    playtime: Generated<number>;
+    date: Generated<Timestamp>;
 };
 export type hiscore_large = {
-    profile: Generated<string>;
     account_id: number;
+    profile: Generated<string>;
     type: number;
     level: number;
     value: number;
-    date: Generated<string>;
+    playtime: Generated<number>;
+    date: Generated<Timestamp>;
 };
 export type ignorelist = {
     account_id: number;
     profile: Generated<string>;
     value: string;
-    created: Generated<string>;
+    created: Generated<Timestamp>;
 };
 export type input_report = {
     id: Generated<number>;
     account_id: number;
-    timestamp: string;
+    timestamp: Timestamp;
     session_uuid: string;
 };
 export type input_report_event_raw = {
@@ -94,7 +96,7 @@ export type login = {
     uuid: string;
     account_id: number;
     world: number;
-    timestamp: string;
+    timestamp: Timestamp;
     uid: number;
     ip: string | null;
 };
@@ -104,18 +106,18 @@ export type message = {
     sender_id: number;
     sender_ip: string;
     content: string;
-    created: Generated<string>;
-    edited: string | null;
+    created: Generated<Timestamp>;
+    edited: Timestamp | null;
     edited_by: number | null;
-    deleted: string | null;
+    deleted: Timestamp | null;
     deleted_by: number | null;
 };
 export type message_status = {
     id: Generated<number>;
     thread_id: number;
     account_id: number;
-    read: string | null;
-    deleted: string | null;
+    read: Timestamp | null;
+    deleted: Timestamp | null;
 };
 export type message_tag = {
     tag_id: number;
@@ -127,12 +129,12 @@ export type message_thread = {
     from_account_id: number;
     last_message_from: number;
     subject: string;
-    created: Generated<string>;
-    updated: Generated<string>;
+    created: Generated<Timestamp>;
+    updated: Generated<Timestamp>;
     messages: Generated<number>;
-    closed: string | null;
+    closed: Timestamp | null;
     closed_by: number | null;
-    marked_spam: string | null;
+    marked_spam: Timestamp | null;
     marked_spam_by: number | null;
 };
 export type mod_action = {
@@ -142,7 +144,7 @@ export type mod_action = {
     action_id: number;
     data: string | null;
     ip: string | null;
-    timestamp: Generated<string>;
+    timestamp: Generated<Timestamp>;
 };
 export type newspost = {
     id: Generated<number>;
@@ -150,14 +152,14 @@ export type newspost = {
     title: string;
     content: string;
     slug: string | null;
-    created: Generated<string>;
-    updated: Generated<string>;
+    created: Generated<Timestamp>;
+    updated: Generated<Timestamp>;
 };
 export type private_chat = {
     id: Generated<number>;
     account_id: number;
     profile: string;
-    timestamp: string;
+    timestamp: Timestamp;
     coord: number;
     to_account_id: number;
     message: string;
@@ -167,7 +169,7 @@ export type public_chat = {
     account_id: number;
     profile: string;
     world: number;
-    timestamp: string;
+    timestamp: Timestamp;
     coord: number;
     message: string;
 };
@@ -176,7 +178,7 @@ export type report = {
     account_id: number;
     profile: string;
     world: number;
-    timestamp: string;
+    timestamp: Timestamp;
     coord: number;
     offender: string;
     reason: number;
@@ -187,7 +189,7 @@ export type session = {
     account_id: number;
     profile: string;
     world: number;
-    timestamp: string;
+    timestamp: Timestamp;
     uid: number;
     ip: string | null;
 };
@@ -198,7 +200,7 @@ export type tag = {
 };
 export type wealth_event = {
     id: Generated<number>;
-    timestamp: string;
+    timestamp: Timestamp;
     coord: number;
     world: Generated<number>;
     profile: Generated<string>;
@@ -227,6 +229,7 @@ export type DB = {
     login: login;
     message: message;
     message_status: message_status;
+    message_tag: message_tag;
     message_thread: message_thread;
     mod_action: mod_action;
     newspost: newspost;
