@@ -10,6 +10,10 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,
     timeLimit: 120_000,
     stallTimeout: 60_000,
+    launchOptions: {
+        usePuppeteer: true,
+        headless: false,
+    },
 }, async (ctx) => {
     ctx.log('=== Ladder/Stair Functionality Test ===');
 

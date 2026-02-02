@@ -96,6 +96,7 @@ runScript({
     },
     timeLimit: 10 * 60 * 1000,
     stallTimeout: 45_000,
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     const { bot, sdk, log, progress } = ctx;
 

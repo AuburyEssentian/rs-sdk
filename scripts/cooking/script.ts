@@ -701,6 +701,7 @@ runScript({
     timeLimit: 15 * 60 * 1000,      // 15 minutes
     stallTimeout: 45_000,           // 45 seconds (walking long distances)
     screenshotInterval: 30_000,
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     const stats: Stats = {
         fishCaught: 0,

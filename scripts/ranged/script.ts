@@ -21,8 +21,6 @@ import type { NearbyNpc } from '../../sdk/types';
 
 // Training location - Lumbridge chicken coop (inside)
 const CHICKEN_COOP = { x: 3235, z: 3295 };
-// Gate location to enter coop
-const COOP_GATE = { x: 3237, z: 3295 };
 
 // Ranged attack style index (for shortbow, all styles train ranged)
 const RANGED_STYLE = 0; // Accurate
@@ -258,35 +256,33 @@ async function rangedTrainingLoop(ctx: ScriptContext): Promise<void> {
     await ctx.bot.dismissBlockingUI();
 
     // Walk to chicken coop and open gate if needed
-    ctx.log('Walking to chicken coop gate...');
-    await ctx.bot.walkTo(COOP_GATE.x, COOP_GATE.z);
-    ctx.progress();
-
-    // Open the gate to enter - retry if needed
-    for (let attempt = 0; attempt < 3; attempt++) {
-        const gateResult = await ctx.bot.openDoor(/gate/i);
-        if (gateResult.success) {
-            ctx.log('Opened gate to chicken coop');
-            await new Promise(r => setTimeout(r, 600)); // Wait for gate to open
-            break;
-        }
-        ctx.log(`Gate open attempt ${attempt + 1} failed, retrying...`);
-        await new Promise(r => setTimeout(r, 300));
-    }
-
-    // Walk inside the coop
-    ctx.log('Walking inside coop...');
     await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
-    ctx.progress();
+
+    // // Open the gate to enter - retry if needed
+    // for (let attempt = 0; attempt < 3; attempt++) {
+    //     const gateResult = await ctx.bot.openDoor(/gate/i);
+    //     if (gateResult.success) {
+    //         ctx.log('Opened gate to chicken coop');
+    //         await new Promise(r => setTimeout(r, 600)); // Wait for gate to open
+    //         break;
+    //     }
+    //     ctx.log(`Gate open attempt ${attempt + 1} failed, retrying...`);
+    //     await new Promise(r => setTimeout(r, 300));
+    // }
+
+    // // Walk inside the coop
+    // ctx.log('Walking inside coop...');
+    // await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
+    // ctx.progress();
 
     // Verify we're inside - if not, try again
-    const pos = ctx.state();
-    if (pos && (pos.player?.worldX !== CHICKEN_COOP.x || pos.player?.worldZ !== CHICKEN_COOP.z)) {
-        ctx.log(`Not at target (${pos.player?.worldX}, ${pos.player?.worldZ}), retrying entry...`);
-        await ctx.bot.openDoor(/gate/i);
-        await new Promise(r => setTimeout(r, 600));
-        await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
-    }
+    // const pos = ctx.state();
+    // if (pos && (pos.player?.worldX !== CHICKEN_COOP.x || pos.player?.worldZ !== CHICKEN_COOP.z)) {
+    //     ctx.log(`Not at target (${pos.player?.worldX}, ${pos.player?.worldZ}), retrying entry...`);
+    //     await ctx.bot.openDoor(/gate/i);
+    //     await new Promise(r => setTimeout(r, 600));
+    //     await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
+    // }
 
     let lastStatsLog = 0;
 
@@ -417,13 +413,13 @@ async function rangedTrainingLoop(ctx: ScriptContext): Promise<void> {
                 }
             }
             // Try opening gate and re-entering if blocked
-            if (attackResult.reason === 'out_of_reach' || attackResult.reason === 'timeout') {
-                ctx.log('Cannot reach target - trying to enter coop...');
-                await ctx.bot.openDoor(/gate/i);
-                await new Promise(r => setTimeout(r, 400));
-                await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
-            }
-            ctx.progress();
+            // if (attackResult.reason === 'out_of_reach' || attackResult.reason === 'timeout') {
+            //     ctx.log('Cannot reach target - trying to enter coop...');
+            //     await ctx.bot.openDoor(/gate/i);
+            //     await new Promise(r => setTimeout(r, 400));
+            //     await ctx.bot.walkTo(CHICKEN_COOP.x, CHICKEN_COOP.z);
+            // }
+            // ctx.progress();
             continue;
         }
 
@@ -450,6 +446,7 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,
     timeLimit: 30 * 60 * 1000,  // 30 minutes
     stallTimeout: 60_000,       // 60 seconds (ranged combat can be slower)
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     try {
         await rangedTrainingLoop(ctx);

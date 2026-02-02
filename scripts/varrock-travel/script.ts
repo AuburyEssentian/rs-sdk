@@ -165,6 +165,7 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,
     timeLimit: 3 * 60 * 1000,  // 3 minutes
     stallTimeout: 60_000,       // 60s - walkTo can take time on long paths
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     await travelToVarrock(ctx);
 });

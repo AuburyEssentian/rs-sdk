@@ -889,6 +889,7 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,
     timeLimit: 30 * 60 * 1000,  // 30 minutes (leather crafting takes time)
     stallTimeout: 60_000,       // 60 seconds (combat/walking takes time)
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     try {
         await craftingLoop(ctx);

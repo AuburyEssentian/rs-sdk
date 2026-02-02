@@ -1,0 +1,22 @@
+# Scripts Directory
+
+- [ ] agility - Agility training
+- [x] al-kharid-travel - Travel to Al Kharid via toll gate
+- [ ] combat-trainer - Combat training
+- [ ] cooking - Cooking training
+- [ ] cowhide-banking - Cowhide collection and banking
+- [ ] crafting - Crafting training
+- [ ] firemaking - Firemaking training
+- [ ] fishing-speedrun - Fishing speedrun
+- [ ] fletching - Fletching training
+- [ ] fletching-gp - Fletching for gold
+- [ ] ladder-test - Ladder interaction test
+- [ ] magic - Magic training
+- [ ] mining-trainer - Mining training
+- [ ] prayer - Prayer training
+- [x] ranged - Ranged training
+- [ ] smithing - Smithing training
+- [ ] thieving - Thieving training
+- [ ] thieving-gp - Thieving for gold
+- [ ] varrock-travel - Travel to Varrock
+- [ ] woodcutting - Woodcutting training

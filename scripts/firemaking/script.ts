@@ -280,6 +280,7 @@ runScript({
     timeLimit: 10 * 60 * 1000,      // 10 minutes
     stallTimeout: 45_000,            // 45 seconds (tree chopping can take time)
     screenshotInterval: 15_000,
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     const stats: Stats = {
         logsCut: 0,

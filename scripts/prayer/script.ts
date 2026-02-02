@@ -214,6 +214,9 @@ async function prayerTrainingLoop(ctx: ScriptContext): Promise<void> {
     ctx.log(`Walking to chicken coop entrance at (${CHICKEN_COOP_ENTRANCE.x}, ${CHICKEN_COOP_ENTRANCE.z})...`);
     await ctx.bot.walkTo(CHICKEN_COOP_ENTRANCE.x, CHICKEN_COOP_ENTRANCE.z);
     ctx.progress();
+    await ctx.bot.walkTo(CHICKEN_COOP_ENTRANCE.x, CHICKEN_COOP_ENTRANCE.z);
+    ctx.progress();
+    await ctx.bot.walkTo(CHICKEN_COOP_ENTRANCE.x, CHICKEN_COOP_ENTRANCE.z);
 
     // Open the gate to enter the chicken coop
     ctx.log('Opening chicken coop gate...');
@@ -317,8 +320,13 @@ runScript({
     name: 'prayer',
     goal: `Train Prayer to level ${TARGET_PRAYER_LEVEL} by killing chickens and burying bones`,
     preset: TestPresets.LUMBRIDGE_SPAWN,
-    timeLimit: 30 * 60 * 1000,  // 30 minutes
+    timeLimit: 3 * 60 * 1000,  // 3 minutes for testing
     stallTimeout: 60_000,       // 60 seconds
+    launchOptions: {
+        usePuppeteer: true,
+        useSharedBrowser: false,  // Use dedicated browser to avoid congestion
+        headless: false
+    }
 }, async (ctx) => {
     try {
         await prayerTrainingLoop(ctx);

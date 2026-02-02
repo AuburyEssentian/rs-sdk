@@ -777,6 +777,7 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,
     timeLimit: 30 * 60 * 1000,  // 30 minutes
     stallTimeout: 120_000,      // 120 seconds (for shop/gate interactions)
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     try {
         await combatTrainingLoop(ctx);

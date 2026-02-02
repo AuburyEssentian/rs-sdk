@@ -617,6 +617,7 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,  // Standard post-tutorial items including bread
     timeLimit: 5 * 60 * 1000,  // 5 minutes
     stallTimeout: 30_000,      // 30 seconds (includes stun time)
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     try {
         await thievingLoop(ctx);

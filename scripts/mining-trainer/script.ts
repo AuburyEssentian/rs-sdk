@@ -292,6 +292,7 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,  // Standard post-tutorial start
     timeLimit: 5 * 60 * 1000,  // 5 minutes
     stallTimeout: 45_000,      // 45 seconds (mining can be slow)
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     const { bot, sdk, log, progress } = ctx;
 

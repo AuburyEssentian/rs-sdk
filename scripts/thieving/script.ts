@@ -110,6 +110,7 @@ runScript({
     preset: TestPresets.LUMBRIDGE_SPAWN,
     timeLimit: 15 * 60 * 1000,  // 15 minutes
     stallTimeout: 60_000,       // 60 seconds
+    launchOptions: { usePuppeteer: true },
 }, async (ctx) => {
     const { log, progress } = ctx;
 
