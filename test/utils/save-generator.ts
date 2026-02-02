@@ -175,6 +175,7 @@ export const Locations = {
     ALKHARID_FURNACE: { x: 3274, z: 3186 },
     VARROCK_WEST_BANK: { x: 3185, z: 3436 },
     FALADOR_MINE: { x: 3045, z: 9780, level: 0 },  // Dwarven mine
+    GNOME_STRONGHOLD_AGILITY: { x: 2474, z: 3436 },  // Gnome Agility Course start
 };
 
 export interface SaveConfig {
@@ -593,6 +594,12 @@ export const TestPresets = {
     THIEF_AT_VARROCK: {
         position: Locations.VARROCK_TEA_STALL,
         skills: { Thieving: 5 },
+    } as SaveConfig,
+
+    // Agility trainer at Gnome Stronghold course
+    GNOME_AGILITY: {
+        position: Locations.GNOME_STRONGHOLD_AGILITY,
+        skills: { Agility: 1 },
     } as SaveConfig,
 };
 
