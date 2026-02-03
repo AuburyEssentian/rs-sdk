@@ -105,6 +105,8 @@ These methods resolve when server **acknowledges** them (not when effects comple
 | `findInventoryItem(pattern)` | Find inventory item by name pattern. |
 | `getEquipmentItem(slot)` | Get equipment item by slot number. |
 | `findEquipmentItem(pattern)` | Find equipment item by name pattern. |
+| `getBankItem(slot)` | Get bank item by slot number (bank must be open). |
+| `findBankItem(pattern)` | Find bank item by name pattern (bank must be open). |
 | `getNearbyNpc(index)` | Get NPC by index. |
 | `findNearbyNpc(pattern)` | Find NPC by name pattern. |
 | `getNearbyLoc(x, z, id)` | Get location (object) by coordinates and ID. |
@@ -245,6 +247,15 @@ interface ShopState {
 }
 ```
 
+### BankState
+
+```typescript
+interface BankState {
+  isOpen: boolean;
+  items: BankItem[];
+}
+```
+
 ### CombatStyleState
 
 ```typescript
@@ -273,6 +284,7 @@ interface BotWorldState {
   dialog: DialogState;
   interface: InterfaceState;
   shop: ShopState;
+  bank: BankState;
   modalOpen: boolean;
   modalInterface: number;
   combatStyle?: CombatStyleState;

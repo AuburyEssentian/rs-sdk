@@ -171,6 +171,18 @@ export interface ShopState {
     shopConfig?: ShopConfig;
 }
 
+export interface BankItem {
+    slot: number;
+    id: number;
+    name: string;
+    count: number;
+}
+
+export interface BankState {
+    isOpen: boolean;
+    items: BankItem[];
+}
+
 export interface CombatStyleOption {
     index: number;
     name: string;
@@ -209,6 +221,7 @@ export interface BotWorldState {
     dialog: DialogState;
     interface: InterfaceState;
     shop: ShopState;
+    bank: BankState;
     modalOpen: boolean;
     modalInterface: number;
     combatStyle?: CombatStyleState;

@@ -32,6 +32,8 @@ import {
     type ShopState,
     type ShopConfig,
     type ShopItem,
+    type BankState,
+    type BankItem,
     type PlayerState,
     type CombatStyleState,
     type CombatStyleOption,
@@ -75,6 +77,7 @@ export class BotStateCollector implements ScanProvider {
             gameMessages: this.collectGameMessages(),
             menuActions: this.collectMenuActions(),
             shop: this.collectShopState(),
+            bank: this.collectBankState(),
             inGame: c.ingame || false,
             combatEvents: [...this.combatEvents], // Return copy of events
             dialog: this.collectDialogState(),
@@ -875,6 +878,34 @@ export class BotStateCollector implements ScanProvider {
         }
 
         return shopState;
+    }
+
+    private collectBankState(): BankState {
+        const c = this.client as any;
+        const bankState: BankState = {
+            isOpen: false,
+            items: []
+        };
+
+        // Use the Client's isBankOpen() method if available
+        const isBankOpenViaMethod = typeof c.isBankOpen === 'function' ? c.isBankOpen() : false;
+
+        if (isBankOpenViaMethod) {
+            bankState.isOpen = true;
+
+            // Use the Client's getBankItems() method if available
+            if (typeof c.getBankItems === 'function') {
+                const rawItems = c.getBankItems();
+                bankState.items = rawItems.map((item: any) => ({
+                    slot: item.slot,
+                    id: item.id,
+                    name: item.name,
+                    count: item.count
+                }));
+            }
+        }
+
+        return bankState;
     }
 
     /**

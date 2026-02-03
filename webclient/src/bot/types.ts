@@ -19,6 +19,11 @@ export const SHOP_TEMPLATE_SIDE_INV_ID = 3823; // Inventory component in side pa
 export const SHOP_TEMPLATE_ID = 3824; // Main shop interface
 export const SHOP_TEMPLATE_INV_ID = 3900; // Shop inventory component
 
+// Bank interface IDs
+export const BANK_MAIN_ID = 5292; // Main bank interface (viewportInterfaceId)
+export const BANK_MAIN_INV_ID = 5382; // Bank inventory component (bank_main:inv)
+export const BANK_SIDE_INV_ID = 2006; // Side panel inventory for depositing
+
 // Interfaces for state data
 export interface SkillState {
     name: string;
@@ -146,6 +151,18 @@ export interface ShopState {
     shopConfig?: ShopConfig;
 }
 
+export interface BankItem {
+    slot: number;
+    id: number;
+    name: string;
+    count: number;
+}
+
+export interface BankState {
+    isOpen: boolean;
+    items: BankItem[];
+}
+
 /** Combat state tracking for player */
 export interface PlayerCombatState {
     /** Currently engaged in combat (has a target) */
@@ -232,6 +249,7 @@ export interface BotState {
     gameMessages: GameMessage[];
     menuActions: MenuAction[];
     shop: ShopState;
+    bank: BankState;
     inGame: boolean;
     /** Recent combat events (damage, kills) - bounded to last ~50 ticks */
     combatEvents: CombatEvent[];

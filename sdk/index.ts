@@ -12,6 +12,7 @@ import type {
     NearbyLoc,
     GroundItem,
     DialogState,
+    BankItem,
     SDKConfig,
     ConnectionState,
     SDKConnectionMode,
@@ -561,6 +562,31 @@ export class BotSDK {
     /** Get all equipped items. */
     getEquipment(): InventoryItem[] {
         return this.state?.equipment || [];
+    }
+
+    /** Get bank item by slot number (bank must be open). */
+    getBankItem(slot: number): BankItem | null {
+        if (!this.state?.bank.isOpen) return null;
+        return this.state.bank.items.find(i => i.slot === slot) || null;
+    }
+
+    /** Find bank item by name pattern (bank must be open). */
+    findBankItem(pattern: string | RegExp): BankItem | null {
+        if (!this.state?.bank.isOpen) return null;
+        const regex = typeof pattern === 'string'
+            ? new RegExp(pattern, 'i')
+            : pattern;
+        return this.state.bank.items.find(i => regex.test(i.name)) || null;
+    }
+
+    /** Get all bank items (bank must be open). */
+    getBankItems(): BankItem[] {
+        return this.state?.bank.items || [];
+    }
+
+    /** Check if bank interface is open. */
+    isBankOpen(): boolean {
+        return this.state?.bank.isOpen || false;
     }
 
     /** Get NPC by index. */
