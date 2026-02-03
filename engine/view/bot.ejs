@@ -305,7 +305,8 @@
             <a class="green" href="#" id="screenshot" onclick="saveScreenshot();">Take screenshot</a> |
             <a class="green" href="/hiscores">Hiscores</a> |
             <a class="green" href="https://discord.gg/3DcuU5cMJN" target="_blank">Discord</a> |
-            <a class="green" href="https://github.com/LostCityRS" target="_blank">GitHub</a>
+            <a class="green" href="https://github.com/LostCityRS" target="_blank">GitHub</a> |
+            <span class="green" id="player-count">0 online</span>
         </div>
 
         <!-- Bot Controls -->
@@ -665,6 +666,20 @@
 
         // Check visibility every second
         setInterval(updateButtonVisibility, 1000);
+
+        // Poll player count every 30 seconds
+        async function updatePlayerCount() {
+            try {
+                const response = await fetch('/playercount');
+                const data = await response.json();
+                const count = data.count ?? 0;
+                document.getElementById('player-count').textContent = count + ' online';
+            } catch {
+                // Ignore errors
+            }
+        }
+        updatePlayerCount();
+        setInterval(updatePlayerCount, 30000);
 
         loadSettings();
     </script>

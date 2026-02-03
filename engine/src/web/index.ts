@@ -1,5 +1,6 @@
 import { register } from 'prom-client';
 import Environment from '#/util/Environment.js';
+import World from '#/engine/World.js';
 import { handleClientPage, handleCacheEndpoints } from './pages/client.js';
 import { handleHiscoresPage, handleHiscoresPlayerPage } from './pages/hiscores.js';
 import { handleScriptRunsListPage, handleScriptRunsForScriptPage, handleScriptRunViewerPage, handleScriptRunFilesPage } from './pages/scriptRuns.js';
@@ -39,6 +40,18 @@ export async function startWeb() {
                     uptime: process.uptime(),
                     version: '1.0.0'
                 }, null, 2), {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                });
+            }
+
+            // Player count endpoint
+            if (url.pathname === '/playercount' || url.pathname === '/playercount/') {
+                return new Response(JSON.stringify({
+                    count: World.getTotalPlayers()
+                }), {
                     headers: {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*'
