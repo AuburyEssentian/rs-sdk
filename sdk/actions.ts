@@ -499,168 +499,102 @@ export class BotActions {
         const state = this.sdk.getState();
         if (!state?.player) return { success: false, message: 'No player state' };
 
-        const distanceTo = (p: { worldX: number; worldZ: number } | undefined) =>
-            p ? Math.sqrt(Math.pow(x - p.worldX, 2) + Math.pow(z - p.worldZ, 2)) : Infinity;
+        const distTo = (pos: { x: number; z: number }) => this.helpers.distance(pos.x, pos.z, x, z);
+        let pos = { x: state.player.worldX, z: state.player.worldZ };
 
-        const startDist = distanceTo(state.player);
-
-        if (startDist <= tolerance) {
+        if (distTo(pos) <= tolerance) {
             return { success: true, message: 'Already at destination' };
         }
 
-        // With 512x512 search grid, paths can cover ~256 tiles per query
-        // For longer walks, we re-query after completing each path segment
-        const MAX_QUERIES = 25;
+        const MAX_ITERATIONS = 50;
         const MAX_DOOR_RETRIES = 3;
         let stuckCount = 0;
         let doorRetryCount = 0;
-        let lastQueryX = state.player.worldX;
-        let lastQueryZ = state.player.worldZ;
 
-        for (let query = 0; query < MAX_QUERIES; query++) {
-            const current = this.sdk.getState()?.player;
-            if (!current) return { success: false, message: 'Lost player state' };
-
-            const distToGoal = distanceTo(current);
-            if (distToGoal <= tolerance) {
-                return { success: true, message: `Arrived at (${current.worldX}, ${current.worldZ})` };
-            }
-
+        for (let i = 0; i < MAX_ITERATIONS; i++) {
+            // Try pathfinding
             let path = await this.sdk.sendFindPath(x, z, 500);
-            if (!path.success || !path.waypoints?.length) {
-                // If destination zone not allocated, walk directly toward it
-                // This lets us approach gates/doors leading to unexplored areas
-                if (path.error?.includes('Destination zone not allocated') || path.error?.includes('Zone not allocated')) {
-                    await this.sdk.sendWalk(x, z, true);
-                    const moveResult = await this.helpers.waitForMovementComplete(x, z, tolerance);
-                    if (moveResult.arrived) {
-                        return { success: true, message: `Arrived via direct walk at (${moveResult.x}, ${moveResult.z})` };
-                    }
-                    // Check if we made progress
-                    const movedDist = Math.sqrt(
-                        Math.pow(moveResult.x - current.worldX, 2) + Math.pow(moveResult.z - current.worldZ, 2)
-                    );
 
-                    // If we didn't make progress, try opening a nearby door
-                    if (movedDist < 2 && moveResult.stoppedMoving) {
-                        if (doorRetryCount < MAX_DOOR_RETRIES) {
-                            const doorOpened = await this.helpers.tryOpenBlockingDoor();
-                            if (doorOpened) {
-                                doorRetryCount++;
-                                continue;
-                            }
-                        }
-                        // No door to open or max retries reached
-                        stuckCount++;
-                        if (stuckCount >= 3) {
-                            return { success: false, message: `Stuck at (${moveResult.x}, ${moveResult.z}) - destination zone not in collision data` };
-                        }
-                    }
-                    continue;
-                }
+            // Handle zone not allocated - walk directly toward goal
+            if (path.error?.includes('zone not allocated') || path.error?.includes('Zone not allocated')) {
+                const result = await this.helpers.walkStepToward(x, z, tolerance, pos);
+                if (result.status === 'arrived') return { success: true, message: 'Arrived' };
+                pos = result.pos;
 
-                // Regular pathfinding failure - retry after a tick
-                await this.sdk.waitForTicks(1);
-                const retryPath = await this.sdk.sendFindPath(x, z, 500);
-                if (!retryPath.success || !retryPath.waypoints?.length) {
-                    return { success: false, message: `No path to (${x}, ${z}) from (${current.worldX}, ${current.worldZ})` };
+                if (result.status === 'stuck') {
+                    if (doorRetryCount < MAX_DOOR_RETRIES && await this.helpers.tryOpenBlockingDoor()) {
+                        doorRetryCount++;
+                        continue;
+                    }
+                    stuckCount++;
+                    if (stuckCount >= 3) {
+                        return { success: false, message: `Stuck at (${pos.x}, ${pos.z}) - zone not in collision data` };
+                    }
                 }
-                // Use the successful retry path
-                path = retryPath;
+                continue;
             }
 
-            const waypoints = path.waypoints!;
-
-            // Walk the ENTIRE path before re-querying to avoid oscillation
-            // Only break early if we get stuck
-            let lastMoveX = current.worldX;
-            let lastMoveZ = current.worldZ;
-            let noProgressCount = 0;
-
-            for (let i = 0; i < waypoints.length; i++) {
-                const wp = waypoints[i]!;
-                await this.sdk.sendWalk(wp.x, wp.z, true);
-
-                // Wait for movement, but don't wait too long per waypoint
-                const moveResult = await this.helpers.waitForMovementComplete(wp.x, wp.z, 2);
-
-                const pos = this.sdk.getState()?.player;
-                if (!pos) return { success: false, message: 'Lost player state' };
-
-                // Check if we arrived at final destination
-                if (distanceTo(pos) <= tolerance) {
-                    return { success: true, message: 'Arrived' };
+            // Handle pathfinding failure - retry once
+            if (!path.success || !path.waypoints?.length) {
+                await this.sdk.waitForTicks(1);
+                path = await this.sdk.sendFindPath(x, z, 500);
+                if (!path.success || !path.waypoints?.length) {
+                    return { success: false, message: `No path to (${x}, ${z}) from (${pos.x}, ${pos.z})` };
                 }
+            }
 
-                // Check if we're making progress along the path
-                const moved = Math.sqrt(
-                    Math.pow(pos.worldX - lastMoveX, 2) + Math.pow(pos.worldZ - lastMoveZ, 2)
-                );
+            // Walk waypoints
+            const startPos = { ...pos };
+            let waypointStuckCount = 0;
 
-                if (moved < 1 && moveResult.stoppedMoving) {
-                    noProgressCount++;
-                    if (noProgressCount >= 3) {
-                        // Stuck on this path - try opening a nearby door
-                        if (doorRetryCount < MAX_DOOR_RETRIES) {
-                            const doorOpened = await this.helpers.tryOpenBlockingDoor();
-                            if (doorOpened) {
-                                doorRetryCount++;
-                                noProgressCount = 0;
-                                await this.sdk.waitForTicks(1);
-                                break; // Re-query path after opening door
-                            }
+            for (const wp of path.waypoints) {
+                const result = await this.helpers.walkStepToward(wp.x, wp.z, 2, pos);
+                if (distTo(result.pos) <= tolerance) return { success: true, message: 'Arrived' };
+
+                if (result.status === 'stuck') {
+                    waypointStuckCount++;
+                    if (waypointStuckCount >= 3) {
+                        if (doorRetryCount < MAX_DOOR_RETRIES && await this.helpers.tryOpenBlockingDoor()) {
+                            doorRetryCount++;
+                            await this.sdk.waitForTicks(1);
                         }
-                        // Couldn't open door, break to re-query anyway
-                        break;
+                        break; // Re-query path
                     }
                 } else {
-                    noProgressCount = 0;
-                    lastMoveX = pos.worldX;
-                    lastMoveZ = pos.worldZ;
+                    waypointStuckCount = 0;
+                    pos = result.pos;
                 }
             }
 
-            // Check progress since last path query
-            const after = this.sdk.getState()?.player;
-            if (!after) return { success: false, message: 'Lost player state' };
+            // Check progress since path query started
+            const distMoved = this.helpers.distance(startPos.x, startPos.z, pos.x, pos.z);
 
-            const newDist = distanceTo(after);
-            if (newDist <= tolerance) {
-                return { success: true, message: `Arrived at (${after.worldX}, ${after.worldZ})` };
+            // Good progress - continue walking directly without re-querying (prevents oscillation)
+            if (distMoved >= 5) {
+                stuckCount = 0;
+                for (let j = 0; j < 10; j++) {
+                    const result = await this.helpers.walkStepToward(x, z, tolerance, pos);
+                    if (result.status === 'arrived') return { success: true, message: 'Arrived' };
+                    if (result.status === 'stuck') break;
+                    pos = result.pos;
+                }
+                continue;
             }
 
-            // Calculate actual distance moved since last query
-            const distMoved = Math.sqrt(
-                Math.pow(after.worldX - lastQueryX, 2) + Math.pow(after.worldZ - lastQueryZ, 2)
-            );
-
-            // Update for next iteration
-            lastQueryX = after.worldX;
-            lastQueryZ = after.worldZ;
-
-            // Stuck detection: if we moved less than 5 tiles total, increment counter
-            if (distMoved < 5) {
-                stuckCount++;
-                if (stuckCount >= 3) {
-                    // Try opening a nearby door before giving up
-                    if (doorRetryCount < MAX_DOOR_RETRIES) {
-                        const doorOpened = await this.helpers.tryOpenBlockingDoor();
-                        if (doorOpened) {
-                            doorRetryCount++;
-                            stuckCount = 0; // Reset stuck counter after opening door
-                            await this.sdk.waitForTicks(1);
-                            continue; // Retry walking
-                        }
-                    }
-                    return { success: false, message: `Stuck at (${after.worldX}, ${after.worldZ})` };
+            // Poor progress - maybe stuck
+            stuckCount++;
+            if (stuckCount >= 3) {
+                if (doorRetryCount < MAX_DOOR_RETRIES && await this.helpers.tryOpenBlockingDoor()) {
+                    doorRetryCount++;
+                    stuckCount = 0;
+                    await this.sdk.waitForTicks(1);
+                    continue;
                 }
-            } else {
-                stuckCount = 0; // Reset if we made good progress
+                return { success: false, message: `Stuck at (${pos.x}, ${pos.z})` };
             }
         }
 
-        const final = this.sdk.getState()?.player;
-        return { success: false, message: `Could not reach (${x}, ${z}) - stopped at (${final?.worldX}, ${final?.worldZ})` };
+        return { success: false, message: `Could not reach (${x}, ${z}) - stopped at (${pos.x}, ${pos.z})` };
     }
 
     // ============ Porcelain: Shop Actions ============

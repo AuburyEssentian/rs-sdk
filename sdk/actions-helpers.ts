@@ -236,6 +236,54 @@ export class ActionHelpers {
         };
     }
 
+    // ============ Walk Step Helper ============
+
+    /**
+     * Take a single walk step toward a target and report the result.
+     * Used by walkTo to avoid duplicating walk-and-check logic.
+     */
+    async walkStepToward(
+        targetX: number,
+        targetZ: number,
+        tolerance: number,
+        lastPos: { x: number; z: number }
+    ): Promise<{ status: 'arrived' | 'progress' | 'stuck'; pos: { x: number; z: number } }> {
+        await this.sdk.sendWalk(targetX, targetZ, true);
+        const moveResult = await this.waitForMovementComplete(targetX, targetZ, tolerance);
+
+        const pos = this.sdk.getState()?.player;
+        if (!pos) {
+            return { status: 'stuck', pos: lastPos };
+        }
+
+        const currentPos = { x: pos.worldX, z: pos.worldZ };
+
+        // Check if arrived
+        const distToTarget = Math.sqrt(
+            Math.pow(targetX - currentPos.x, 2) + Math.pow(targetZ - currentPos.z, 2)
+        );
+        if (distToTarget <= tolerance) {
+            return { status: 'arrived', pos: currentPos };
+        }
+
+        // Check if stuck (didn't move much and stopped)
+        const moved = Math.sqrt(
+            Math.pow(currentPos.x - lastPos.x, 2) + Math.pow(currentPos.z - lastPos.z, 2)
+        );
+        if (moved < 2 && moveResult.stoppedMoving) {
+            return { status: 'stuck', pos: currentPos };
+        }
+
+        return { status: 'progress', pos: currentPos };
+    }
+
+    /**
+     * Calculate distance between two points.
+     */
+    distance(x1: number, z1: number, x2: number, z2: number): number {
+        return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(z2 - z1, 2));
+    }
+
     // ============ Resolution Helpers ============
 
     resolveLocation(

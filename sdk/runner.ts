@@ -247,30 +247,46 @@ export async function runScript(
         }
     }
 
-    // Create captured console functions
-    const capturedLog = (...args: any[]) => {
-        logs.push({
-            timestamp: new Date(),
-            level: 'log',
-            message: args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
-        });
+    // Live logging with deduplication
+    let pendingLog: { level: 'log' | 'warn' | 'error'; message: string; count: number } | null = null;
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const FLUSH_DELAY = 2000;
+
+    const flushPendingLog = () => {
+        if (flushTimer) {
+            clearTimeout(flushTimer);
+            flushTimer = null;
+        }
+        if (pendingLog) {
+            const { level, message, count } = pendingLog;
+            const prefix = level === 'warn' ? '[warn] ' : level === 'error' ? '[error] ' : '';
+            const suffix = count > 1 ? ` (x${count})` : '';
+            console.log(prefix + message + suffix);
+            logs.push({ timestamp: new Date(), level, message: message + suffix });
+            pendingLog = null;
+        }
     };
 
-    const capturedWarn = (...args: any[]) => {
-        logs.push({
-            timestamp: new Date(),
-            level: 'warn',
-            message: args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
-        });
+    const emitLog = (level: 'log' | 'warn' | 'error', args: any[]) => {
+        const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
+
+        // If same message, increment count and reset timer
+        if (pendingLog && pendingLog.level === level && pendingLog.message === message) {
+            pendingLog.count++;
+            if (flushTimer) clearTimeout(flushTimer);
+            flushTimer = setTimeout(flushPendingLog, FLUSH_DELAY);
+            return;
+        }
+
+        // Different message - flush previous and start new
+        flushPendingLog();
+        pendingLog = { level, message, count: 1 };
+        flushTimer = setTimeout(flushPendingLog, FLUSH_DELAY);
     };
 
-    const capturedError = (...args: any[]) => {
-        logs.push({
-            timestamp: new Date(),
-            level: 'error',
-            message: args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ')
-        });
-    };
+    const capturedLog = (...args: any[]) => emitLog('log', args);
+    const capturedWarn = (...args: any[]) => emitLog('warn', args);
+    const capturedError = (...args: any[]) => emitLog('error', args);
 
     // Create script context
     const ctx: ScriptContext = {
@@ -298,19 +314,12 @@ export async function runScript(
         error = e;
     }
 
+    // Flush any remaining pending log
+    flushPendingLog();
+
     // Get final state
     const finalState = sdk.getState();
     const duration = Date.now() - startTime;
-
-    // Print logs if any
-    if (logs.length > 0) {
-        console.log('');
-        console.log('── Console ──');
-        for (const log of logs) {
-            const prefix = log.level === 'warn' ? '[warn] ' : log.level === 'error' ? '[error] ' : '';
-            console.log(prefix + log.message);
-        }
-    }
 
     // Print result if any
     if (result !== undefined && !error) {
