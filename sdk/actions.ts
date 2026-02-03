@@ -508,60 +508,47 @@ export class BotActions {
 
         const MAX_ITERATIONS = 50;
         const MAX_DOOR_RETRIES = 3;
-        let stuckCount = 0;
         let doorRetryCount = 0;
+        let poorProgressCount = 0;
+
+        // Try to open a blocking door. Returns true if door was opened.
+        const tryOpenDoor = async (): Promise<boolean> => {
+            if (doorRetryCount >= MAX_DOOR_RETRIES) return false;
+            if (await this.helpers.tryOpenBlockingDoor()) {
+                doorRetryCount++;
+                await this.sdk.waitForTicks(1);
+                return true;
+            }
+            return false;
+        };
 
         for (let i = 0; i < MAX_ITERATIONS; i++) {
-            // Try pathfinding
+            // Try pathfinding (with one retry)
             let path = await this.sdk.sendFindPath(x, z, 500);
-
-            // Handle zone not allocated - walk directly toward goal
-            if (path.error?.includes('zone not allocated') || path.error?.includes('Zone not allocated')) {
-                const result = await this.helpers.walkStepToward(x, z, tolerance, pos);
-                if (result.status === 'arrived') return { success: true, message: 'Arrived' };
-                pos = result.pos;
-
-                if (result.status === 'stuck') {
-                    if (doorRetryCount < MAX_DOOR_RETRIES && await this.helpers.tryOpenBlockingDoor()) {
-                        doorRetryCount++;
-                        continue;
-                    }
-                    stuckCount++;
-                    if (stuckCount >= 3) {
-                        return { success: false, message: `Stuck at (${pos.x}, ${pos.z}) - zone not in collision data` };
-                    }
-                }
-                continue;
-            }
-
-            // Handle pathfinding failure - retry once
             if (!path.success || !path.waypoints?.length) {
                 await this.sdk.waitForTicks(1);
                 path = await this.sdk.sendFindPath(x, z, 500);
                 if (!path.success || !path.waypoints?.length) {
-                    return { success: false, message: `No path to (${x}, ${z}) from (${pos.x}, ${pos.z})` };
+                    console.error(`[walkTo] PATHFINDING FAILED: ${path.error ?? 'no waypoints'} - from (${pos.x}, ${pos.z}) to (${x}, ${z})`);
+                    return { success: false, message: `No path to (${x}, ${z}) from (${pos.x}, ${pos.z}): ${path.error ?? 'no waypoints'}` };
                 }
             }
 
             // Walk waypoints
             const startPos = { ...pos };
-            let waypointStuckCount = 0;
+            let consecutiveStuck = 0;
 
             for (const wp of path.waypoints) {
                 const result = await this.helpers.walkStepToward(wp.x, wp.z, 2, pos);
                 if (distTo(result.pos) <= tolerance) return { success: true, message: 'Arrived' };
 
                 if (result.status === 'stuck') {
-                    waypointStuckCount++;
-                    if (waypointStuckCount >= 3) {
-                        if (doorRetryCount < MAX_DOOR_RETRIES && await this.helpers.tryOpenBlockingDoor()) {
-                            doorRetryCount++;
-                            await this.sdk.waitForTicks(1);
-                        }
+                    if (++consecutiveStuck >= 3) {
+                        await tryOpenDoor();
                         break; // Re-query path
                     }
                 } else {
-                    waypointStuckCount = 0;
+                    consecutiveStuck = 0;
                     pos = result.pos;
                 }
             }
@@ -571,7 +558,7 @@ export class BotActions {
 
             // Good progress - continue walking directly without re-querying (prevents oscillation)
             if (distMoved >= 5) {
-                stuckCount = 0;
+                poorProgressCount = 0;
                 for (let j = 0; j < 10; j++) {
                     const result = await this.helpers.walkStepToward(x, z, tolerance, pos);
                     if (result.status === 'arrived') return { success: true, message: 'Arrived' };
@@ -581,16 +568,12 @@ export class BotActions {
                 continue;
             }
 
-            // Poor progress - maybe stuck
-            stuckCount++;
-            if (stuckCount >= 3) {
-                if (doorRetryCount < MAX_DOOR_RETRIES && await this.helpers.tryOpenBlockingDoor()) {
-                    doorRetryCount++;
-                    stuckCount = 0;
-                    await this.sdk.waitForTicks(1);
-                    continue;
+            // Poor progress - might be stuck
+            if (++poorProgressCount >= 3) {
+                if (!await tryOpenDoor()) {
+                    return { success: false, message: `Stuck at (${pos.x}, ${pos.z})` };
                 }
-                return { success: false, message: `Stuck at (${pos.x}, ${pos.z})` };
+                poorProgressCount = 0;
             }
         }
 
