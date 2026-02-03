@@ -8,3 +8,7 @@ public-client/
 
 server.json
 .env
+
+# Bot folders (except template)
+bots/*/
+!bots/_template/

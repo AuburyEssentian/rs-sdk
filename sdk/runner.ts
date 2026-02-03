@@ -10,6 +10,14 @@ import { dirname, join, resolve } from 'path';
 
 // ============ Types ============
 
+/** Error thrown when bot client disconnects during script execution */
+export class BotDisconnectedError extends Error {
+    constructor(message: string = 'Bot client disconnected') {
+        super(message);
+        this.name = 'BotDisconnectedError';
+    }
+}
+
 export interface ScriptContext {
     bot: BotActions;
     sdk: BotSDK;
@@ -31,6 +39,15 @@ export interface RunOptions {
     disconnectAfter?: boolean;
     /** Print world state after execution (default: true) */
     printState?: boolean;
+    /**
+     * How to handle bot client disconnection during script execution:
+     * - 'error': Throw BotDisconnectedError immediately when disconnected (default)
+     * - 'wait': Pause and wait for reconnection (requires autoReconnect on SDK)
+     * - 'ignore': Don't monitor, let actions fail naturally
+     */
+    onDisconnect?: 'error' | 'wait' | 'ignore';
+    /** Timeout for waiting for reconnection when onDisconnect='wait' (default: 60000ms) */
+    reconnectTimeout?: number;
 }
 
 export interface LogEntry {
@@ -145,7 +162,7 @@ async function getOrCreateConnection(): Promise<BotConnection> {
         password,
         gatewayUrl,
         connectionMode: 'control',
-        autoReconnect: false
+        autoReconnect: true
     });
 
     const bot = new BotActions(sdk);
@@ -199,7 +216,9 @@ export async function runScript(
         connection,
         autoConnect = true,
         disconnectAfter = false,
-        printState = true
+        printState = true,
+        onDisconnect = 'error',
+        reconnectTimeout = 60000
     } = options;
 
     const startTime = Date.now();
@@ -297,21 +316,74 @@ export async function runScript(
         error: capturedError
     };
 
-    // Execute script
+    // Execute script with connection monitoring
     let result: any;
     let error: Error | undefined;
+    let unsubscribeConnection: (() => void) | null = null;
+    let disconnectReject: ((err: Error) => void) | null = null;
 
     try {
+        // Set up connection monitoring
+        const scriptPromise = new Promise<any>(async (resolve, reject) => {
+            disconnectReject = reject;
+            try {
+                const scriptResult = await script(ctx);
+                resolve(scriptResult);
+            } catch (e) {
+                reject(e);
+            }
+        });
+
+        // Create race conditions based on options
+        const promises: Promise<any>[] = [scriptPromise];
+
+        // Add timeout if specified
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
         if (timeout) {
             const timeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error(`Script timeout after ${timeout}ms`)), timeout);
+                timeoutId = setTimeout(() => reject(new Error(`Script timeout after ${timeout}ms`)), timeout);
             });
-            result = await Promise.race([script(ctx), timeoutPromise]);
-        } else {
-            result = await script(ctx);
+            promises.push(timeoutPromise);
         }
+
+        // Add connection monitoring if not ignored
+        if (onDisconnect !== 'ignore') {
+            unsubscribeConnection = sdk.onConnectionStateChange(async (state, attempt) => {
+                if (state === 'disconnected' || state === 'reconnecting') {
+                    if (onDisconnect === 'error') {
+                        // Fail immediately
+                        console.error(`[Runner] Bot client disconnected - aborting script`);
+                        if (disconnectReject) {
+                            disconnectReject(new BotDisconnectedError('Bot client disconnected during script execution'));
+                        }
+                    } else if (onDisconnect === 'wait') {
+                        // Log and wait for reconnection
+                        console.error(`[Runner] Bot client disconnected - waiting for reconnection (timeout: ${reconnectTimeout}ms)...`);
+                        try {
+                            await sdk.waitForConnection(reconnectTimeout);
+                            console.error(`[Runner] Bot client reconnected - resuming script`);
+                        } catch (e) {
+                            console.error(`[Runner] Reconnection failed - aborting script`);
+                            if (disconnectReject) {
+                                disconnectReject(new BotDisconnectedError('Bot client failed to reconnect within timeout'));
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        result = await Promise.race(promises);
+
+        // Clear timeout if it was set
+        if (timeoutId) clearTimeout(timeoutId);
     } catch (e: any) {
         error = e;
+    } finally {
+        // Clean up connection listener
+        if (unsubscribeConnection) {
+            unsubscribeConnection();
+        }
     }
 
     // Flush any remaining pending log

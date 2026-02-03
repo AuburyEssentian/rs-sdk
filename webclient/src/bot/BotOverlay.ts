@@ -84,6 +84,8 @@ export class BotOverlay implements GatewayMessageHandler {
         this.pendingAction = action;
         this.currentActionId = actionId;
         this.lastActionTime = Date.now();
+        // Reset idle timer - SDK actions count as activity
+        this.client.idleCycles = performance.now();
         this.ui.logAction(action.type, formatAction(action));
     }
 

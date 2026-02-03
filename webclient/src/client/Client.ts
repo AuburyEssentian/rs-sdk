@@ -524,7 +524,7 @@ export class Client extends GameShell {
         let acc: number = 0;
         for (let i: number = 0; i < 99; i++) {
             const level: number = i + 1;
-            const delta: number = (level + Math.pow(2.0, level / 15.0) * 300.0) | 0;
+            const delta: number = (level + Math.pow(2.0, level / 12.0) * 300.0) | 0;
             acc += delta;
             this.levelExperience[i] = (acc / 4) | 0;
         }
@@ -3746,10 +3746,11 @@ export class Client extends GameShell {
 
             // idlecycles refactored to use date to circumvent browser throttling the
             // timers when a different tab is active, or the window has been minimized.
-            // afk logout has to still happen after 90s of no activity (if allowed).
+            // afk logout after 10 minutes of no activity (extended from 90s for bot use).
+            // SDK actions also reset this timer via BotOverlay.onAction().
             // https://developer.chrome.com/blog/timer-throttling-in-chrome-88/
-            if (performance.now() - this.idleCycles > 180_000) {
-                // 4500 ticks * 20ms = 90000ms
+            if (performance.now() - this.idleCycles > 600_000) {
+                // 600_000ms = 10 minutes
                 this.idleTimeout = 250;
                 // 500 ticks * 20ms = 10000ms
                 this.idleCycles = performance.now() - 10_000;
