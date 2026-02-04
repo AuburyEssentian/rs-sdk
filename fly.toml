@@ -4,6 +4,7 @@ primary_region = "iad"
 [build]
 
 [env]
+NODE_DEBUG = "true"
 BUILD_STARTUP = "false"
 BUILD_STARTUP_UPDATE = "false"
 DB_BACKEND = "sqlite"

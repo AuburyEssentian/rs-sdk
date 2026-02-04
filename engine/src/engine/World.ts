@@ -794,6 +794,7 @@ class World {
 
             if (player.requestLogout || player.requestIdleLogout) {
                 if (this.currentTick >= player.preventLogoutUntil) {
+                    console.warn(`[LOGOUT DEBUG] processLogouts: Setting loggingOut=true for ${player.username} (requestLogout=${player.requestLogout}, requestIdleLogout=${player.requestIdleLogout})`);
                     player.loggingOut = true;
                 } else if (player.requestLogout && player.preventLogoutMessage !== null) {
                     player.messageGame(player.preventLogoutMessage); // engine message type in osrs
@@ -2119,6 +2120,7 @@ class World {
 
                 const player = this.getPlayerByUsername(username);
                 if (player) {
+                    console.warn(`[LOGOUT DEBUG] RELAY_KICK received for ${username} from friends server`);
                     player.loggingOut = true;
 
                     if (isClientConnected(player)) {
@@ -2364,6 +2366,7 @@ class World {
     notifyPlayerBan(staff: string, username: string, until: number) {
         const other = this.getPlayerByUsername(username);
         if (other) {
+            console.warn(`[LOGOUT DEBUG] notifyPlayerBan: ${username} banned by ${staff} until ${until}`);
             other.loggingOut = true;
             if (isClientConnected(other)) {
                 other.logout();

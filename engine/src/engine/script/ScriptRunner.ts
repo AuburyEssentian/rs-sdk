@@ -199,6 +199,7 @@ export default class ScriptRunner {
                 }
 
                 if (Environment.NODE_PRODUCTION) {
+                    console.warn(`[LOGOUT DEBUG] ScriptRunner: Script error caused logout for ${state.self.username} - script: ${state.script.name}`);
                     state.self.logout();
                     state.self.loggingOut = true;
                 }

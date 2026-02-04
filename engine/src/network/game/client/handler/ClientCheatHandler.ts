@@ -604,6 +604,7 @@ export default class ClientCheatHandler extends ClientGameMessageHandler<ClientC
 
                 const other = World.getPlayerByUsername(username);
                 if (other) {
+                    console.warn(`[LOGOUT DEBUG] Admin ::kick command: ${username} kicked by ${player.username}`);
                     other.loggingOut = true;
                     if (isClientConnected(other)) {
                         other.logout();
