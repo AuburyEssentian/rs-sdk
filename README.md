@@ -1,5 +1,5 @@
 <div align="center">
-    <video src="https://github.com/user-attachments/assets/acee850b-e976-4f6f-85ae-67e0087d8c66" autoplay loop muted playsinline width="600"></video>
+    <img src="content/title/promo.gif" alt="RS-SDK Demo" width="800">
 </div>
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white)](https://discord.gg/3DcuU5cMJN)
