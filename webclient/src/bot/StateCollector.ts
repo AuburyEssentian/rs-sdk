@@ -811,16 +811,12 @@ export class BotStateCollector implements ScanProvider {
         const messageType = c.messageType || [];
         const messageTick = c.messageTick || [];
 
-        // Message types to filter out (other players' chat)
-        // Type 2 = public chat, Type 3 = private message received
-        const filteredTypes = new Set([2, 3]);
-
-        // Get recent messages, filtering out other players' chat
+        // Get recent messages (up to 5)
         for (let i = 0; i < 10; i++) {
             const text = messageText[i];
             const type = messageType[i] || 0;
 
-            if (text && !filteredTypes.has(type)) {
+            if (text) {
                 messages.push({
                     type: type,
                     text: text,
@@ -829,7 +825,6 @@ export class BotStateCollector implements ScanProvider {
                 });
             }
 
-            // Stop once we have 5 non-filtered messages
             if (messages.length >= 5) break;
         }
 

@@ -23,7 +23,7 @@ There is currently a [leaderboard](https://rs-sdk-demo.fly.dev/hiscores) for bot
 git clone https://github.com/MaxBittker/rs-sdk.git
 ```
 
-Out of the box, you can connect to the provided demo server, but be sure to chose a name that is not already taken!
+Out of the box, you can connect to the provided demo server, choose a name that is not already taken!
 
 With claude code:
 ```sh
@@ -67,6 +67,19 @@ cd webclient && bun run watch
 cd gateway && bun run gateway
 ```
 there is also a login server which you may not need
+
+## Architecture:
+
+rs-sdk runs against an enhanced web-based client (`botclient`) which connects to the LostCity 2004scape server emulator.
+
+There is a gateway server which accepts connections from botclient and SDK instances, and forwards messages between them based on username.
+Once connected to the gateway, the botclient will relay game state to the SDK, and execute low level actions (e.g. `walkTo(x,y)`) sent from the gateway.
+
+This means that the SDK can't talk directly to the game server, but must go through the botclient. It will attempt to launch the botclient on startup if one is not already running. 
+
+You don't need to run the gateway/botclient in order to run automations against the demo server, but you may choose to if you are fixing bugs or adding features to the rs-sdk project
+
+
 ## Disclaimer
 
 This is a free, open-source, community-run project.
