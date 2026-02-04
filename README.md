@@ -1,5 +1,5 @@
 <div align="center">
-    <h1>RS-SDK</h1>
+    <video src="promo.mp4" autoplay loop muted playsinline width="600"></video>
 </div>
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white)](https://discord.gg/3DcuU5cMJN)
