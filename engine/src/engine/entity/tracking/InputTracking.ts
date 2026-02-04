@@ -150,6 +150,7 @@ export default class InputTracking {
             // this means that:
             // 1: the player is trying to avoid afk timer.
             // 2: the player is on a very slow connection and the report packet never came in.
+            console.warn(`[LOGOUT DEBUG] InputTracking: Client did not submit input tracking report for ${this.player.username} - requesting idle logout`);
             this.player.addSessionLog(LoggerEventType.ENGINE, 'Client did not submit an input tracking report');
             this.player.requestIdleLogout = true;
         }

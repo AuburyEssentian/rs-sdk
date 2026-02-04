@@ -83,22 +83,6 @@ export class OverlayUI {
             margin-top: 10px;
         `;
 
-        // Create header with controls
-        const header = document.createElement('div');
-        header.style.cssText = `
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 10px;
-            background: rgba(4, 168, 0, 0.2);
-        `;
-        header.innerHTML = `
-            <span style="font-weight: bold;">BOT SDK</span>
-            <div>
-                <button id="bot-packets" style="background: none; border: 1px solid #04A800; color: #04A800; cursor: pointer; padding: 2px 8px; font-size: 10px;">PKT</button>
-            </div>
-        `;
-
         // Create panels container for side-by-side layout
         const panelsContainer = document.createElement('div');
         panelsContainer.style.cssText = `
@@ -162,8 +146,12 @@ export class OverlayUI {
             font-weight: bold;
             font-size: 10px;
             color: #FFD700;
+            position: relative;
         `;
-        actionHeader.textContent = 'SDK ACTIONS';
+        actionHeader.innerHTML = `
+            SDK ACTIONS
+            <button id="bot-packets" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: 1px solid #04A800; color: #04A800; cursor: pointer; padding: 2px 8px; font-size: 10px;">PKT</button>
+        `;
 
         this.actionLog = document.createElement('pre');
         this.actionLog.id = 'bot-sdk-actions';
@@ -190,7 +178,6 @@ export class OverlayUI {
         panelsContainer.appendChild(sdkPanel);
         panelsContainer.appendChild(actionsPanel);
 
-        this.container.appendChild(header);
         this.container.appendChild(panelsContainer);
         this.panelsContainer = panelsContainer;
 

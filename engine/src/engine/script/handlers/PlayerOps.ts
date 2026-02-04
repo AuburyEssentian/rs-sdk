@@ -615,6 +615,7 @@ const PlayerOps: CommandHandlers = {
     }),
 
     [ScriptOpcode.P_LOGOUT]: checkedHandler(ProtectedActivePlayer, state => {
+        console.warn(`[LOGOUT DEBUG] P_LOGOUT script opcode called for ${state.activePlayer.username}`);
         state.activePlayer.requestLogout = true;
     }),
 
