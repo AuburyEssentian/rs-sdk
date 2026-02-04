@@ -78,7 +78,8 @@ export class BotSDK {
             autoReconnect: config.autoReconnect ?? true,
             reconnectMaxRetries: config.reconnectMaxRetries ?? Infinity,
             reconnectBaseDelay: config.reconnectBaseDelay ?? 1000,
-            reconnectMaxDelay: config.reconnectMaxDelay ?? 30000
+            reconnectMaxDelay: config.reconnectMaxDelay ?? 30000,
+            showChat: config.showChat ?? false
         };
         this.sdkClientId = `sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     }
@@ -1145,6 +1146,14 @@ export class BotSDK {
         }
 
         if (message.type === 'sdk_state' && message.state) {
+            // Filter out player chat messages unless showChat is enabled
+            // Type 2 = public chat, Type 3 = private message received
+            if (!this.config.showChat && message.state.gameMessages) {
+                message.state.gameMessages = message.state.gameMessages.filter(
+                    msg => msg.type !== 2 && msg.type !== 3
+                );
+            }
+
             this.state = message.state;
             // Use server timestamp if available, otherwise use local time
             this.stateReceivedAt = message.stateReceivedAt || Date.now();

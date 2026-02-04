@@ -38,6 +38,7 @@ class BotManager {
     let username = name;
     let pwd = password;
     let gateway = gatewayUrl || this.defaultGatewayUrl;
+    let showChat = false;
 
     // Load credentials from bot.env if no password provided
     if (!password) {
@@ -57,6 +58,11 @@ class BotManager {
         // Remote servers need /gateway path
         gateway = `wss://${env.SERVER}/gateway`;
       }
+
+      // Check if chat should be shown (default: false for safety)
+      if (env.SHOW_CHAT?.toLowerCase() === 'true') {
+        showChat = true;
+      }
     }
 
     if (!pwd) {
@@ -75,6 +81,7 @@ class BotManager {
       connectionMode: 'control',
       autoReconnect: true,       // Enable auto-reconnect for connection stability
       autoLaunchBrowser: 'auto', // Auto-launch browser if session is stale
+      showChat,                  // Show other players' chat (default: false for safety)
     });
 
     const bot = new BotActions(sdk);

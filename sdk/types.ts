@@ -318,6 +318,8 @@ export interface SDKConfig {
     reconnectMaxRetries?: number;
     reconnectBaseDelay?: number;
     reconnectMaxDelay?: number;
+    /** Show other players' chat messages (default: false for safety) */
+    showChat?: boolean;
 }
 
 /** Session status from gateway diagnostics */

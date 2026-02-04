@@ -136,6 +136,7 @@ async function getOrCreateConnection(): Promise<BotConnection> {
     const username = process.env.BOT_USERNAME;
     const password = process.env.PASSWORD;
     const server = process.env.SERVER;
+    const showChat = process.env.SHOW_CHAT?.toLowerCase() === 'true';
 
     if (!username) {
         throw new Error('BOT_USERNAME not set. Run with: bun --env-file=bots/{name}/bot.env script.ts\nOr: bun script.ts {botname}');
@@ -162,7 +163,8 @@ async function getOrCreateConnection(): Promise<BotConnection> {
         password,
         gatewayUrl,
         connectionMode: 'control',
-        autoReconnect: true
+        autoReconnect: true,
+        showChat
     });
 
     const bot = new BotActions(sdk);
