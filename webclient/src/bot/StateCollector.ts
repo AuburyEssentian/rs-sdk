@@ -75,6 +75,7 @@ export class BotStateCollector implements ScanProvider {
             nearbyLocs: this.scanNearbyLocs(),
             groundItems: this.scanGroundItems(),
             gameMessages: this.collectGameMessages(),
+            recentDialogs: this.collectRecentDialogs(),
             menuActions: this.collectMenuActions(),
             shop: this.collectShopState(),
             bank: this.collectBankState(),
@@ -92,6 +93,11 @@ export class BotStateCollector implements ScanProvider {
         const isOpen = c.chatInterfaceId !== -1;
         const isWaiting = c.pressedContinueOption || false;
 
+        // Capture dialog to history when open
+        if (isOpen && typeof this.client.captureDialogToHistory === 'function') {
+            this.client.captureDialogToHistory();
+        }
+
         // Get dialog options using client's method if available
         let options: Array<{ index: number; text: string }> = [];
         if (isOpen && typeof this.client.getDialogOptions === 'function') {
@@ -100,6 +106,13 @@ export class BotStateCollector implements ScanProvider {
         }
 
         return { isOpen, options, isWaiting };
+    }
+
+    private collectRecentDialogs(): Array<{ text: string[]; tick: number; interfaceId: number }> {
+        if (typeof this.client.getDialogHistory === 'function') {
+            return this.client.getDialogHistory();
+        }
+        return [];
     }
 
     private collectInterfaceState(): InterfaceState {
@@ -798,17 +811,26 @@ export class BotStateCollector implements ScanProvider {
         const messageType = c.messageType || [];
         const messageTick = c.messageTick || [];
 
-        // Get the 5 most recent messages (index 0 is most recent)
-        for (let i = 0; i < 5; i++) {
+        // Message types to filter out (other players' chat)
+        // Type 2 = public chat, Type 3 = private message received
+        const filteredTypes = new Set([2, 3]);
+
+        // Get recent messages, filtering out other players' chat
+        for (let i = 0; i < 10; i++) {
             const text = messageText[i];
-            if (text) {
+            const type = messageType[i] || 0;
+
+            if (text && !filteredTypes.has(type)) {
                 messages.push({
-                    type: messageType[i] || 0,
+                    type: type,
                     text: text,
                     sender: messageSender[i] || '',
                     tick: messageTick[i] || 0
                 });
             }
+
+            // Stop once we have 5 non-filtered messages
+            if (messages.length >= 5) break;
         }
 
         return messages;

@@ -135,6 +135,18 @@ export function formatBotState(state: BotState): string {
     }
     lines.push('');
 
+    // Recent dialogs (NPC chat, popups, etc.)
+    lines.push('--- RECENT DIALOGS ---');
+    if (!state.recentDialogs || state.recentDialogs.length === 0) {
+        lines.push('None');
+    } else {
+        for (const dialog of state.recentDialogs.slice(0, 5)) {
+            const textPreview = dialog.text.join(' | ').substring(0, 80);
+            lines.push(`[tick ${dialog.tick}] ${textPreview}${dialog.text.join(' | ').length > 80 ? '...' : ''}`);
+        }
+    }
+    lines.push('');
+
     // Current menu actions (if menu is visible)
     if (state.menuActions.length > 1) {
         lines.push('--- AVAILABLE ACTIONS ---');
@@ -321,6 +333,15 @@ export function formatWorldStateForAgent(state: BotWorldState, goal: string): st
             } else {
                 lines.push(`- ${cleanText}`);
             }
+        }
+    }
+
+    // Recent dialogs
+    if (state.recentDialogs && state.recentDialogs.length > 0) {
+        lines.push('');
+        lines.push('### Recent Dialogs');
+        for (const dialog of state.recentDialogs.slice(0, 5)) {
+            lines.push(`- [tick ${dialog.tick}] ${dialog.text.join(' | ')}`);
         }
     }
 

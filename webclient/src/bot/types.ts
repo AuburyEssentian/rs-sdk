@@ -127,6 +127,12 @@ export interface GameMessage {
     tick: number;
 }
 
+export interface DialogEntry {
+    text: string[];      // Lines of text in the dialog
+    tick: number;        // Game tick when captured
+    interfaceId: number; // Interface ID of the dialog
+}
+
 export interface ShopItem {
     slot: number;
     id: number;
@@ -247,6 +253,8 @@ export interface BotState {
     nearbyLocs: NearbyLoc[];
     groundItems: GroundItem[];
     gameMessages: GameMessage[];
+    /** Recent dialogs that have appeared (NPC chat, popups, etc.) */
+    recentDialogs: DialogEntry[];
     menuActions: MenuAction[];
     shop: ShopState;
     bank: BankState;

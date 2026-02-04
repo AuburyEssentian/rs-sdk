@@ -118,6 +118,12 @@ export interface GameMessage {
     tick: number;
 }
 
+export interface DialogEntry {
+    text: string[];      // Lines of text in the dialog
+    tick: number;        // Game tick when captured
+    interfaceId: number; // Interface ID of the dialog
+}
+
 export interface DialogOption {
     index: number;
     text: string;
@@ -218,6 +224,7 @@ export interface BotWorldState {
     nearbyLocs: NearbyLoc[];
     groundItems: GroundItem[];
     gameMessages: GameMessage[];
+    recentDialogs: DialogEntry[];
     dialog: DialogState;
     interface: InterfaceState;
     shop: ShopState;

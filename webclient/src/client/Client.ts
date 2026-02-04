@@ -263,6 +263,10 @@ export class Client extends GameShell {
     private sidebarInterfaceId: number = -1;
     private chatInterfaceId: number = -1;
     private chatInterface: Component = new Component();
+    // Dialog history storage (similar to message history)
+    private dialogHistory: Array<{ text: string[]; tick: number; interfaceId: number }> = [];
+    private dialogHistoryMax: number = 10;
+    private lastCapturedDialogId: number = -1;
     private chatScrollHeight: number = 78;
     private chatScrollOffset: number = 0;
     private ignoreCount: number = 0;
@@ -2044,6 +2048,96 @@ export class Client extends GameShell {
 
         scanComponent(this.chatInterfaceId);
         return components;
+    }
+
+    /**
+     * Get all text content from the current dialog (resolves %1, %2 placeholders)
+     */
+    getDialogText(): string[] {
+        const texts: string[] = [];
+
+        if (this.chatInterfaceId === -1) {
+            return texts;
+        }
+
+        const scanComponent = (comId: number, depth: number = 0): void => {
+            if (depth > 10) return; // Prevent infinite recursion
+            const com = Component.types[comId];
+            if (!com) return;
+
+            // Extract text from TYPE_TEXT components (type 4)
+            if (com.type === ComponentType.TYPE_TEXT && com.text) {
+                let text = com.text;
+
+                // Resolve %1-%5 placeholders using executeClientScript
+                if (text.indexOf('%') !== -1) {
+                    for (let i = 0; i < 5; i++) {
+                        const placeholder = `%${i + 1}`;
+                        while (text.indexOf(placeholder) !== -1) {
+                            const index = text.indexOf(placeholder);
+                            const value = this.executeClientScript(com, i);
+                            const replacement = value < 999999999 ? String(value) : '*';
+                            text = text.substring(0, index) + replacement + text.substring(index + 2);
+                        }
+                    }
+                }
+
+                // Skip empty text, "Please wait...", and common button labels
+                const trimmed = text.trim();
+                if (trimmed &&
+                    trimmed !== 'Please wait...' &&
+                    trimmed !== 'Click here to continue' &&
+                    !trimmed.startsWith('Select an Option')) {
+                    // Strip color codes like @yel@, @whi@, etc.
+                    const cleaned = trimmed.replace(/@\w{3}@/g, '');
+                    if (cleaned) {
+                        texts.push(cleaned);
+                    }
+                }
+            }
+
+            // Recursively scan children
+            if (com.children) {
+                for (const childId of com.children) {
+                    scanComponent(childId, depth + 1);
+                }
+            }
+        };
+
+        scanComponent(this.chatInterfaceId);
+        return texts;
+    }
+
+    /**
+     * Capture the current dialog text to history
+     */
+    captureDialogToHistory(): void {
+        if (this.chatInterfaceId === -1) return;
+        if (this.chatInterfaceId === this.lastCapturedDialogId) return; // Already captured
+
+        const texts = this.getDialogText();
+        if (texts.length === 0) return;
+
+        // Add to history
+        this.dialogHistory.unshift({
+            text: texts,
+            tick: this.loopCycle,
+            interfaceId: this.chatInterfaceId
+        });
+
+        // Trim to max size
+        if (this.dialogHistory.length > this.dialogHistoryMax) {
+            this.dialogHistory.pop();
+        }
+
+        this.lastCapturedDialogId = this.chatInterfaceId;
+    }
+
+    /**
+     * Get recent dialog history
+     */
+    getDialogHistory(): Array<{ text: string[]; tick: number; interfaceId: number }> {
+        return this.dialogHistory;
     }
 
     /**

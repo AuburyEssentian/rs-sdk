@@ -288,6 +288,7 @@ interface BotWorldState {
   nearbyLocs: NearbyLoc[];
   groundItems: GroundItem[];
   gameMessages: GameMessage[];
+  recentDialogs: DialogEntry[];
   dialog: DialogState;
   interface: InterfaceState;
   shop: ShopState;
