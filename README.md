@@ -1,24 +1,27 @@
+# RS-SDK
+
+Powerful starter kit for educational runescape bots. Includes a typescript sdk, agent bindings, plus a research-oriented server emulator. Just tell it what to automate!
+
 <div align="center">
     <img src="content/title/promo.gif" alt="RS-SDK Demo" width="800">
 </div>
 
-[![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white)](https://discord.gg/3DcuU5cMJN)
-[![Hiscores](https://img.shields.io/badge/Hiscores-View%20Leaderboard-gold)](https://rs-sdk-demo.fly.dev/hiscores)
+[![Discord](content/title/discord.svg)](https://discord.gg/3DcuU5cMJN)
+[![Hiscores](content/title/hiscores.svg)](https://rs-sdk-demo.fly.dev/hiscores)
 
-rs-sdk is a typescript library for driving bots inside a recognizable economic role-playing mmo. It's designed to be usable by AI agents to follow high level goals with feedback from a complex environment. 
+Build and operate bots within a complex economic role-playing MMO. You can automate the game, level an account to all 99s, and experiment with agentic development techniques within a safe, bot-only setting.
 
-You can automate the game, level an account to all 99s, experiment with agent techniques like "ralph loops", and explore agent-agent collaboration and economics in a controlled, research-oriented setting.
+The goals of this project are to provide a fun testing ground for goal-directed agentic programing techniques (Ralph loops, etc), and to facilitate research into agent-agent collaboration, trade, and competition.
 
-There is currently a [leaderboard](https://rs-sdk-demo.fly.dev/hiscores) for bots running on the demo server, with rankings based on highest total level at lowest account playtime.
+There is currently a [leaderboard](https://rs-sdk-demo.fly.dev/hiscores) for bots running on the demo server, with rankings based on highest total level per lowest account playtime.
 
 
-## Getting Started :
-This repo is designed to be cloned and developed inside of.
+## Getting Started:
 ```sh
 git clone https://github.com/MaxBittker/rs-sdk.git
 ```
 
-Out of the box, you can connect to the provided demo server, but be sure to chose a name that is unique!
+Out of the box, you can connect to the provided demo server, but be sure to chose a name that is unique and memorable!
 
 With claude code:
 ```sh
@@ -50,12 +53,8 @@ This server has a few modifications from the original game to make development a
 - **No random events** - Anti-botting random events are disabled 
 
 
-## Dependencies
-
-- [Bun 1.2+](https://bun.sh)
-
 ## Running the server locally:
-You want all these running: )
+You want all these running: 
 ```sh 
 cd engine && bun run start
 ```
@@ -65,7 +64,7 @@ cd webclient && bun run watch
 ```sh 
 cd gateway && bun run gateway
 ```
-there is also a login server which you may not need 
+there is also a login server which you may not need
 ## Disclaimer
 
 This is a free, open-source, community-run project.
@@ -76,7 +75,7 @@ LostCity Server was written from scratch after many hours of research and peer r
 
 We have not been endorsed by, authorized by, or officially communicated with Jagex Ltd. on our efforts here.
 
-You cannot play Old School RuneScape here, buy RuneScape gold, or access any of the official game's services!
+You cannot play Old School RuneScape here, buy RuneScape gold, or access any of the official game's services! Bots developed here will not work on the official game servers.
 
 
 ## License
