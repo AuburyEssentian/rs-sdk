@@ -1,6 +1,6 @@
 # RS-SDK
 
-Powerful starter kit for educational runescape bots. Includes a typescript sdk, agent bindings, plus a research-oriented server emulator. Just tell it what to automate!
+Research-oriented starter kit for runescape-style bots, including a typescript sdk, agent documentation and bindings, and a server emulator. Works out of the box - tell it what to automate! 
 
 <div align="center">
     <img src="content/title/promo.gif" alt="RS-SDK Demo" width="800">
@@ -11,7 +11,9 @@ Powerful starter kit for educational runescape bots. Includes a typescript sdk, 
 
 Build and operate bots within a complex economic role-playing MMO. You can automate the game, level an account to all 99s, and experiment with agentic development techniques within a safe, bot-only setting.
 
-The goals of this project are to provide a fun testing ground for goal-directed agentic programing techniques (Ralph loops, etc), and to facilitate research into agent-agent collaboration, trade, and competition.
+The goals of this project are to provide a rich testing environment for goal-directed program synthesis techniques (Ralph loops, etc), and to facilitate research into collaboration and competition between agents.
+
+![Task Length Distribution](content/title/task_length.svg)
 
 There is currently a [leaderboard](https://rs-sdk-demo.fly.dev/hiscores) for bots running on the demo server, with rankings based on highest total level per lowest account playtime.
 
@@ -21,7 +23,7 @@ There is currently a [leaderboard](https://rs-sdk-demo.fly.dev/hiscores) for bot
 git clone https://github.com/MaxBittker/rs-sdk.git
 ```
 
-Out of the box, you can connect to the provided demo server, but be sure to chose a name that is unique and memorable!
+Out of the box, you can connect to the provided demo server, but be sure to chose a name that is not already taken!
 
 With claude code:
 ```sh
@@ -35,7 +37,7 @@ bun scripts/create-bot.ts {username}
 bun bots/{username}/script.ts 
 ```
 
-Warning: The demo server is offered as a convenience, and we do not guarantee uptime or data persistence. Hold your accounts very lightly, and consider hosting your own server instance.
+Warning: The demo server is offered as a convenience, and we do not guarantee uptime or data persistence. Hold your accounts lightly, and consider hosting your own server instance. Please do not manually play on the demo server. 
 
 
 > [!NOTE]
