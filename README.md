@@ -28,7 +28,7 @@ Out of the box, you can connect to the provided demo server, choose a name that 
 With claude code:
 ```sh
 bun install
-claude "start a new bot with name: {username}"```
+claude "start a new bot with name: {username}"
 ```
 Manually:
 ```sh
@@ -50,9 +50,21 @@ Warning: The demo server is offered as a convenience, and we do not guarantee up
 
 This server has a few modifications from the original game to make development and bot testing easier:
 
-- **Faster leveling** - The XP curve is made accelerated and less steep.
+- **Faster leveling** - The XP curve is accelerated and less steep.
 - **Infinite run energy** - Players never run out of energy 
 - **No random events** - Anti-botting random events are disabled 
+
+
+## Architecture:
+
+rs-sdk runs against an enhanced web-based client (`botclient`) which connects to the LostCity 2004scape server emulator.
+
+There is a gateway server which accepts connections from botclient and SDK instances, and forwards messages between them based on username.
+Once connected to the gateway, the botclient will relay game state to the SDK, and execute low-level actions (e.g. `walkTo(x,y)`) sent from the SDK through the gateway.
+
+This means that the SDK can't talk directly to the game server, but must go through the botclient. It will attempt to launch the botclient on startup if one is not already running. 
+
+You don't need to run the gateway/botclient in order to run automations against the demo server, but you may choose to if you are fixing bugs or adding features to the rs-sdk project
 
 
 ## Running the server locally:
@@ -66,20 +78,7 @@ cd webclient && bun run watch
 ```sh 
 cd gateway && bun run gateway
 ```
-there is also a login server which you may not need
-
-## Architecture:
-
-rs-sdk runs against an enhanced web-based client (`botclient`) which connects to the LostCity 2004scape server emulator.
-
-There is a gateway server which accepts connections from botclient and SDK instances, and forwards messages between them based on username.
-Once connected to the gateway, the botclient will relay game state to the SDK, and execute low level actions (e.g. `walkTo(x,y)`) sent from the gateway.
-
-This means that the SDK can't talk directly to the game server, but must go through the botclient. It will attempt to launch the botclient on startup if one is not already running. 
-
-You don't need to run the gateway/botclient in order to run automations against the demo server, but you may choose to if you are fixing bugs or adding features to the rs-sdk project
-
-
+There is also a login server which you may not need, I forget
 ## Disclaimer
 
 This is a free, open-source, community-run project.
