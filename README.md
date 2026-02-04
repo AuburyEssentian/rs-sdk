@@ -42,7 +42,6 @@ Chat is off by default to prevent scamming and prompt injection attacks, but you
 Warning: The demo server is offered as a convenience, and we do not guarantee uptime or data persistence. Hold your accounts lightly, and consider hosting your own server instance. Please do not manually play on the demo server. 
 
 
-> [!NOTE]
 > RS-SDK is a fork of the LostCity engine/client, an amazing project without which rs-sdk would not be possible. 
 > Find their [code here](https://github.com/LostCityRS/Server) or read their [history and ethos](https://lostcity.rs/t/faq-what-is-lost-city/16)
 
