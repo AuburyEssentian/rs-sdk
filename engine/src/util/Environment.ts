@@ -65,6 +65,9 @@ export default {
     NODE_DEBUGPROC_CHAR: tryParseString(process.env.NODE_DEBUGPROC_CHAR, '~'),
     NODE_WS_ONDEMAND: tryParseBoolean(process.env.NODE_WS_ONDEMAND, false),
 
+    /// hiscores
+    HISCORES_HIDDEN_NAMES: (process.env.HISCORES_HIDDEN_NAMES || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+
     /// login server
     LOGIN_SERVER: tryParseBoolean(process.env.LOGIN_SERVER, false),
     LOGIN_HOST: tryParseString(process.env.LOGIN_HOST, 'localhost'),

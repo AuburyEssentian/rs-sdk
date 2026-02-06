@@ -1,6 +1,9 @@
 import { db } from '#/db/query.js';
+import Environment from '#/util/Environment.js';
 import { tryParseInt } from '#/util/TryParse.js';
 import { escapeHtml, SKILL_NAMES, ENABLED_SKILLS } from '../utils.js';
+
+const hiddenNames = Environment.HISCORES_HIDDEN_NAMES;
 
 // Shared CSS styles for hiscores pages
 const HISCORES_STYLES = `
@@ -46,12 +49,15 @@ export async function handleHiscoresPlayerPage(url: URL): Promise<Response | nul
     const profile = url.searchParams.get('profile') || 'main';
 
     // Find the account
-    const account = await db
+    const accountQuery = db
         .selectFrom('account')
         .select(['id', 'username'])
         .where('username', '=', username)
-        .where('staffmodlevel', '<=', 1)
-        .executeTakeFirst();
+        .where('staffmodlevel', '<=', 1);
+    const account = await (hiddenNames.length > 0
+        ? accountQuery.where(eb => eb.not(eb(eb.fn('lower', ['username']), 'in', hiddenNames)))
+        : accountQuery
+    ).executeTakeFirst();
 
     if (!account) {
         return new Response(`Player "${escapeHtml(username)}" not found.`, {
@@ -72,7 +78,7 @@ export async function handleHiscoresPlayerPage(url: URL): Promise<Response | nul
     // Get overall rank (by level DESC, playtime ASC)
     let overallRank = '-';
     if (overallStats) {
-        const rankResult = await db
+        let rankQuery = db
             .selectFrom('hiscore_large')
             .innerJoin('account', 'account.id', 'hiscore_large.account_id')
             .select(db.fn.count('hiscore_large.account_id').as('rank'))
@@ -85,8 +91,11 @@ export async function handleHiscoresPlayerPage(url: URL): Promise<Response | nul
                     eb('hiscore_large.level', '=', overallStats.level),
                     eb('hiscore_large.playtime', '<', overallStats.playtime)
                 ])
-            ]))
-            .executeTakeFirst();
+            ]));
+        if (hiddenNames.length > 0) {
+            rankQuery = rankQuery.where(eb => eb.not(eb(eb.fn('lower', ['account.username']), 'in', hiddenNames)));
+        }
+        const rankResult = await rankQuery.executeTakeFirst();
         overallRank = String((Number(rankResult?.rank) || 0) + 1);
     }
 
@@ -117,7 +126,7 @@ export async function handleHiscoresPlayerPage(url: URL): Promise<Response | nul
         let rank = '-';
 
         if (stat) {
-            const rankResult = await db
+            let skillRankQuery = db
                 .selectFrom('hiscore')
                 .innerJoin('account', 'account.id', 'hiscore.account_id')
                 .select(db.fn.count('hiscore.account_id').as('rank'))
@@ -130,8 +139,11 @@ export async function handleHiscoresPlayerPage(url: URL): Promise<Response | nul
                         eb('hiscore.level', '=', stat.level),
                         eb('hiscore.playtime', '<', stat.playtime)
                     ])
-                ]))
-                .executeTakeFirst();
+                ]));
+            if (hiddenNames.length > 0) {
+                skillRankQuery = skillRankQuery.where(eb => eb.not(eb(eb.fn('lower', ['account.username']), 'in', hiddenNames)));
+            }
+            const rankResult = await skillRankQuery.executeTakeFirst();
             rank = String((Number(rankResult?.rank) || 0) + 1);
         }
 
@@ -254,7 +266,7 @@ export async function handleHiscoresPage(url: URL): Promise<Response | null> {
 
     if (category === -1 || category === 0) {
         // Overall - query hiscore_large
-        const query = db
+        let query = db
             .selectFrom('hiscore_large')
             .innerJoin('account', 'account.id', 'hiscore_large.account_id')
             .select(['account.username', 'hiscore_large.level', 'hiscore_large.playtime'])
@@ -263,6 +275,9 @@ export async function handleHiscoresPage(url: URL): Promise<Response | null> {
             .where('account.staffmodlevel', '<=', 1)
             .orderBy('hiscore_large.level', 'desc')
             .orderBy('hiscore_large.playtime', 'asc');
+        if (hiddenNames.length > 0) {
+            query = query.where(eb => eb.not(eb(eb.fn('lower', ['account.username']), 'in', hiddenNames)));
+        }
 
         const allResults = await query.execute();
 
@@ -288,7 +303,7 @@ export async function handleHiscoresPage(url: URL): Promise<Response | null> {
         const skillIndex = category - 1;
         const skillName = SKILL_NAMES[skillIndex];
         if (skillName) {
-            const query = db
+            let query = db
                 .selectFrom('hiscore')
                 .innerJoin('account', 'account.id', 'hiscore.account_id')
                 .select(['account.username', 'hiscore.level', 'hiscore.playtime'])
@@ -297,6 +312,9 @@ export async function handleHiscoresPage(url: URL): Promise<Response | null> {
                 .where('account.staffmodlevel', '<=', 1)
                 .orderBy('hiscore.level', 'desc')
                 .orderBy('hiscore.playtime', 'asc');
+            if (hiddenNames.length > 0) {
+                query = query.where(eb => eb.not(eb(eb.fn('lower', ['account.username']), 'in', hiddenNames)));
+            }
 
             const allResults = await query.execute();
 
