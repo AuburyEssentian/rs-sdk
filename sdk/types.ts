@@ -267,6 +267,7 @@ export type BotAction =
     | { type: 'setCombatStyle'; style: number; reason: string }
     | { type: 'useItemOnItem'; sourceSlot: number; targetSlot: number; reason: string }
     | { type: 'useItemOnLoc'; itemSlot: number; x: number; z: number; locId: number; reason: string }
+    | { type: 'useItemOnNpc'; itemSlot: number; npcIndex: number; reason: string }
     | { type: 'say'; message: string; reason: string }
     | { type: 'spellOnNpc'; npcIndex: number; spellComponent: number; reason: string }
     | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
@@ -475,4 +476,10 @@ export interface UseItemOnLocResult {
     success: boolean;
     message: string;
     reason?: 'item_not_found' | 'loc_not_found' | 'cant_reach' | 'timeout';
+}
+
+export interface UseItemOnNpcResult {
+    success: boolean;
+    message: string;
+    reason?: 'item_not_found' | 'npc_not_found' | 'cant_reach' | 'timeout';
 }

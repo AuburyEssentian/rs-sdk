@@ -95,6 +95,7 @@ These methods wait for the **effect to complete**, not just server acknowledgmen
 | Method | Description |
 |--------|-------------|
 | `useItemOnLoc(item, loc, options)` | Use an inventory item on a nearby location (e. |
+| `useItemOnNpc(item, npc, options)` | Use an inventory item on a nearby NPC (e. |
 
 ---
 
@@ -143,6 +144,7 @@ These methods resolve when server **acknowledges** them (not when effects comple
 | `sendDropItem(slot)` | Drop an inventory item. |
 | `sendUseItemOnItem(sourceSlot, targetSlot)` | Use one inventory item on another. |
 | `sendUseItemOnLoc(itemSlot, x, z, locId)` | Use an inventory item on a location. |
+| `sendUseItemOnNpc(itemSlot, npcIndex)` | Use an inventory item on an NPC. |
 | `sendClickDialog(option)` | Click a dialog option by index. |
 | `sendClickComponent(componentId)` | Click a component using IF_BUTTON packet - for simple buttons, spellcasting, etc. |
 | `sendClickComponentWithOption(componentId, optionIndex)` | Click a component using INV_BUTTON packet - for components with inventory operations (smithing, c... |
@@ -509,5 +511,15 @@ interface UseItemOnLocResult {
   success: boolean;
   message: string;
   reason?: 'item_not_found' | 'loc_not_found' | 'cant_reach' | 'timeout';
+}
+```
+
+### UseItemOnNpcResult
+
+```typescript
+interface UseItemOnNpcResult {
+  success: boolean;
+  message: string;
+  reason?: 'item_not_found' | 'npc_not_found' | 'cant_reach' | 'timeout';
 }
 ```

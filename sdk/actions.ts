@@ -31,7 +31,8 @@ import type {
     OpenBankResult,
     BankDepositResult,
     BankWithdrawResult,
-    UseItemOnLocResult
+    UseItemOnLocResult,
+    UseItemOnNpcResult
 } from './types';
 
 export class BotActions {
@@ -370,6 +371,91 @@ export class BotActions {
             return { success: true, message: `Used ${resolvedItem.name} on ${locNow.name}` };
         } catch {
             return { success: false, message: `Timeout using ${resolvedItem.name} on ${locNow.name}`, reason: 'timeout' };
+        }
+    }
+
+    /**
+     * Use an inventory item on a nearby NPC (e.g., bones on altar keeper, item on NPC).
+     * Walks to the NPC first (handling doors), then uses the item.
+     */
+    async useItemOnNpc(
+        item: InventoryItem | string | RegExp,
+        npc: NearbyNpc | string | RegExp,
+        options: { timeout?: number } = {}
+    ): Promise<UseItemOnNpcResult> {
+        const { timeout = 10000 } = options;
+
+        await this.dismissBlockingUI();
+
+        // Resolve item
+        const resolvedItem = this.helpers.resolveInventoryItem(item, /./);
+        if (!resolvedItem) {
+            return { success: false, message: `Item not found in inventory: ${item}`, reason: 'item_not_found' };
+        }
+
+        // Resolve NPC
+        const resolvedNpc = this.helpers.resolveNpc(npc);
+        if (!resolvedNpc) {
+            return { success: false, message: `NPC not found nearby: ${npc}`, reason: 'npc_not_found' };
+        }
+
+        // Walk to the NPC first (handles doors)
+        if (resolvedNpc.distance > 2) {
+            const walkResult = await this.walkTo(resolvedNpc.x, resolvedNpc.z, 2);
+            if (!walkResult.success) {
+                return { success: false, message: `Cannot reach ${resolvedNpc.name}: ${walkResult.message}`, reason: 'cant_reach' };
+            }
+        }
+
+        // Re-find the NPC after walking (it may have moved)
+        const npcPattern = typeof npc === 'object' && 'index' in npc ? new RegExp(resolvedNpc.name, 'i') : npc;
+        const npcNow = this.helpers.resolveNpc(npcPattern);
+        if (!npcNow) {
+            return { success: false, message: `${resolvedNpc.name} no longer visible`, reason: 'npc_not_found' };
+        }
+
+        const startTick = this.sdk.getState()?.tick || 0;
+
+        // Use the item on the NPC
+        const result = await this.sdk.sendUseItemOnNpc(resolvedItem.slot, npcNow.index);
+        if (!result.success) {
+            return { success: false, message: result.message };
+        }
+
+        // Wait for interaction to complete or fail
+        try {
+            await this.sdk.waitForCondition(state => {
+                // Check for "can't reach" messages
+                for (const msg of state.gameMessages) {
+                    if (msg.tick > startTick) {
+                        const text = msg.text.toLowerCase();
+                        if (text.includes("can't reach") || text.includes("cannot reach")) {
+                            return true;
+                        }
+                    }
+                }
+
+                // Check if dialog/interface opened
+                if (state.dialog.isOpen || state.interface?.isOpen) {
+                    return true;
+                }
+
+                // Check if player started animating
+                if (state.player && state.player.animId !== -1) {
+                    return true;
+                }
+
+                return false;
+            }, timeout);
+
+            // Check for failure
+            if (this.helpers.checkCantReachMessage(startTick)) {
+                return { success: false, message: `Cannot reach ${npcNow.name}`, reason: 'cant_reach' };
+            }
+
+            return { success: true, message: `Used ${resolvedItem.name} on ${npcNow.name}` };
+        } catch {
+            return { success: false, message: `Timeout using ${resolvedItem.name} on ${npcNow.name}`, reason: 'timeout' };
         }
     }
 

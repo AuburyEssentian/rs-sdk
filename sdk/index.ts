@@ -801,6 +801,11 @@ export class BotSDK {
         return this.sendAction({ type: 'useItemOnLoc', itemSlot, x, z, locId, reason: 'SDK' });
     }
 
+    /** Use an inventory item on an NPC. */
+    async sendUseItemOnNpc(itemSlot: number, npcIndex: number): Promise<ActionResult> {
+        return this.sendAction({ type: 'useItemOnNpc', itemSlot, npcIndex, reason: 'SDK' });
+    }
+
     /** Click a dialog option by index. */
     async sendClickDialog(option: number = 0): Promise<ActionResult> {
         return this.sendAction({ type: 'clickDialogOption', optionIndex: option, reason: 'SDK' });

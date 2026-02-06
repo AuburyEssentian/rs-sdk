@@ -312,6 +312,7 @@ export type BotAction =
     | { type: 'interactLoc'; x: number; z: number; locId: number; optionIndex: number; reason: string }
     | { type: 'useItemOnItem'; sourceSlot: number; targetSlot: number; reason: string }
     | { type: 'useItemOnLoc'; itemSlot: number; x: number; z: number; locId: number; reason: string }
+    | { type: 'useItemOnNpc'; itemSlot: number; npcIndex: number; reason: string }
     | { type: 'useEquipmentItem'; slot: number; optionIndex: number; reason: string }
     | { type: 'shopBuy'; slot: number; amount: number; reason: string }
     | { type: 'shopSell'; slot: number; amount: number; reason: string }

@@ -125,6 +125,13 @@ export class ActionExecutor {
                         'Failed to use item on location'
                     );
 
+                case 'useItemOnNpc':
+                    return this.wrapBool(
+                        this.client.useItemOnNpc(action.itemSlot, action.npcIndex),
+                        `Using item on NPC #${action.npcIndex}`,
+                        'Failed to use item on NPC'
+                    );
+
                 case 'useEquipmentItem':
                     // Use INV_BUTTON for equipment (not OPHELD) - triggers inv_button1 script for unequip
                     return this.wrapBool(
@@ -282,6 +289,7 @@ export function formatAction(action: BotAction): string {
         case 'clickComponent': return `Click component ${action.componentId}`;
         case 'clickComponentWithOption': return `Click component ${action.componentId} option ${action.optionIndex}`;
         case 'useItemOnItem': return `Use slot ${action.sourceSlot} on ${action.targetSlot}`;
+        case 'useItemOnNpc': return `Use slot ${action.itemSlot} on NPC #${action.npcIndex}`;
         case 'shopBuy': return `Buy slot ${action.slot} x${action.amount}`;
         case 'shopSell': return `Sell slot ${action.slot} x${action.amount}`;
         case 'wait': return `Wait ${action.ticks || 1} ticks`;

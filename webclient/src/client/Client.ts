@@ -1735,6 +1735,65 @@ export class Client extends GameShell {
     }
 
     /**
+     * Use an inventory item on an NPC (OPNPCU)
+     * Used for things like: using bones on altar NPC, using item on NPC, etc.
+     *
+     * itemSlot: the slot of the item being used
+     * npcIndex: the NPC index to use the item on
+     * interfaceId: usually 3214 for main inventory
+     */
+    useItemOnNpc(itemSlot: number, npcIndex: number, interfaceId: number = 3214): boolean {
+        if (!this.ingame || !this.out || !this.localPlayer) {
+            console.log('[Client] useItemOnNpc failed - not in game');
+            return false;
+        }
+
+        // Get the interface component
+        const component = Component.types[interfaceId];
+        if (!component || !component.invSlotObjId) {
+            console.log('[Client] useItemOnNpc failed - invalid interface');
+            return false;
+        }
+
+        // Get item
+        const rawItemId = component.invSlotObjId[itemSlot];
+        if (!rawItemId || rawItemId === 0) {
+            console.log(`[Client] useItemOnNpc failed - no item in slot ${itemSlot}`);
+            return false;
+        }
+        const itemObj = ObjType.get(rawItemId - 1);
+        const itemId = itemObj.id;
+
+        // Check NPC exists
+        const npc = this.npcs[npcIndex];
+        if (!npc) {
+            console.log(`[Client] useItemOnNpc failed - NPC ${npcIndex} not found`);
+            return false;
+        }
+
+        // Try to move towards the NPC
+        this.tryMove(
+            this.localPlayer.routeTileX[0],
+            this.localPlayer.routeTileZ[0],
+            npc.routeTileX[0],
+            npc.routeTileZ[0],
+            2, 1, 1, 0, 0, 0, false
+        );
+
+        console.log(`[Client] Using item ${itemObj.name} (id:${itemId}, slot ${itemSlot}) on NPC ${npcIndex}`);
+
+        // Send OPNPCU packet
+        // Format: npcIndex, itemId, itemSlot, itemInterface
+        this.writePacketOpcode(ClientProt.OPNPCU);
+        this.out.p2(npcIndex);
+        this.out.p2(itemId);
+        this.out.p2(itemSlot);
+        this.out.p2(interfaceId);
+
+        return true;
+    }
+
+    /**
      * Use an inventory item on a location (OPLOCU)
      * Used for things like: using axe on tree, using item on object, etc.
      *
