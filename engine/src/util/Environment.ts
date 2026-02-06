@@ -68,6 +68,9 @@ export default {
     /// hiscores
     HISCORES_HIDDEN_NAMES: (process.env.HISCORES_HIDDEN_NAMES || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
 
+    /// username filter
+    BANNED_USERNAME_WORDS: (process.env.BANNED_USERNAME_WORDS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
+
     /// login server
     LOGIN_SERVER: tryParseBoolean(process.env.LOGIN_SERVER, false),
     LOGIN_HOST: tryParseString(process.env.LOGIN_HOST, 'localhost'),

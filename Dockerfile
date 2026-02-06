@@ -37,7 +37,7 @@ COPY gateway /opt/server/gateway
 
 # Patch and build engine
 WORKDIR /opt/server/engine
-RUN cp .env.example .env && \
+RUN [ -f .env ] || cp .env.example .env && \
     sed -i 's/port: Environment.WEB_PORT,/port: Environment.WEB_PORT, hostname: "0.0.0.0",/' src/web/index.ts && \
     bun run build
 

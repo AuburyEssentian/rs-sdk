@@ -206,6 +206,18 @@ export default class LoginServer {
                                 .executeTakeFirst();
 
                             if (!Environment.WEBSITE_REGISTRATION && !account) {
+                                // reject usernames containing banned words
+                                const lower = username.toLowerCase();
+                                if (Environment.BANNED_USERNAME_WORDS.some(w => lower.includes(w))) {
+                                    s.send(
+                                        JSON.stringify({
+                                            replyTo,
+                                            response: 1
+                                        })
+                                    );
+                                    return;
+                                }
+
                                 // register the user automatically
                                 const insertResult = await db
                                     .insertInto('account')
@@ -586,6 +598,17 @@ export default class LoginServer {
                         // Auto-register if account doesn't exist (same as player_login)
                         let registrationFailed = false;
                         if (!Environment.WEBSITE_REGISTRATION && !account) {
+                            // reject usernames containing banned words
+                            const sdkLower = username.toLowerCase();
+                            if (Environment.BANNED_USERNAME_WORDS.some(w => sdkLower.includes(w))) {
+                                s.send(JSON.stringify({
+                                    replyTo,
+                                    success: false,
+                                    error: 'Username contains inappropriate language'
+                                }));
+                                return;
+                            }
+
                             try {
                                 const insertResult = await db
                                     .insertInto('account')
