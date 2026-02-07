@@ -4,6 +4,10 @@ import fs from 'fs';
 import { ExitPromptError } from '@inquirer/core';
 import { confirm, input, number, password, select } from '@inquirer/prompts';
 
+// Ensure all relative paths resolve from this script's directory,
+// regardless of where it's invoked from (e.g. `bun server/start.ts`).
+process.chdir(import.meta.dir);
+
 // if you're forking this feel free to change these :) it does make some assumptions elsewhere (branch names)
 const repoOrg = 'https://github.com/LostCityRS';
 const engineRepo = 'Engine-TS';

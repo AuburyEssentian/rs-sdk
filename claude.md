@@ -239,6 +239,16 @@ if (!result.success) {
 ## Project Structure
 
 ```
+server/                        # All game server infrastructure
+├── engine/                    # Game server core
+├── gateway/                   # WebSocket relay
+├── webclient/                 # Browser client
+├── content/                   # Game assets
+├── vendor/                    # External deps (rsmod-pathfinder)
+├── Dockerfile                 # Server container build
+├── fly.toml                   # Fly.io deployment config
+└── start.ts                   # Server setup/management menu
+
 bots/
 └── {username}/
     ├── bot.env        # Credentials (BOT_USERNAME, PASSWORD, SERVER)

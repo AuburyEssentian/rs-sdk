@@ -14,7 +14,7 @@
 - Keeps tests fast and focused
 
 ## Save File Generator
-Use `test/utils/save-generator.ts` to spawn bots with pre-configured state:
+Use `sdk/test/utils/save-generator.ts` to spawn bots with pre-configured state:
 
 ```typescript
 import { generateSave, Items } from './utils/save-generator';
@@ -58,7 +58,7 @@ Benefits:
 - Always log the final result clearly (PASSED/FAILED)
 
 ## Shared Utilities
-- Use shared utilities from `test/utils/` folder
+- Use shared utilities from `sdk/test/utils/` folder
 - Use `launchBotWithSDK()` from `utils/browser.ts` to handle:
   - Browser launch (with muted audio)
   - Bot login
