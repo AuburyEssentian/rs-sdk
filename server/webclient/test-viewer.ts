@@ -30,8 +30,9 @@ function buildCrcBuffer(): Uint8Array {
     const view = new DataView(buf);
 
     for (let i = 0; i < 9; i++) {
-        if (cacheFiles[i] && fs.existsSync(cacheFiles[i])) {
-            const data = fs.readFileSync(cacheFiles[i]);
+        const file = cacheFiles[i];
+        if (file && fs.existsSync(file)) {
+            const data = fs.readFileSync(file);
             // CRC32 computation
             let crc = crc32(data);
             view.setInt32(i * 4, crc, false);
@@ -245,7 +246,7 @@ const server = Bun.serve({
 
         // CRC endpoint
         if (url.pathname.startsWith('/crc')) {
-            return new Response(crcBuffer);
+            return new Response(crcBuffer as BodyInit);
         }
 
         // Cache archive endpoints

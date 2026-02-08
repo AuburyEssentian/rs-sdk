@@ -62,11 +62,11 @@ function buildCrcBuffer(): Uint8Array {
 
 let crcBuffer: Uint8Array | null = null;
 
-function handleViewerAssets(url: URL): Response | null {
+export function handleViewerAssets(url: URL): Response | null {
     // CRC endpoint
     if (url.pathname.startsWith('/crc')) {
         if (!crcBuffer) crcBuffer = buildCrcBuffer();
-        return new Response(crcBuffer);
+        return new Response(Buffer.from(crcBuffer));
     }
 
     // Cache archive endpoints

@@ -16,6 +16,7 @@ import { printInfo } from '#/util/Logger.js';
 import { getUnreadMessageCount } from '#/server/login/Messages.js';
 import { startManagementWeb } from '#/web.js';
 import InvType from '#/cache/config/InvType.js';
+import ObjType from '#/cache/config/ObjType.js';
 
 async function updateHiscores(account: { id: number, staffmodlevel: number } | undefined, player: Player, profile: string) {
     if (!account)
@@ -107,6 +108,35 @@ async function updateHiscores(account: { id: number, staffmodlevel: number } | u
     for (let i = 0; i < update.length; i++) {
         await db.updateTable('hiscore').set(update[i]).where('account_id', '=', account.id).where('type', '=', update[i].type).where('profile', '=', profile).execute();
     }
+
+    // Update outfit hiscore
+    const worn = player.getInventory(InvType.WORN);
+    if (worn) {
+        const items: { id: number; name: string; value: number }[] = [];
+        let totalValue = 0;
+        for (let slot = 0; slot < worn.capacity; slot++) {
+            if (slot === 13) continue; // skip ammo slot
+            const item = worn.get(slot);
+            if (item) {
+                const objType = ObjType.get(item.id);
+                if (objType) {
+                    const value = objType.cost * item.count;
+                    items.push({ id: item.id, name: objType.name || `obj_${item.id}`, value });
+                    totalValue += value;
+                }
+            }
+        }
+
+        if (items.length > 0) {
+            const itemsJson = JSON.stringify(items);
+            const existingOutfit = await db.selectFrom('hiscore_outfit').select('value').where('account_id', '=', account.id).where('profile', '=', profile).executeTakeFirst();
+            if (existingOutfit) {
+                await db.updateTable('hiscore_outfit').set({ value: totalValue, items: itemsJson, date: toDbDate(new Date()) }).where('account_id', '=', account.id).where('profile', '=', profile).execute();
+            } else {
+                await db.insertInto('hiscore_outfit').values({ account_id: account.id, profile, value: totalValue, items: itemsJson }).execute();
+            }
+        }
+    }
 }
 
 export default class LoginServer {
@@ -147,6 +177,7 @@ export default class LoginServer {
         }
 
         InvType.load('data/pack');
+        ObjType.load('data/pack');
 
         this.server = new WebSocketServer({ port: Environment.LOGIN_PORT, host: '0.0.0.0' }, () => {
             printInfo(`Login server listening on port ${Environment.LOGIN_PORT}`);
@@ -628,6 +659,7 @@ export default class LoginServer {
                                 } else {
                                     registrationFailed = true;
                                 }
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             } catch (err: any) {
                                 // Handle UNIQUE constraint violation (username already taken by race condition)
                                 if (err?.code === 'SQLITE_CONSTRAINT' || err?.message?.includes('UNIQUE')) {

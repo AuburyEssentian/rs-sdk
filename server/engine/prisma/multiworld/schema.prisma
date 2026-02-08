@@ -178,6 +178,16 @@ model hiscore_large {
     @@id([account_id, profile, type])
 }
 
+model hiscore_outfit {
+    account_id Int
+    profile    String   @default("main")
+    value      Int
+    items      String
+    date       DateTime @default(now()) @updatedAt
+
+    @@id([account_id, profile])
+}
+
 // social
 
 model friendlist {
