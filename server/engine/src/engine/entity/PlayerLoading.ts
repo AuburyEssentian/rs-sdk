@@ -92,7 +92,7 @@ export class PlayerLoading {
         for (let i = 0; i < 21; i++) {
             player.stats[i] = sav.g4s();
             player.baseLevels[i] = getLevelByExp(player.stats[i]);
-            player.levels[i] = sav.g1();
+            player.levels[i] = Math.min(sav.g1(), player.baseLevels[i]);
         }
 
         const varpCount = sav.g2();
