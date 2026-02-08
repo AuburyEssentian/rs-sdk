@@ -291,6 +291,8 @@ if (!result.success) {
 ## Project Structure
 
 ```
+server/                        # game server infrastructure
+├── engine/                    # Game server core
 
 bots/
 └── {username}/

@@ -96,6 +96,9 @@ These methods wait for the **effect to complete**, not just server acknowledgmen
 |--------|-------------|
 | `useItemOnLoc(item, loc, options)` | Use an inventory item on a nearby location (e. |
 | `useItemOnNpc(item, npc, options)` | Use an inventory item on a nearby NPC (e. |
+| `interactLoc(target, option)` | Interact with a nearby location object (rock, fishing spot, furnace, etc. |
+| `interactNpc(target, option)` | Interact with a nearby NPC using a specified option (e. |
+| `pickpocketNpc(target)` | Pickpocket an NPC. |
 
 ---
 
@@ -521,5 +524,36 @@ interface UseItemOnNpcResult {
   success: boolean;
   message: string;
   reason?: 'item_not_found' | 'npc_not_found' | 'cant_reach' | 'timeout';
+}
+```
+
+### InteractLocResult
+
+```typescript
+interface InteractLocResult {
+  success: boolean;
+  message: string;
+  reason?: 'loc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout';
+}
+```
+
+### InteractNpcResult
+
+```typescript
+interface InteractNpcResult {
+  success: boolean;
+  message: string;
+  reason?: 'npc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout';
+}
+```
+
+### PickpocketResult
+
+```typescript
+interface PickpocketResult {
+  success: boolean;
+  message: string;
+  xpGained?: number;
+  reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout';
 }
 ```

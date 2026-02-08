@@ -483,3 +483,22 @@ export interface UseItemOnNpcResult {
     message: string;
     reason?: 'item_not_found' | 'npc_not_found' | 'cant_reach' | 'timeout';
 }
+
+export interface InteractLocResult {
+    success: boolean;
+    message: string;
+    reason?: 'loc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout';
+}
+
+export interface InteractNpcResult {
+    success: boolean;
+    message: string;
+    reason?: 'npc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout';
+}
+
+export interface PickpocketResult {
+    success: boolean;
+    message: string;
+    xpGained?: number;
+    reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout';
+}
