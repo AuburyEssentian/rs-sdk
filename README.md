@@ -69,6 +69,9 @@ You don't need to run the gateway/botclient in order to run automations against 
 
 ## Running the server locally
 
+Running the server locally has many advantages, primary being the ability to set a high tickrate. 
+
+You can set tickrate in `server/engine/.env` via the `TICK_RATE` variable (default is 600ms, try 200ms or 30ms for faster gameplay, especially useful for headless testing).
 
 You want all three of these running: 
 
@@ -92,7 +95,7 @@ The gateway listens on `ws://localhost:7780` by default (configurable via `AGENT
 
 The `SERVER` variable in `bot.env` controls where the bot connects. To use your local gateway, **leave `SERVER` blank**:
 
-```env
+```bots/<botname>/bot.env
 BOT_USERNAME=mybot
 PASSWORD=test
 SERVER=
