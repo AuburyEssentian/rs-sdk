@@ -58,6 +58,8 @@ export default {
     NODE_WALKTRIGGER_SETTING: tryParseInt(process.env.NODE_WALKTRIGGER_SETTING, WalkTriggerSetting.PLAYERPACKET),
     // separate save folder
     NODE_PROFILE: tryParseString(process.env.NODE_PROFILE, 'main'),
+    // server tick rate in ms (default 420, original was 600)
+    NODE_TICKRATE: tryParseInt(process.env.NODE_TICKRATE, 420),
     // entities cap
     NODE_MAX_PLAYERS: tryParseInt(process.env.NODE_MAX_PLAYERS, 2047),
     NODE_MAX_CONNECTED: tryParseInt(process.env.NODE_MAX_CONNECTED, 1000),

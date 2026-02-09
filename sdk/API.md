@@ -63,7 +63,7 @@ These methods wait for the **effect to complete**, not just server acknowledgmen
 |--------|-------------|
 | `closeShop(timeout)` | Close the shop interface. |
 | `openShop(target)` | Open a shop by trading with an NPC. |
-| `buyFromShop(target, amount)` | Buy an item from an open shop. |
+| `buyFromShop(target, amount)` | Buy an item from an open shop . |
 | `sellToShop(target, amount)` | Sell an item to an open shop. |
 
 ### Banking

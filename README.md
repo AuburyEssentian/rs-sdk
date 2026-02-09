@@ -67,18 +67,44 @@ This means that the SDK can't talk directly to the game server, but must go thro
 You don't need to run the gateway/botclient in order to run automations against the demo server, but you may choose to if you are fixing bugs or adding features to the rs-sdk project
 
 
-## Running the server locally:
-You want all these running: 
-```sh 
-cd engine && bun run start
+## Running the server locally
+
+
+You want all three of these running: 
+
+```sh
+# Game engine
+cd server/engine && bun run start
 ```
-```sh 
-cd webclient && bun run watch
+```sh
+# Web client bundler
+cd server/webclient && bun run watch
 ```
-```sh 
-cd gateway && bun run gateway
+```sh
+# Gateway (bridges SDK <-> bot client)
+cd server/gateway && bun run gateway
 ```
-There is also a login server which you may not need, I forget
+
+The gateway listens on `ws://localhost:7780` by default (configurable via `AGENT_PORT` env var).
+
+
+### 2. Connect a bot to the local gateway
+
+The `SERVER` variable in `bot.env` controls where the bot connects. To use your local gateway, **leave `SERVER` blank**:
+
+```env
+BOT_USERNAME=mybot
+PASSWORD=test
+SERVER=
+SHOW_CHAT=false
+```
+
+When `SERVER` is empty, all connection paths (scripts, CLI, MCP) default to `ws://localhost:7780`.
+
+When `SERVER` is set to a hostname (e.g. `rs-sdk-demo.fly.dev`), they connect to `wss://{SERVER}/gateway` instead.
+
+
+
 ## Disclaimer
 
 This is a free, open-source, community-run project.

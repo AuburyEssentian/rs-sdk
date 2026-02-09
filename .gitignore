@@ -16,6 +16,3 @@ result
 # Bot folders (except template)
 bots/*/
 !bots/_template/
-
-# Generated save files (test artifacts)
-engine/

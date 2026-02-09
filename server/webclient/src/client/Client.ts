@@ -508,6 +508,11 @@ export class Client extends GameShell {
     // Callback fired when a game tick is received (PLAYER_INFO packet processed)
     private onGameTickCallback: (() => void) | null = null;
 
+    // Adaptive tick speed: measures real server tick interval to scale client movement
+    private lastTickTime: number = 0;
+    private measuredTickInterval: number = 420;
+    tickSpeedMultiplier: number = 1;
+
     private onDemand: OnDemand | null = null;
     ingame: boolean = false;
     imageModIcons: Pix8[] = [];
@@ -5861,6 +5866,9 @@ export class Client extends GameShell {
             moveSpeed <<= 0x1;
         }
 
+        // Scale movement speed to match server tick rate
+        moveSpeed = Math.ceil(moveSpeed * this.tickSpeedMultiplier);
+
         if (moveSpeed >= 8 && e.secondarySeqId === e.walkanim && e.runanim !== -1) {
             e.secondarySeqId = e.runanim;
         }
@@ -5939,13 +5947,14 @@ export class Client extends GameShell {
         }
 
         const remainingYaw: number = (e.dstYaw - e.yaw) & 0x7ff;
+        const turnSpeed: number = Math.ceil(32 * this.tickSpeedMultiplier);
         if (remainingYaw !== 0) {
-            if (remainingYaw < 32 || remainingYaw > 2016) {
+            if (remainingYaw < turnSpeed || remainingYaw > (2048 - turnSpeed)) {
                 e.yaw = e.dstYaw;
             } else if (remainingYaw > 1024) {
-                e.yaw -= 32;
+                e.yaw -= turnSpeed;
             } else {
-                e.yaw += 32;
+                e.yaw += turnSpeed;
             }
 
             e.yaw &= 0x7ff;
@@ -5963,10 +5972,12 @@ export class Client extends GameShell {
     private updateSequences(e: ClientEntity): void {
         e.needsForwardDrawPadding = false;
 
+        const animSpeed: number = Math.ceil(this.tickSpeedMultiplier);
+
         let seq: SeqType | null;
         if (e.secondarySeqId !== -1) {
             seq = SeqType.types[e.secondarySeqId];
-            e.secondarySeqCycle++;
+            e.secondarySeqCycle += animSpeed;
 
             if (e.secondarySeqFrame < seq.frameCount && e.secondarySeqCycle > seq.getFrameDuration(e.secondarySeqFrame)) {
                 e.secondarySeqCycle = 0;
@@ -5985,7 +5996,7 @@ export class Client extends GameShell {
             }
 
             seq = SpotAnimType.types[e.spotanimId].seq;
-            e.spotanimCycle++;
+            e.spotanimCycle += animSpeed;
 
             while (seq && e.spotanimFrame < seq.frameCount && e.spotanimCycle > seq.getFrameDuration(e.spotanimFrame)) {
                 e.spotanimCycle -= seq.getFrameDuration(e.spotanimFrame);
@@ -6009,7 +6020,7 @@ export class Client extends GameShell {
 
         if (e.primarySeqId !== -1 && e.primarySeqDelay === 0) {
             seq = SeqType.types[e.primarySeqId];
-            e.primarySeqCycle++;
+            e.primarySeqCycle += animSpeed;
 
             while (e.primarySeqFrame < seq.frameCount && e.primarySeqCycle > seq.getFrameDuration(e.primarySeqFrame)) {
                 e.primarySeqCycle -= seq.getFrameDuration(e.primarySeqFrame);
@@ -6033,7 +6044,10 @@ export class Client extends GameShell {
         }
 
         if (e.primarySeqDelay > 0) {
-            e.primarySeqDelay--;
+            e.primarySeqDelay -= animSpeed;
+            if (e.primarySeqDelay < 0) {
+                e.primarySeqDelay = 0;
+            }
         }
     }
 
@@ -8600,6 +8614,15 @@ export class Client extends GameShell {
             if (this.ptype === ServerProt.PLAYER_INFO) {
                 this.getPlayerPos(this.in, this.psize);
                 this.awaitingSync = false;
+
+                // Measure real server tick interval for adaptive movement speed
+                const now: number = performance.now();
+                if (this.lastTickTime > 0) {
+                    const interval: number = now - this.lastTickTime;
+                    this.measuredTickInterval = this.measuredTickInterval * 0.8 + interval * 0.2;
+                    this.tickSpeedMultiplier = Math.max(1, 420 / this.measuredTickInterval);
+                }
+                this.lastTickTime = now;
 
                 // Notify SDK of game tick (PLAYER_INFO arrives once per server tick)
                 if (this.onGameTickCallback) {

@@ -563,7 +563,7 @@ export class BotActions {
     async pickupItem(target: GroundItem | string | RegExp): Promise<PickupResult> {
         return this.helpers.withDoorRetry(
             () => this._pickupItemOnce(target),
-            (r) => r.reason === 'cant_reach' || r.reason === 'timeout'
+            (r) => r.reason === 'cant_reach'
         );
     }
 
@@ -595,6 +595,9 @@ export class BotActions {
             return { success: false, message: result.message };
         }
 
+        // Track total inventory item count (handles stackables)
+        const invTotalBefore = this.sdk.getInventory().reduce((sum, i) => sum + i.count, 0);
+
         try {
             const finalState = await this.sdk.waitForCondition(state => {
                 // Check for failure messages
@@ -609,7 +612,15 @@ export class BotActions {
                         }
                     }
                 }
-                return state.inventory.length > invCountBefore;
+                // Item disappeared from ground (picked up by us or someone else)
+                const stillOnGround = state.groundItems.some(g => g.x === item.x && g.z === item.z && g.id === item.id);
+                if (!stillOnGround) return true;
+                // New inventory slot appeared (non-stackable)
+                if (state.inventory.length > invCountBefore) return true;
+                // Existing stack grew (stackable)
+                const invTotalNow = state.inventory.reduce((sum, i) => sum + i.count, 0);
+                if (invTotalNow > invTotalBefore) return true;
+                return false;
             }, 10000);
 
             // Check for failure reasons
@@ -872,7 +883,7 @@ export class BotActions {
         }
     }
 
-    /** Buy an item from an open shop. */
+    /** Buy an item from an open shop .*/
     async buyFromShop(target: ShopItem | string | RegExp, amount: number = 1): Promise<ShopResult> {
         const shop = this.sdk.getState()?.shop;
         if (!shop?.isOpen) {
@@ -884,27 +895,56 @@ export class BotActions {
             return { success: false, message: `Item not found in shop: ${target}` };
         }
 
-        const invBefore = this.sdk.getInventory();
-        const hadItemBefore = invBefore.find(i => i.id === shopItem.id);
-        const countBefore = hadItemBefore?.count ?? 0;
+        // Count total items across all inventory slots (handles non-stackable items)
+        const countInvItems = () =>
+            this.sdk.getInventory()
+                .filter(i => i.id === shopItem.id)
+                .reduce((sum, i) => sum + i.count, 0);
 
-        const result = await this.sdk.sendShopBuy(shopItem.slot, amount);
-        if (!result.success) {
-            return { success: false, message: result.message };
+        const totalBefore = countInvItems();
+
+        // Decompose amount into valid buy commands (10, 5, 1)
+        let remaining = Math.max(1, Math.floor(amount));
+        const buySteps: number[] = [];
+        while (remaining > 0) {
+            if (remaining >= 10) { buySteps.push(10); remaining -= 10; }
+            else if (remaining >= 5) { buySteps.push(5); remaining -= 5; }
+            else { buySteps.push(1); remaining -= 1; }
         }
 
-        try {
-            await this.sdk.waitForCondition(state => {
-                const item = state.inventory.find(i => i.id === shopItem.id);
-                if (!item) return false;
-                return item.count > countBefore;
-            }, 5000);
+        for (const stepAmount of buySteps) {
+            const countBefore = countInvItems();
 
-            const boughtItem = this.sdk.getInventory().find(i => i.id === shopItem.id);
-            return { success: true, item: boughtItem, message: `Bought ${shopItem.name} x${amount}` };
-        } catch {
-            return { success: false, message: `Failed to buy ${shopItem.name} (no coins or out of stock?)` };
+            const result = await this.sdk.sendShopBuy(shopItem.slot, stepAmount);
+            if (!result.success) {
+                const totalBought = countInvItems() - totalBefore;
+                if (totalBought > 0) {
+                    const boughtItem = this.sdk.getInventory().find(i => i.id === shopItem.id);
+                    return { success: true, item: boughtItem, message: `Bought ${shopItem.name} x${totalBought} (wanted ${amount})` };
+                }
+                return { success: false, message: result.message };
+            }
+
+            try {
+                await this.sdk.waitForCondition(state => {
+                    const total = state.inventory
+                        .filter(i => i.id === shopItem.id)
+                        .reduce((sum, i) => sum + i.count, 0);
+                    return total > countBefore;
+                }, 5000);
+            } catch {
+                const totalBought = countInvItems() - totalBefore;
+                if (totalBought > 0) {
+                    const boughtItem = this.sdk.getInventory().find(i => i.id === shopItem.id);
+                    return { success: true, item: boughtItem, message: `Bought ${shopItem.name} x${totalBought} (wanted ${amount})` };
+                }
+                return { success: false, message: `Failed to buy ${shopItem.name} (no coins or out of stock?)` };
+            }
         }
+
+        const totalBought = countInvItems() - totalBefore;
+        const boughtItem = this.sdk.getInventory().find(i => i.id === shopItem.id);
+        return { success: true, item: boughtItem, message: `Bought ${shopItem.name} x${totalBought}` };
     }
 
     /** Sell an item to an open shop. */

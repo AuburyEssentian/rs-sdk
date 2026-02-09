@@ -116,7 +116,7 @@ class World {
     private static readonly PLAYERS: number = Environment.NODE_MAX_PLAYERS;
     private static readonly NPCS: number = Environment.NODE_MAX_NPCS;
 
-    private static readonly TICKRATE: number = 420; // 0.42s / 420ms (30% faster than original 600ms)
+    private static readonly TICKRATE: number = Environment.NODE_TICKRATE;
 
     private static readonly INV_STOCKRATE: number = 100; // 1m
     private static readonly AFK_EVENTRATE: number = 500; // 5m
