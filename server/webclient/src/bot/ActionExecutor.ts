@@ -12,10 +12,11 @@ export interface ActionResult {
 
 export type ActionResultOrPromise = ActionResult | Promise<ActionResult>;
 
-// Interface for on-demand scanning (provided by StateCollector)
+// Interface for on-demand scanning and component discovery (provided by StateCollector)
 export interface ScanProvider {
     scanNearbyLocs(radius?: number): NearbyLoc[];
     scanGroundItems(radius?: number): GroundItem[];
+    getPrayerComponentId(prayerIndex: number): number;
 }
 
 export class ActionExecutor {
@@ -260,6 +261,24 @@ export class ActionExecutor {
                         data: this.scanProvider.scanGroundItems(action.radius)
                     };
 
+                case 'togglePrayer': {
+                    if (!this.scanProvider) {
+                        return { success: false, message: 'No scan provider available' };
+                    }
+                    if (action.prayerIndex < 0 || action.prayerIndex > 14) {
+                        return { success: false, message: `Invalid prayer index: ${action.prayerIndex}` };
+                    }
+                    const componentId = this.scanProvider.getPrayerComponentId(action.prayerIndex);
+                    if (componentId === -1) {
+                        return { success: false, message: `Prayer component not found for index ${action.prayerIndex}` };
+                    }
+                    return this.wrapBool(
+                        this.client.clickComponent(componentId),
+                        `Toggled prayer ${action.prayerIndex}`,
+                        `Failed to toggle prayer ${action.prayerIndex}`
+                    );
+                }
+
                 default:
                     return { success: false, message: `Unknown action type: ${(action as any).type}` };
             }
@@ -296,6 +315,7 @@ export function formatAction(action: BotAction): string {
         case 'acceptCharacterDesign': return 'Accept character design';
         case 'randomizeCharacterDesign': return 'Randomize character design';
         case 'say': return `Say: ${action.message}`;
+        case 'togglePrayer': return `Toggle prayer ${action.prayerIndex}`;
         default: return action.type;
     }
 }

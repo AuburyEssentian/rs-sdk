@@ -39,9 +39,18 @@ import {
     type CombatStyleOption,
     type CombatEvent,
     type DialogState,
-    type InterfaceState
+    type InterfaceState,
+    type PrayerState
 } from './types.js';
 import type { ScanProvider } from './ActionExecutor.js';
+
+/** Cached prayer component discovery result */
+interface PrayerComponentMap {
+    /** Component IDs for each prayer (indexed 0-14) */
+    componentIds: number[];
+    /** Varp IDs for each prayer (indexed 0-14) */
+    varpIds: number[];
+}
 
 export class BotStateCollector implements ScanProvider {
     private client: Client;
@@ -51,6 +60,9 @@ export class BotStateCollector implements ScanProvider {
     private lastNpcDamageCycles: Map<number, Int32Array> = new Map();
     private static readonly MAX_EVENTS = 50;
     private static readonly EVENT_EXPIRY_TICKS = 50;
+
+    // Cached prayer component map (built once on first use)
+    private prayerComponentMap: PrayerComponentMap | null = null;
 
     constructor(client: Client) {
         this.client = client;
@@ -84,8 +96,98 @@ export class BotStateCollector implements ScanProvider {
             dialog: this.collectDialogState(),
             interface: this.collectInterfaceState(),
             modalOpen: (c.viewportInterfaceId ?? -1) !== -1,
-            modalInterface: c.viewportInterfaceId ?? -1
+            modalInterface: c.viewportInterfaceId ?? -1,
+            prayers: this.collectPrayerState()
         };
+    }
+
+    /**
+     * Discover prayer components by scanning Component.types for toggle buttons
+     * that check a varp == 1. Groups by parent layer to find the prayer interface
+     * (the one with exactly 15 toggle buttons).
+     */
+    buildPrayerComponentMap(): PrayerComponentMap | null {
+        if (this.prayerComponentMap) return this.prayerComponentMap;
+
+        // Find all toggle buttons (buttonType === 4) whose first script is load_var (opcode 5)
+        // and whose comparator checks == 1 (scriptComparator[0] === 1 means "equals", scriptOperand[0] === 1)
+        const togglesByParent = new Map<number, Array<{ id: number; varpId: number }>>();
+
+        for (let i = 0; i < Component.types.length; i++) {
+            const com = Component.types[i];
+            if (!com || com.buttonType !== 4) continue; // Not a toggle button
+            if (!com.scripts || !com.scripts[0]) continue;
+            if (!com.scriptComparator || !com.scriptOperand) continue;
+
+            const script = com.scripts[0];
+            // Script must be: [5, varpId, 0] - load_var then return
+            if (script.length < 3 || script[0] !== 5 || script[2] !== 0) continue;
+
+            // Comparator must check equals (type 1 = equals) and operand must be 1
+            if (com.scriptComparator[0] !== 1 || com.scriptOperand[0] !== 1) continue;
+
+            const varpId = script[1];
+            const parent = com.layer;
+
+            if (!togglesByParent.has(parent)) {
+                togglesByParent.set(parent, []);
+            }
+            togglesByParent.get(parent)!.push({ id: i, varpId });
+        }
+
+        // Find the parent with exactly 15 toggle buttons - that's the prayer interface
+        for (const [_parent, toggles] of togglesByParent) {
+            if (toggles.length === 15) {
+                // Sort by component ID to get consistent ordering (prayer 0-14)
+                toggles.sort((a, b) => a.id - b.id);
+
+                this.prayerComponentMap = {
+                    componentIds: toggles.map(t => t.id),
+                    varpIds: toggles.map(t => t.varpId)
+                };
+                return this.prayerComponentMap;
+            }
+        }
+
+        return null;
+    }
+
+    /** Get the component ID for a prayer index (0-14). Returns -1 if not found. */
+    getPrayerComponentId(prayerIndex: number): number {
+        const map = this.buildPrayerComponentMap();
+        if (!map || prayerIndex < 0 || prayerIndex >= map.componentIds.length) return -1;
+        return map.componentIds[prayerIndex];
+    }
+
+    private collectPrayerState(): PrayerState {
+        const c = this.client as any;
+        const defaultState: PrayerState = {
+            activePrayers: new Array(15).fill(false),
+            prayerPoints: 0,
+            prayerLevel: 0
+        };
+
+        try {
+            // Get prayer skill info (Prayer is skill index 5)
+            const prayerSkillIndex = SKILL_NAMES.indexOf('Prayer');
+            if (prayerSkillIndex >= 0) {
+                const skillLevel = c.skillLevel || [];
+                const skillBaseLevel = c.skillBaseLevel || [];
+                defaultState.prayerPoints = skillLevel[prayerSkillIndex] || 0;
+                defaultState.prayerLevel = skillBaseLevel[prayerSkillIndex] || 0;
+            }
+
+            // Discover prayer components and read varp states
+            const map = this.buildPrayerComponentMap();
+            if (!map) return defaultState;
+
+            const varps = c.varps || [];
+            for (let i = 0; i < map.varpIds.length; i++) {
+                defaultState.activePrayers[i] = varps[map.varpIds[i]] === 1;
+            }
+        } catch { /* ignore errors */ }
+
+        return defaultState;
     }
 
     private collectDialogState(): DialogState {

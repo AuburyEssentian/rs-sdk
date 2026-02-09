@@ -175,6 +175,9 @@ export const Locations = {
     ALKHARID_FURNACE: { x: 3274, z: 3186 },
     VARROCK_WEST_BANK: { x: 3185, z: 3436 },
     FALADOR_MINE: { x: 3045, z: 9780, level: 0 },  // Dwarven mine
+    EDGEVILLE_DUNGEON: { x: 3132, z: 9912, level: 0 },  // Edgeville dungeon entrance area
+    ZANARIS: { x: 3220, z: 9592, level: 0 },  // Lost City (Zanaris) teleport spawn point
+    ZANARIS: { x: 3220, z: 9592, level: 0 },  // Lost City / Zanaris portal entrance
     GNOME_STRONGHOLD_AGILITY: { x: 2474, z: 3436 },  // Gnome Agility Course start
 };
 
@@ -469,13 +472,13 @@ export async function generateSave(
 ): Promise<string> {
     const saveData = createSaveData(config);
 
-    // Determine save path
-    const savePath = path.join(
-        process.cwd(),
-        'engine/data/players',
-        profile,
-        `${username.toLowerCase()}.sav`
-    );
+    // Determine save path - check both possible engine locations
+    const serverEnginePath = path.join(process.cwd(), 'server/engine/data/players', profile);
+    const rootEnginePath = path.join(process.cwd(), 'engine/data/players', profile);
+    const baseDir = fs.existsSync(path.join(process.cwd(), 'server/engine/data/players'))
+        ? serverEnginePath
+        : rootEnginePath;
+    const savePath = path.join(baseDir, `${username.toLowerCase()}.sav`);
 
     // Ensure directory exists
     const dir = path.dirname(savePath);

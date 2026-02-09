@@ -241,6 +241,15 @@ export interface InterfaceState {
     options: Array<{ index: number; text: string }>;
 }
 
+export interface PrayerState {
+    /** Active state of each prayer (indexed 0-14) */
+    activePrayers: boolean[];
+    /** Current prayer points (skill level) */
+    prayerPoints: number;
+    /** Base prayer level */
+    prayerLevel: number;
+}
+
 export interface BotState {
     tick: number;
     player: PlayerState | null;
@@ -269,6 +278,8 @@ export interface BotState {
     modalOpen: boolean;
     /** The ID of the modal interface (-1 if none) */
     modalInterface: number;
+    /** Prayer state (active prayers, prayer points) */
+    prayers: PrayerState;
 }
 
 // Extended world state interface for agent (includes extra debug info)
@@ -327,4 +338,6 @@ export type BotAction =
     | { type: 'bankWithdraw'; slot: number; amount: number; reason: string }
     // On-demand scanning (returns data in action result)
     | { type: 'scanNearbyLocs'; radius?: number; reason: string }
-    | { type: 'scanGroundItems'; radius?: number; reason: string };
+    | { type: 'scanGroundItems'; radius?: number; reason: string }
+    // Prayer toggle
+    | { type: 'togglePrayer'; prayerIndex: number; reason: string };

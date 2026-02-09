@@ -35,8 +35,11 @@ import type {
     UseItemOnNpcResult,
     InteractLocResult,
     InteractNpcResult,
-    PickpocketResult
+    PickpocketResult,
+    PrayerResult,
+    PrayerName
 } from './types';
+import { PRAYER_INDICES, PRAYER_NAMES, PRAYER_LEVELS } from './types';
 
 export class BotActions {
     private helpers: ActionHelpers;
@@ -2400,6 +2403,123 @@ export class BotActions {
         } catch {
             return { success: false, message: `Timed out pickpocketing ${npc.name}`, reason: 'timeout' };
         }
+    }
+
+    // ============ Porcelain: Prayer Actions ============
+
+    /**
+     * Activate a prayer by name or index.
+     * Checks preconditions (level, prayer points, not already active) before toggling.
+     */
+    async activatePrayer(prayer: PrayerName | number): Promise<PrayerResult> {
+        const index = typeof prayer === 'number' ? prayer : PRAYER_INDICES[prayer];
+        if (index === undefined || index < 0 || index > 14) {
+            return { success: false, message: `Invalid prayer: ${prayer}`, reason: 'invalid_prayer' };
+        }
+
+        const prayerName = PRAYER_NAMES[index];
+        const prayerState = this.sdk.getPrayerState();
+        if (!prayerState) {
+            return { success: false, message: 'No prayer state available' };
+        }
+
+        // Check if already active
+        if (prayerState.activePrayers[index]) {
+            return { success: true, message: `${prayerName} is already active`, reason: 'already_active' };
+        }
+
+        // Check prayer points
+        if (prayerState.prayerPoints <= 0) {
+            return { success: false, message: 'No prayer points remaining', reason: 'no_prayer_points' };
+        }
+
+        // Check prayer level
+        const requiredLevel = PRAYER_LEVELS[index] ?? 1;
+        if (prayerState.prayerLevel < requiredLevel) {
+            return { success: false, message: `Need prayer level ${requiredLevel} for ${prayerName} (have ${prayerState.prayerLevel})`, reason: 'level_too_low' };
+        }
+
+        // Send toggle
+        const result = await this.sdk.sendTogglePrayer(index);
+        if (!result.success) {
+            return { success: false, message: result.message };
+        }
+
+        // Wait for prayer to become active
+        try {
+            await this.sdk.waitForCondition(state => {
+                return state.prayers.activePrayers[index] === true;
+            }, 5000);
+            return { success: true, message: `Activated ${prayerName}` };
+        } catch {
+            return { success: false, message: `Timeout waiting for ${prayerName} to activate`, reason: 'timeout' };
+        }
+    }
+
+    /**
+     * Deactivate a prayer by name or index.
+     * Checks if the prayer is actually active before toggling.
+     */
+    async deactivatePrayer(prayer: PrayerName | number): Promise<PrayerResult> {
+        const index = typeof prayer === 'number' ? prayer : PRAYER_INDICES[prayer];
+        if (index === undefined || index < 0 || index > 14) {
+            return { success: false, message: `Invalid prayer: ${prayer}`, reason: 'invalid_prayer' };
+        }
+
+        const prayerName = PRAYER_NAMES[index];
+        const prayerState = this.sdk.getPrayerState();
+        if (!prayerState) {
+            return { success: false, message: 'No prayer state available' };
+        }
+
+        // Check if already inactive
+        if (!prayerState.activePrayers[index]) {
+            return { success: true, message: `${prayerName} is already inactive`, reason: 'already_inactive' };
+        }
+
+        // Send toggle
+        const result = await this.sdk.sendTogglePrayer(index);
+        if (!result.success) {
+            return { success: false, message: result.message };
+        }
+
+        // Wait for prayer to become inactive
+        try {
+            await this.sdk.waitForCondition(state => {
+                return state.prayers.activePrayers[index] === false;
+            }, 5000);
+            return { success: true, message: `Deactivated ${prayerName}` };
+        } catch {
+            return { success: false, message: `Timeout waiting for ${prayerName} to deactivate`, reason: 'timeout' };
+        }
+    }
+
+    /**
+     * Deactivate all currently active prayers.
+     * Toggles each active prayer off one by one.
+     */
+    async deactivateAllPrayers(): Promise<PrayerResult> {
+        const prayerState = this.sdk.getPrayerState();
+        if (!prayerState) {
+            return { success: false, message: 'No prayer state available' };
+        }
+
+        const activePrayers = prayerState.activePrayers
+            .map((active, i) => active ? i : -1)
+            .filter(i => i !== -1);
+
+        if (activePrayers.length === 0) {
+            return { success: true, message: 'No prayers are active' };
+        }
+
+        for (const index of activePrayers) {
+            const result = await this.deactivatePrayer(index);
+            if (!result.success && result.reason !== 'already_inactive') {
+                return { success: false, message: `Failed to deactivate ${PRAYER_NAMES[index]}: ${result.message}` };
+            }
+        }
+
+        return { success: true, message: `Deactivated ${activePrayers.length} prayer(s)` };
     }
 }
 
