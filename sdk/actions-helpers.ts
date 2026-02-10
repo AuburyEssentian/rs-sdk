@@ -197,10 +197,12 @@ export class ActionHelpers {
         targetZ: number,
         tolerance: number = 3
     ): Promise<{ arrived: boolean; stoppedMoving: boolean; x: number; z: number }> {
-        const POLL_INTERVAL = 150;
-        const STUCK_THRESHOLD = 600;
-        const MIN_TIMEOUT = 2000;
-        const TILES_PER_SECOND = 4.5;
+        // All logic is tick-based so it scales with any server tick rate.
+        // Running = 2 tiles/tick. Walking = 1 tile/tick.
+        const TILES_PER_TICK = 2;
+        const STUCK_TICKS = 2;       // 2 ticks of no movement = stuck
+        const MIN_TICKS = 3;         // minimum ticks to wait
+        const SAFETY_MS = 15_000;    // hard ms failsafe if state updates stop entirely
 
         const startState = this.sdk.getState();
         if (!startState?.player) {
@@ -209,60 +211,72 @@ export class ActionHelpers {
 
         const startX = startState.player.worldX;
         const startZ = startState.player.worldZ;
+        const startTick = startState.tick;
 
         const distance = Math.sqrt(
             Math.pow(targetX - startX, 2) + Math.pow(targetZ - startZ, 2)
         );
-        const expectedTime = (distance / TILES_PER_SECOND) * 1000;
-        const maxTimeout = Math.max(MIN_TIMEOUT, expectedTime * 1.5);
+        const expectedTicks = Math.ceil(distance / TILES_PER_TICK);
+        const maxTicks = Math.max(MIN_TICKS, Math.ceil(expectedTicks * 1.5));
 
         let lastX = startX;
         let lastZ = startZ;
-        let lastMoveTime = Date.now();
-        const startTime = Date.now();
+        let lastMoveTick = startTick;
 
-        while (Date.now() - startTime < maxTimeout) {
-            await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        return new Promise((resolve) => {
+            let resolved = false;
+            const done = (result: { arrived: boolean; stoppedMoving: boolean; x: number; z: number }) => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(safetyTimer);
+                unsub();
+                resolve(result);
+            };
 
-            const state = this.sdk.getState();
-            if (!state?.player) {
-                return { arrived: false, stoppedMoving: true, x: lastX, z: lastZ };
-            }
+            // Hard ms failsafe in case state updates stop arriving
+            const safetyTimer = setTimeout(() => {
+                const s = this.sdk.getState()?.player;
+                const fx = s?.worldX ?? lastX;
+                const fz = s?.worldZ ?? lastZ;
+                const fd = Math.sqrt(Math.pow(targetX - fx, 2) + Math.pow(targetZ - fz, 2));
+                done({ arrived: fd <= tolerance, stoppedMoving: true, x: fx, z: fz });
+            }, SAFETY_MS);
 
-            const currentX = state.player.worldX;
-            const currentZ = state.player.worldZ;
+            const unsub = this.sdk.onStateUpdate((state) => {
+                if (!state?.player) return;
 
-            const distToTarget = Math.sqrt(
-                Math.pow(targetX - currentX, 2) + Math.pow(targetZ - currentZ, 2)
-            );
-            if (distToTarget <= tolerance) {
-                return { arrived: true, stoppedMoving: false, x: currentX, z: currentZ };
-            }
+                const currentX = state.player.worldX;
+                const currentZ = state.player.worldZ;
+                const currentTick = state.tick;
 
-            if (currentX !== lastX || currentZ !== lastZ) {
-                lastMoveTime = Date.now();
-                lastX = currentX;
-                lastZ = currentZ;
-            } else {
-                if (Date.now() - lastMoveTime > STUCK_THRESHOLD) {
-                    return { arrived: false, stoppedMoving: true, x: currentX, z: currentZ };
+                // Check arrival
+                const distToTarget = Math.sqrt(
+                    Math.pow(targetX - currentX, 2) + Math.pow(targetZ - currentZ, 2)
+                );
+                if (distToTarget <= tolerance) {
+                    done({ arrived: true, stoppedMoving: false, x: currentX, z: currentZ });
+                    return;
                 }
-            }
-        }
 
-        const finalState = this.sdk.getState();
-        const finalX = finalState?.player?.worldX ?? lastX;
-        const finalZ = finalState?.player?.worldZ ?? lastZ;
-        const finalDist = Math.sqrt(
-            Math.pow(targetX - finalX, 2) + Math.pow(targetZ - finalZ, 2)
-        );
+                // Track movement by tick
+                if (currentX !== lastX || currentZ !== lastZ) {
+                    lastMoveTick = currentTick;
+                    lastX = currentX;
+                    lastZ = currentZ;
+                }
 
-        return {
-            arrived: finalDist <= tolerance,
-            stoppedMoving: true,
-            x: finalX,
-            z: finalZ
-        };
+                // Stuck: no movement for STUCK_TICKS
+                if (currentTick - lastMoveTick >= STUCK_TICKS) {
+                    done({ arrived: false, stoppedMoving: true, x: currentX, z: currentZ });
+                    return;
+                }
+
+                // Tick budget exceeded
+                if (currentTick - startTick >= maxTicks) {
+                    done({ arrived: distToTarget <= tolerance, stoppedMoving: true, x: currentX, z: currentZ });
+                }
+            });
+        });
     }
 
     // ============ Walk Step Helper ============

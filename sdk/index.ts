@@ -1117,7 +1117,7 @@ export class BotSDK {
     }
 
     /**
-     * Wait for a specific number of server ticks (~420ms each).
+     * Wait for a specific number of server ticks (~300ms each).
      *
      * @param ticks - Number of server ticks to wait
      * @returns The state after waiting
@@ -1135,7 +1135,7 @@ export class BotSDK {
         const targetTick = startTick + ticks;
 
         return new Promise((resolve, reject) => {
-            // Safety timeout: ticks * 1s + 5s buffer (server tick is ~420ms, so 1s is generous)
+            // Safety timeout: ticks * 1s + 5s buffer (server tick is ~300ms, so 1s is generous)
             const safetyTimeout = setTimeout(() => {
                 unsubscribe();
                 reject(new Error(`waitForTicks(${ticks}) safety timeout - no state updates received`));
@@ -1155,7 +1155,7 @@ export class BotSDK {
      * Wait for the next state update from the server.
      * This is the most common waiting pattern - ensures fresh data after an action.
      *
-     * State updates arrive once per server tick (~420ms) when PLAYER_INFO is received.
+     * State updates arrive once per server tick (~300ms) when PLAYER_INFO is received.
      *
      * @example
      * ```ts

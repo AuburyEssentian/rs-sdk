@@ -69,7 +69,7 @@ await new Promise(r => setTimeout(r, 3000));
 | 1123 | Set | ? |
 
 ### Workflow
-1. Mine equal copper (rock id 2091) and tin (rock id 2092) at SE Varrock mine (3285, 3365)
+1. Mine equal copper (rock ids 2090/2091) and tin (rock ids 2093/2094) at SE Varrock mine (3285, 3365)
 2. Walk to Lumbridge furnace (3225, 3256) → smelt into bronze bars
 3. Walk to Varrock anvil (3188, 3421) → smith into items (requires hammer)
 

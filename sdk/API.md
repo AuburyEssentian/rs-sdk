@@ -182,7 +182,7 @@ These methods resolve when server **acknowledges** them (not when effects comple
 | `waitForConnection(timeout)` | Wait for WebSocket connection to be established. |
 | `waitForReady(timeout)` | Wait for game state to be fully loaded and ready. |
 | `waitForStateChange(timeout)` | Wait for next state update from server. |
-| `waitForTicks(ticks)` | Wait for a specific number of server ticks (~420ms each). |
+| `waitForTicks(ticks)` | Wait for a specific number of server ticks (~300ms each). |
 
 ### Other
 

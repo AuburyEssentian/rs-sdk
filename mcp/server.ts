@@ -102,6 +102,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             code: {
               type: 'string',
               description: 'TypeScript code to execute. Available globals: bot (BotActions), sdk (BotSDK). Example: "await bot.chopTree(); return sdk.getState();"'
+            },
+            timeout: {
+              type: 'number',
+              description: 'Execution timeout in minutes (default: 2, max: 60)'
             }
           },
           required: ['bot_name', 'code']
@@ -193,11 +197,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
           const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
           const fn = new AsyncFunction('bot', 'sdk', code);
 
-          // Execute code with 10 minute timeout + MCP cancellation signal
-          const EXECUTION_TIMEOUT = 10 * 60 * 1000;
+          // Execute code with configurable timeout + MCP cancellation signal
+          const timeoutMinutes = Math.min(Math.max((args?.timeout as number) || 2, 0.1), 60);
+          const EXECUTION_TIMEOUT = timeoutMinutes * 60 * 1000;
           let timeoutId: ReturnType<typeof setTimeout>;
           const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => reject(new Error(`Code execution timed out after 10 minutes`)), EXECUTION_TIMEOUT);
+            timeoutId = setTimeout(() => reject(new Error(`Code execution timed out after ${timeoutMinutes} minute(s)`)), EXECUTION_TIMEOUT);
           });
 
           // AbortController that fires on MCP cancellation
