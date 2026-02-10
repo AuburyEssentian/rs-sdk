@@ -8,6 +8,7 @@ import type {
     ActionResult,
     SkillState,
     InventoryItem,
+    BankItem,
     NearbyNpc,
     NearbyLoc,
     GroundItem,
@@ -1246,10 +1247,23 @@ export class BotActions {
     }
 
     /** Withdraw an item from the bank by slot number. */
-    async withdrawItem(bankSlot: number, amount: number = 1): Promise<BankWithdrawResult> {
+    async withdrawItem(target: BankItem | string | RegExp | number, amount: number = 1): Promise<BankWithdrawResult> {
         const state = this.sdk.getState();
         if (!state?.interface?.isOpen) {
             return { success: false, message: 'Bank is not open', reason: 'bank_not_open' };
+        }
+
+        let bankSlot: number;
+        if (typeof target === 'number') {
+            bankSlot = target;
+        } else if (typeof target === 'object' && 'slot' in target) {
+            bankSlot = target.slot;
+        } else {
+            const found = this.sdk.findBankItem(target);
+            if (!found) {
+                return { success: false, message: `Bank item not found: ${target}`, reason: 'item_not_found' };
+            }
+            bankSlot = found.slot;
         }
 
         const invCountBefore = state.inventory.length;
@@ -1979,42 +1993,54 @@ export class BotActions {
     // ============ Smithing ============
 
     /**
-     * Smithing interface component IDs for bronze items.
-     * The smithing interface (994) uses these component IDs for each item type.
+     * Smithing interface layout: 5 columns (pack IDs 1119-1123), each with up to 5 slots.
+     * Maps product name -> { component (column pack ID), slot (row within column) }.
+     *
+     * Column 1 (1119): Dagger, Sword, Scimitar, Longsword, 2H Sword
+     * Column 2 (1120): Axe, Mace, Warhammer, Battleaxe
+     * Column 3 (1121): Chainbody, Platelegs, Plateskirt, Platebody
+     * Column 4 (1122): Med Helm, Full Helm, Sq Shield, Kiteshield
+     * Column 5 (1123): Dart Tips, Arrowheads, Throwing Knives, Wire/Studs
      */
-    private static readonly SMITHING_COMPONENTS: Record<string, number> = {
-        'dagger': 1119,
-        'axe': 1120,
-        'mace': 1121,
-        'med helm': 1122,
-        'medium helm': 1122,
-        'bolts': 1123,      // Makes 10
-        'sword': 1124,
-        'scimitar': 1125,
-        'longsword': 1126,
-        'long sword': 1126,
-        'full helm': 1127,
-        'throwing knives': 1128,
-        'knives': 1128,
-        'sq shield': 1129,
-        'square shield': 1129,
-        'warhammer': 1130,
-        'war hammer': 1130,
-        'battleaxe': 1131,
-        'battle axe': 1131,
-        'chainbody': 1132,
-        'chain body': 1132,
-        'kiteshield': 1133,
-        'kite shield': 1133,
-        'claws': 1134,
-        '2h sword': 1135,
-        'two-handed sword': 1135,
-        'plateskirt': 1136,
-        'plate skirt': 1136,
-        'platelegs': 1137,
-        'plate legs': 1137,
-        'platebody': 1138,
-        'plate body': 1138,
+    private static readonly SMITHING_COMPONENTS: Record<string, { component: number; slot: number }> = {
+        // Column 1 - Bladed weapons
+        'dagger': { component: 1119, slot: 0 },
+        'sword': { component: 1119, slot: 1 },
+        'scimitar': { component: 1119, slot: 2 },
+        'longsword': { component: 1119, slot: 3 },
+        'long sword': { component: 1119, slot: 3 },
+        '2h sword': { component: 1119, slot: 4 },
+        'two-handed sword': { component: 1119, slot: 4 },
+        // Column 2 - Blunt/axe weapons
+        'axe': { component: 1120, slot: 0 },
+        'mace': { component: 1120, slot: 1 },
+        'warhammer': { component: 1120, slot: 2 },
+        'war hammer': { component: 1120, slot: 2 },
+        'battleaxe': { component: 1120, slot: 3 },
+        'battle axe': { component: 1120, slot: 3 },
+        // Column 3 - Armour
+        'chainbody': { component: 1121, slot: 0 },
+        'chain body': { component: 1121, slot: 0 },
+        'platelegs': { component: 1121, slot: 1 },
+        'plate legs': { component: 1121, slot: 1 },
+        'plateskirt': { component: 1121, slot: 2 },
+        'plate skirt': { component: 1121, slot: 2 },
+        'platebody': { component: 1121, slot: 3 },
+        'plate body': { component: 1121, slot: 3 },
+        // Column 4 - Helms/shields
+        'med helm': { component: 1122, slot: 0 },
+        'medium helm': { component: 1122, slot: 0 },
+        'full helm': { component: 1122, slot: 1 },
+        'sq shield': { component: 1122, slot: 2 },
+        'square shield': { component: 1122, slot: 2 },
+        'kiteshield': { component: 1122, slot: 3 },
+        'kite shield': { component: 1122, slot: 3 },
+        // Column 5 - Projectiles/misc
+        'dart tips': { component: 1123, slot: 0 },
+        'arrowheads': { component: 1123, slot: 1 },
+        'arrow tips': { component: 1123, slot: 1 },
+        'throwing knives': { component: 1123, slot: 2 },
+        'knives': { component: 1123, slot: 2 },
     };
 
     /**
@@ -2059,15 +2085,17 @@ export class BotActions {
             return { success: false, message: 'No anvil nearby', reason: 'no_anvil' };
         }
 
-        // Determine component ID
+        // Determine component ID and slot
         let componentId: number;
+        let componentSlot: number = 0;
         if (typeof product === 'number') {
             componentId = product;
         } else {
             const key = product.toLowerCase();
             const directMatch = BotActions.SMITHING_COMPONENTS[key];
             if (directMatch) {
-                componentId = directMatch;
+                componentId = directMatch.component;
+                componentSlot = directMatch.slot;
             } else {
                 // Try partial match
                 const matchingKey = Object.keys(BotActions.SMITHING_COMPONENTS).find(k =>
@@ -2075,7 +2103,8 @@ export class BotActions {
                 );
                 const partialMatch = matchingKey ? BotActions.SMITHING_COMPONENTS[matchingKey] : undefined;
                 if (partialMatch) {
-                    componentId = partialMatch;
+                    componentId = partialMatch.component;
+                    componentSlot = partialMatch.slot;
                 } else {
                     return { success: false, message: `Unknown smithing product: ${product}`, reason: 'level_too_low' };
                 }
@@ -2097,12 +2126,13 @@ export class BotActions {
                 s => s.interface?.isOpen && s.interface.interfaceId === 994,
                 5000
             );
+            
         } catch {
             return { success: false, message: 'Smithing interface did not open', reason: 'interface_not_opened' };
         }
 
         // Click the smithing component (uses INV_BUTTON)
-        const clickResult = await this.sdk.sendClickComponentWithOption(componentId, 1);
+        const clickResult = await this.sdk.sendClickComponentWithOption(componentId, 1, componentSlot);
         if (!clickResult.success) {
             return { success: false, message: 'Failed to click smithing option', reason: 'interface_not_opened' };
         }
@@ -2120,7 +2150,7 @@ export class BotActions {
             const currentXp = state.skills.find(s => s.name === 'Smithing')?.experience || 0;
             if (currentXp > smithingBefore) {
                 // Find the smithed item
-                const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts/i);
+                const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts|arrowtips|arrowheads|arrow|dart/i);
                 return {
                     success: true,
                     message: 'Smithed item successfully',
@@ -2147,7 +2177,7 @@ export class BotActions {
             if (!state.interface?.isOpen) {
                 const finalXp = this.sdk.getSkill('Smithing')?.experience || 0;
                 if (finalXp > smithingBefore) {
-                    const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts/i);
+                    const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts|arrowtips|arrowheads|arrow|dart/i);
                     return {
                         success: true,
                         message: 'Smithed item successfully',
@@ -2164,7 +2194,7 @@ export class BotActions {
         // Final XP check
         const finalXp = this.sdk.getSkill('Smithing')?.experience || 0;
         if (finalXp > smithingBefore) {
-            const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts/i);
+            const smithedItem = this.sdk.findInventoryItem(/dagger|axe|mace|helm|sword|shield|body|legs|skirt|claws|knives|bolts|arrowtips|arrowheads|arrow|dart/i);
             return {
                 success: true,
                 message: 'Smithed item successfully',

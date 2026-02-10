@@ -820,8 +820,8 @@ export class BotSDK {
     }
 
     /** Click a component using INV_BUTTON packet - for components with inventory operations (smithing, crafting, etc.) */
-    async sendClickComponentWithOption(componentId: number, optionIndex: number = 1): Promise<ActionResult> {
-        return this.sendAction({ type: 'clickComponentWithOption', componentId, optionIndex, reason: 'SDK' });
+    async sendClickComponentWithOption(componentId: number, optionIndex: number = 1, slot: number = 0): Promise<ActionResult> {
+        return this.sendAction({ type: 'clickComponentWithOption', componentId, optionIndex, slot, reason: 'SDK' });
     }
 
     /** Click an interface option by index. Convenience wrapper that looks up componentId from state. */

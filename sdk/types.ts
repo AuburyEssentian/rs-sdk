@@ -296,7 +296,7 @@ export type BotAction =
     // clickComponent: IF_BUTTON packet - for simple buttons, spellcasting, etc.
     | { type: 'clickComponent'; componentId: number; reason: string }
     // clickComponentWithOption: INV_BUTTON packet - for components with inventory operations (smithing, crafting, etc.)
-    | { type: 'clickComponentWithOption'; componentId: number; optionIndex: number; reason: string }
+    | { type: 'clickComponentWithOption'; componentId: number; optionIndex: number; slot?: number; reason: string }
     // TODO: acceptCharacterDesign should be parameterized as (gender, kits[7], colours[5])
     // Currently uses hidden client state - the SDK cannot set design values before accepting.
     // For now, bot client uses whatever design state exists (usually defaults or randomized).
@@ -520,7 +520,7 @@ export interface BankWithdrawResult {
     success: boolean;
     message: string;
     item?: InventoryItem;
-    reason?: 'bank_not_open' | 'timeout';
+    reason?: 'bank_not_open' | 'item_not_found' | 'timeout';
 }
 
 export interface UseItemOnLocResult {

@@ -27,6 +27,7 @@ const SAV_VERSION = 6;
 export const InvTypes = {
     INV: 93,      // Main inventory (28 slots)
     WORN: 94,     // Equipment (14 slots)
+    BANK: 95,     // Bank (496 slots)
 };
 
 // Common item IDs
@@ -55,6 +56,11 @@ export const Items = {
     COPPER_ORE: 436,
     TIN_ORE: 438,
     BRONZE_BAR: 2349,
+    IRON_BAR: 2351,
+    STEEL_BAR: 2353,
+    MITHRIL_BAR: 2359,
+    ADAMANTITE_BAR: 2361,
+    RUNITE_BAR: 2363,
 
     // Runes
     AIR_RUNE: 556,
@@ -186,6 +192,7 @@ export interface SaveConfig {
     skills?: Record<string, number>;  // Skill name -> level
     inventory?: Array<{ id: number; count: number }>;
     equipment?: Array<{ id: number; count: number; slot: number }>;
+    bank?: Array<{ id: number; count: number }>;  // Bank items (up to 496 slots)
     coins?: number;
     varps?: Record<number, number>;  // Varp ID -> value (281=tutorial progress)
     appearance?: {
@@ -270,7 +277,7 @@ class BinaryWriter {
  * Generate a save file with the given configuration
  */
 export function createSaveData(config: SaveConfig): Uint8Array {
-    const writer = new BinaryWriter(4096);
+    const writer = new BinaryWriter(8192);
 
     // Header
     writer.p2(SAV_MAGIC);
@@ -395,10 +402,20 @@ export function createSaveData(config: SaveConfig): Uint8Array {
         }
     }
 
+    // Build bank items array (496 slots)
+    const BANK_SIZE = 496;
+    const bankItems: Array<{ id: number; count: number } | null> = new Array(BANK_SIZE).fill(null);
+    if (config.bank) {
+        for (let i = 0; i < config.bank.length && i < BANK_SIZE; i++) {
+            bankItems[i] = config.bank[i];
+        }
+    }
+
     // Count non-empty inventories
     const hasInv = invItems.some(i => i !== null);
     const hasWorn = wornItems.some(i => i !== null);
-    const invCount = (hasInv ? 1 : 0) + (hasWorn ? 1 : 0);
+    const hasBank = bankItems.some(i => i !== null);
+    const invCount = (hasInv ? 1 : 0) + (hasWorn ? 1 : 0) + (hasBank ? 1 : 0);
 
     writer.p1(invCount);
 
@@ -428,6 +445,26 @@ export function createSaveData(config: SaveConfig): Uint8Array {
         writer.p2(14);             // Capacity
         for (let i = 0; i < 14; i++) {
             const item = wornItems[i];
+            if (!item) {
+                writer.p2(0);  // Empty slot
+            } else {
+                writer.p2(item.id + 1);  // Item ID (1-indexed)
+                if (item.count >= 255) {
+                    writer.p1(255);
+                    writer.p4(item.count);
+                } else {
+                    writer.p1(item.count);
+                }
+            }
+        }
+    }
+
+    // Write bank
+    if (hasBank) {
+        writer.p2(InvTypes.BANK);  // Type ID
+        writer.p2(BANK_SIZE);      // Capacity
+        for (let i = 0; i < BANK_SIZE; i++) {
+            const item = bankItems[i];
             if (!item) {
                 writer.p2(0);  // Empty slot
             } else {

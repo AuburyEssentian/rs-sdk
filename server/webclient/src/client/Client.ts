@@ -2375,10 +2375,11 @@ export class Client extends GameShell {
 
     /**
      * Click on an interface component with iop (inventory operations) like smithing menu
-     * componentId: the component ID (e.g., 1119 for first smithing item)
+     * componentId: the component ID (e.g., 1119 for first smithing column)
      * optionIndex: 1-based index (1=Make, 2=Make 5, 3=Make 10 typically)
+     * slot: 0-based slot within the component (e.g., 0=dagger, 2=scimitar in column 1)
      */
-    clickInterfaceIop(componentId: number, optionIndex: number = 1): boolean {
+    clickInterfaceIop(componentId: number, optionIndex: number = 1, slot: number = 0): boolean {
         if (!this.ingame || !this.out) {
             return false;
         }
@@ -2389,11 +2390,10 @@ export class Client extends GameShell {
             return false;
         }
 
-        // Get the item ID from the component's slot if it has one
-        // For smithing, the item displayed is at invSlotObjId[0]
+        // Get the item ID from the component's slot
         let itemId = 0;
-        if (com.invSlotObjId && com.invSlotObjId[0]) {
-            const rawId = com.invSlotObjId[0];
+        if (com.invSlotObjId && com.invSlotObjId[slot]) {
+            const rawId = com.invSlotObjId[slot];
             const obj = ObjType.get(rawId - 1);
             itemId = obj.id;
         }
@@ -2411,10 +2411,10 @@ export class Client extends GameShell {
 
         this.writePacketOpcode(opcode);
         this.out.p2(itemId);
-        this.out.p2(0); // slot 0 for single-item components
+        this.out.p2(slot);
         this.out.p2(componentId);
 
-        console.log(`[clickInterfaceIop] Sent ${opcode} for component ${componentId}, itemId=${itemId}`);
+        console.log(`[clickInterfaceIop] Sent ${opcode} for component ${componentId}, slot=${slot}, itemId=${itemId}`);
         return true;
     }
 

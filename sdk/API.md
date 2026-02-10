@@ -73,7 +73,7 @@ These methods wait for the **effect to complete**, not just server acknowledgmen
 | `openBank(timeout)` | Open a bank booth or talk to a banker. |
 | `closeBank(timeout)` | Close the bank interface. |
 | `depositItem(target, amount)` | Deposit an item into the bank. |
-| `withdrawItem(bankSlot, amount)` | Withdraw an item from the bank by slot number. |
+| `withdrawItem(target, amount)` | Withdraw an item from the bank by slot number. |
 
 ### Crafting & Smithing
 
@@ -152,7 +152,7 @@ These methods resolve when server **acknowledges** them (not when effects comple
 | `sendUseItemOnNpc(itemSlot, npcIndex)` | Use an inventory item on an NPC. |
 | `sendClickDialog(option)` | Click a dialog option by index. |
 | `sendClickComponent(componentId)` | Click a component using IF_BUTTON packet - for simple buttons, spellcasting, etc. |
-| `sendClickComponentWithOption(componentId, optionIndex)` | Click a component using INV_BUTTON packet - for components with inventory operations (smithing, c... |
+| `sendClickComponentWithOption(componentId, optionIndex, slot)` | Click a component using INV_BUTTON packet - for components with inventory operations (smithing, c... |
 | `sendClickInterfaceOption(optionIndex)` | Click an interface option by index. |
 | `sendShopBuy(slot, amount)` | Buy from shop by slot and amount. |
 | `sendShopSell(slot, amount)` | Sell to shop by slot and amount. |
@@ -475,7 +475,7 @@ interface BankWithdrawResult {
   success: boolean;
   message: string;
   item?: InventoryItem;
-  reason?: 'bank_not_open' | 'timeout';
+  reason?: 'bank_not_open' | 'item_not_found' | 'timeout';
 }
 ```
 
