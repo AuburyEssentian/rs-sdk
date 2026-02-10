@@ -96,6 +96,9 @@ export function handleCacheEndpoints(url: URL): Response | null {
     if (url.pathname.startsWith('/ondemand.zip')) {
         return new Response(Bun.file('data/pack/ondemand.zip'));
     }
+    if (url.pathname === '/worldmap.jag') {
+        return new Response(Bun.file('data/pack/mapview/worldmap.jag'));
+    }
     if (url.pathname.startsWith('/build')) {
         return new Response(Bun.file('data/pack/server/build'));
     }

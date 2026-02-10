@@ -14,6 +14,14 @@ export class MapView extends GameShell {
     static shouldDrawLabels: boolean = true;
     static shouldDrawNpcs: boolean = false;
     static shouldDrawItems: boolean = false;
+    static shouldDrawPlayers: boolean = true;
+
+    playerPositions: {x: number, z: number, level: number, name: string}[] = [];
+    playerTrails: Map<string, {x: number, z: number, time: number}[]> = new Map();
+    lastPlayerFetch: number = 0;
+    readonly playerPollInterval: number = 1500;
+    readonly maxTrailLength: number = 60;
+    readonly maxTrailAge: number = 60000;
 
     // overworld
     readonly startX: number = 3200;
@@ -293,6 +301,10 @@ export class MapView extends GameShell {
             const bottom: number = this.offsetZ + ((this.height / this.zoom) | 0);
             this.drawMap(left, top, right, bottom, 0, 0, this.width, this.height);
 
+            if (MapView.shouldDrawPlayers) {
+                this.drawPlayers(left, top, right, bottom, 0, 0, this.width, this.height);
+            }
+
             if (this.showOverview) {
                 this.imageOverview?.blitOpaque(this.overviewX, this.overviewY);
 
@@ -452,6 +464,9 @@ export class MapView extends GameShell {
             } else if (key == 'b'.charCodeAt(0) || key == 'B'.charCodeAt(0)) {
                 MapView.shouldDrawBorders = !MapView.shouldDrawBorders;
                 this.redraw = true;
+            } else if (key == 'p'.charCodeAt(0) || key == 'P'.charCodeAt(0)) {
+                MapView.shouldDrawPlayers = !MapView.shouldDrawPlayers;
+                this.redraw = true;
             }
         } while (key > 0);
 
@@ -577,6 +592,13 @@ export class MapView extends GameShell {
         if (this.flashTimer > 0) {
             this.redraw = true;
             this.flashTimer--;
+        }
+
+        // Poll player positions
+        const now: number = performance.now();
+        if (MapView.shouldDrawPlayers && now - this.lastPlayerFetch > this.playerPollInterval) {
+            this.lastPlayerFetch = now;
+            this.fetchPlayerPositions();
         }
 
         const left: number = this.offsetX - ((this.width / this.zoom) | 0);
@@ -1601,6 +1623,103 @@ export class MapView extends GameShell {
                     }
                     off += step;
                 }
+            }
+        }
+    }
+
+    // ----
+    fetchPlayerPositions(): void {
+        fetch('/playerpositions')
+            .then(res => res.json())
+            .then((data: {x: number, z: number, level: number, name: string}[]) => {
+                this.playerPositions = data;
+                this.updateTrails(data);
+                this.redraw = true;
+            })
+            .catch(() => {});
+    }
+
+    updateTrails(players: {x: number, z: number, level: number, name: string}[]): void {
+        const now: number = performance.now();
+        const activeNames: Set<string> = new Set();
+
+        for (const p of players) {
+            activeNames.add(p.name);
+            let trail = this.playerTrails.get(p.name);
+            if (!trail) {
+                trail = [];
+                this.playerTrails.set(p.name, trail);
+            }
+
+            const last = trail.length > 0 ? trail[trail.length - 1] : null;
+            if (!last || last.x !== p.x || last.z !== p.z) {
+                trail.push({ x: p.x, z: p.z, time: now });
+            }
+
+            if (trail.length > this.maxTrailLength) {
+                trail.splice(0, trail.length - this.maxTrailLength);
+            }
+
+            while (trail.length > 0 && now - trail[0].time > this.maxTrailAge) {
+                trail.shift();
+            }
+        }
+
+        for (const name of this.playerTrails.keys()) {
+            if (!activeNames.has(name)) {
+                this.playerTrails.delete(name);
+            }
+        }
+    }
+
+    drawPlayers(left: number, top: number, right: number, bottom: number, widthOffset: number, heightOffset: number, width: number, height: number): void {
+        const now: number = performance.now();
+
+        for (const p of this.playerPositions) {
+            if (p.level !== 0) continue;
+
+            const mapX: number = p.x - this.originX;
+            const mapY: number = this.originZ + this.sizeZ - p.z;
+
+            const screenX: number = (widthOffset + ((width - widthOffset) * (mapX - left)) / (right - left)) | 0;
+            const screenY: number = (heightOffset + ((height - heightOffset) * (mapY - top)) / (bottom - top)) | 0;
+
+            if (screenX < 0 || screenX >= width || screenY < 0 || screenY >= height) continue;
+
+            // Draw trail
+            const trail = this.playerTrails.get(p.name);
+            if (trail && trail.length > 1) {
+                for (let i: number = 1; i < trail.length; i++) {
+                    const prev = trail[i - 1];
+                    const curr = trail[i];
+
+                    const age: number = now - prev.time;
+                    const fade: number = Math.max(0, 1 - age / this.maxTrailAge);
+
+                    const g: number = (fade * 255) | 0;
+                    const color: number = (g << 8);
+
+                    const prevMapX: number = prev.x - this.originX;
+                    const prevMapY: number = this.originZ + this.sizeZ - prev.z;
+                    const currMapX: number = curr.x - this.originX;
+                    const currMapY: number = this.originZ + this.sizeZ - curr.z;
+
+                    const sx1: number = (widthOffset + ((width - widthOffset) * (prevMapX - left)) / (right - left)) | 0;
+                    const sy1: number = (heightOffset + ((height - heightOffset) * (prevMapY - top)) / (bottom - top)) | 0;
+                    const sx2: number = (widthOffset + ((width - widthOffset) * (currMapX - left)) / (right - left)) | 0;
+                    const sy2: number = (heightOffset + ((height - heightOffset) * (currMapY - top)) / (bottom - top)) | 0;
+
+                    Pix2D.drawLine(sx1, sy1, sx2, sy2, color);
+                }
+            }
+
+            // Draw player dot
+            Pix2D.fillCircle(screenX, screenY, 3, 0xffff00, 256);
+
+            // Draw name at higher zoom
+            if (this.zoom >= 6 && this.b12) {
+                this.b12.drawStringCenter(screenX + 1, screenY - 6, p.name, 0);
+                this.b12.drawStringCenter(screenX, screenY - 7, p.name, 0xffffff);
             }
         }
     }

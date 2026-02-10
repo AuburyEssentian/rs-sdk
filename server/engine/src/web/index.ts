@@ -7,7 +7,7 @@ import { handleViewerAssets } from './hiscoresServer.js';
 import { handleScriptRunsListPage, handleScriptRunsForScriptPage, handleScriptRunViewerPage, handleScriptRunFilesPage } from './pages/scriptRuns.js';
 import { handleScreenshotsListPage, handleScreenshotFilePage } from './pages/screenshots.js';
 import { handleScreenshotUpload, handleExportCollisionApi } from './pages/api.js';
-import { handleDisclaimerPage, handlePublicFiles } from './pages/static.js';
+import { handleDisclaimerPage, handleMapviewPage, handlePublicFiles } from './pages/static.js';
 import { WebSocketData, handleWebSocketUpgrade, handleGatewayEndpointGet, websocketHandlers } from './websocket.js';
 
 export type { WebSocketData };
@@ -53,6 +53,20 @@ export async function startWeb() {
                 return new Response(JSON.stringify({
                     count: World.getTotalPlayers()
                 }), {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                });
+            }
+
+            // Player positions endpoint
+            if (url.pathname === '/playerpositions' || url.pathname === '/playerpositions/') {
+                const players: {x: number, z: number, level: number, name: string}[] = [];
+                for (const player of World.players) {
+                    players.push({ x: player.x, z: player.z, level: player.level, name: player.displayName });
+                }
+                return new Response(JSON.stringify(players), {
                     headers: {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*'
@@ -126,6 +140,10 @@ export async function startWeb() {
             // Disclaimer page
             const disclaimerResponse = handleDisclaimerPage(url);
             if (disclaimerResponse) return disclaimerResponse;
+
+            // Map viewer page
+            const mapviewResponse = handleMapviewPage(url);
+            if (mapviewResponse) return mapviewResponse;
 
             // API endpoints
             const screenshotUploadResponse = await handleScreenshotUpload(req, url);

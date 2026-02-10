@@ -53,6 +53,45 @@ export function handleDisclaimerPage(url: URL): Response | null {
     return new Response(html, { headers: { 'Content-Type': 'text/html' } });
 }
 
+export function handleMapviewPage(url: URL): Response | null {
+    if (url.pathname !== '/mapview' && url.pathname !== '/mapview/') {
+        return null;
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World Map</title>
+    <style>
+        body {
+            margin: 0;
+            background: black;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="765" height="503"></canvas>
+    <script type="module">
+        import { MapView } from '/client/mapview.js';
+        const canvas = document.getElementById('canvas');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        new MapView();
+    </script>
+</body>
+</html>`;
+
+    return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+}
+
 // Map URL prefixes to webclient build output directories.
 // The webclient builds into ../webclient/out/ relative to the engine CWD,
 // so we serve those files directly instead of requiring a copy step.
