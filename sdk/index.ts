@@ -23,6 +23,23 @@ import type {
 import { PRAYER_INDICES, PRAYER_NAMES } from './types';
 import * as pathfinding from './pathfinding';
 
+/**
+ * Derive the gateway WebSocket URL from a SERVER env value.
+ * - undefined/empty → ws://localhost:7780 (local default)
+ * - Full URL (ws:// or wss://) → used as-is
+ * - "localhost" or "localhost:PORT" → ws://localhost:PORT (plain WS)
+ * - anything else → wss://HOST/gateway (TLS, remote gateway path)
+ */
+export function deriveGatewayUrl(server?: string): string {
+    if (!server) return 'ws://localhost:7780';
+    if (server.startsWith('ws://') || server.startsWith('wss://')) return server;
+    const isLocal = server === 'localhost' || server.startsWith('localhost:');
+    if (isLocal) {
+        return `ws://${server.includes(':') ? server : server + ':7780'}`;
+    }
+    return `wss://${server}/gateway`;
+}
+
 interface SyncToSDKMessage {
     type: 'sdk_connected' | 'sdk_state' | 'sdk_action_result' | 'sdk_error' | 'sdk_screenshot_response';
     success?: boolean;
@@ -901,7 +918,7 @@ export class BotSDK {
         if (!prayerState) return false;
         const index = typeof prayer === 'number' ? prayer : PRAYER_INDICES[prayer];
         if (index === undefined || index < 0 || index >= prayerState.activePrayers.length) return false;
-        return prayerState.activePrayers[index];
+        return !!prayerState.activePrayers[index];
     }
 
     /** Get list of all currently active prayer names. */
@@ -1006,6 +1023,8 @@ export class BotSDK {
         }
 
         const destZoneAllocated = pathfinding.isZoneAllocated(level, destX, destZ);
+
+        // 2048x2048 BFS grid handles any in-game distance in a single call.
         const waypoints = pathfinding.findLongPath(level, srcX, srcZ, destX, destZ, maxWaypoints);
 
         // If no waypoints and destination zone isn't allocated, that's expected -
