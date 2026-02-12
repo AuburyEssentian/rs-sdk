@@ -2,7 +2,7 @@
 set -e
 
 echo "[entrypoint] Starting game engine..."
-cd /app/engine && bun run src/app.ts &
+cd /app/server/engine && bun run src/app.ts &
 ENGINE_PID=$!
 
 # Wait for engine web server (serves bot client page)
@@ -20,13 +20,13 @@ for i in $(seq 1 120); do
 done
 
 echo "[entrypoint] Starting gateway..."
-cd /app/gateway && bun run gateway.ts &
+cd /app/server/gateway && bun run gateway.ts &
 GATEWAY_PID=$!
 sleep 3
 echo "[entrypoint] Gateway ready on port 7780"
 
 echo "[entrypoint] Launching headless bot client..."
-cd /app/gateway && bun run launch-bot.ts &
+cd /app/server/gateway && bun run launch-bot.ts &
 BOT_PID=$!
 
 # Wait for bot to be in-game (puppeteer + tutorial skip)
