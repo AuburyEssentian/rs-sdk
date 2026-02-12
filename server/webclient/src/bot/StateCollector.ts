@@ -335,7 +335,7 @@ export class BotStateCollector implements ScanProvider {
         // combatCycle is set to loopCycle + 400 when damage is taken/dealt
         // So if combatCycle > loopCycle, we're in combat (within 400 ticks of last hit)
         const combatCycle = player.combatCycle ?? -1000;
-        const inCombat = targetId !== -1 || combatCycle > loopCycle;
+        const inCombat = combatCycle > loopCycle;
 
         // Find most recent damage tick from damageCycles array
         let lastDamageTick = -1;
@@ -606,8 +606,8 @@ export class BotStateCollector implements ScanProvider {
             // combatCycle is set to loopCycle + 400 when NPC takes damage
             const combatCycle = npc.combatCycle ?? -1000;
             const loopCycle = c.loopCycle || 0;
-            // NPC is in combat if it has a target OR was hit recently (within 400 ticks)
-            const inCombat = targetId !== -1 || combatCycle > loopCycle;
+            // NPC is in combat if it was hit recently (within 400 ticks of last damage)
+            const inCombat = combatCycle > loopCycle;
 
             // Convert fine-grained local coords (128 units/tile) to world coordinates
             const npcWorldX = baseX + (npcX >> 7);
