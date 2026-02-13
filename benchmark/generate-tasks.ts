@@ -14,7 +14,7 @@ import { join } from 'path';
 const BENCHMARK_DIR = join(import.meta.dir);
 const SHARED_DIR = join(BENCHMARK_DIR, 'shared');
 
-const DOCKER_IMAGE = 'ghcr.io/maxbittker/rs-agent-benchmark:v2';
+const DOCKER_IMAGE = 'ghcr.io/maxbittker/rs-agent-benchmark:v8';
 const DEFAULT_AGENT_TIMEOUT = 600; // 10 minutes
 const VERIFIER_TIMEOUT = 120;
 
@@ -25,198 +25,32 @@ interface SkillDef {
   name: string;
   /** Directory name suffix (lowercase, used in {skill}-xp-10m) */
   slug: string;
-  /** Instruction tips for maximizing XP */
-  tips: string[];
 }
 
 const SKILLS: SkillDef[] = [
-  // Combat
-  {
-    name: 'Attack',
-    slug: 'attack',
-    tips: [
-      'Set combat style to "Accurate" (style index 0) to train Attack',
-      'Cows near Lumbridge (3253, 3290) are safe targets — open the gate at (3253, 3270) first',
-      'Al Kharid warriors (3293, 3175) give faster XP but hit back harder',
-      'Chickens at (3237, 3295) are safest for very low levels',
-      'Wrap attacks in try/catch — timeouts are common in crowded areas',
-    ],
-  },
-  {
-    name: 'Defence',
-    slug: 'defence',
-    tips: [
-      'Set combat style to "Defensive" (style index 3) to train Defence',
-      'Cows near Lumbridge (3253, 3290) are safe targets — open the gate at (3253, 3270) first',
-      'Al Kharid warriors (3293, 3175) give faster XP but hit back harder',
-      'You gain Defence XP from melee combat only when using defensive style',
-      'Wrap attacks in try/catch — timeouts are common in crowded areas',
-    ],
-  },
-  {
-    name: 'Strength',
-    slug: 'strength',
-    tips: [
-      'Set combat style to "Aggressive" (style index 1) to train Strength',
-      'Cows near Lumbridge (3253, 3290) are safe targets — open the gate at (3253, 3270) first',
-      'Al Kharid warriors (3293, 3175) give faster XP but hit back harder',
-      'Chickens at (3237, 3295) are safest for very low levels',
-      'Wrap attacks in try/catch — timeouts are common in crowded areas',
-    ],
-  },
-  {
-    name: 'Hitpoints',
-    slug: 'hitpoints',
-    tips: [
-      'Hitpoints XP is gained from any combat style — every hit that deals damage gives Hitpoints XP',
-      'Use any combat style; Hitpoints XP is always 1/3 of the combat XP gained',
-      'Cows near Lumbridge (3253, 3290) are safe targets — open the gate at (3253, 3270) first',
-      'Al Kharid warriors (3293, 3175) give faster XP but hit back harder',
-      'Wrap attacks in try/catch — timeouts are common in crowded areas',
-    ],
-  },
-  {
-    name: 'Ranged',
-    slug: 'ranged',
-    tips: [
-      'You need a ranged weapon (bow) and ammunition (arrows) to train Ranged',
-      'Buy a shortbow and bronze arrows from a shop, or fletch them',
-      'Equip the bow and arrows before attacking',
-      'Chickens at (3237, 3295) are good low-level targets',
-      'Cows near Lumbridge (3253, 3290) work too — open the gate at (3253, 3270) first',
-    ],
-  },
-  {
-    name: 'Prayer',
-    slug: 'prayer',
-    tips: [
-      'Bury bones for Prayer XP — use sdk.sendUseItem(slot) on bones in inventory',
-      'Kill chickens at (3237, 3295) for easy bone drops, or cows at (3253, 3290)',
-      'Pick up bones from ground with bot.pickupItem(), then bury them',
-      'Big bones (from cows, etc.) give more XP than regular bones',
-      'Use sdk.scanGroundItems() to find dropped bones, NOT state.nearbyLocs',
-    ],
-  },
-  {
-    name: 'Magic',
-    slug: 'magic',
-    tips: [
-      'You need runes to cast spells — buy them from a magic shop or find them',
-      'Wind Strike is the basic combat spell, requires 1 air rune + 1 mind rune',
-      'Use bot.castSpellOnNpc(target, spell) for combat spells',
-      'Chickens at (3237, 3295) are good low-level spell targets',
-      'Each successful spell cast gives Magic XP',
-    ],
-  },
-  // Gathering
-  {
-    name: 'Woodcutting',
-    slug: 'woodcutting',
-    tips: [
-      'Higher-level trees give more XP per log but take longer to chop',
-      'Regular trees near Lumbridge (3200, 3220) work for level 1',
-      'Oak trees at Varrock (3190, 3458) at level 15+, willows at Draynor (3087, 3235) at level 30+',
-      'Drop logs when inventory is full to keep chopping without banking',
-      'Use bot.chopTree() for the simplest approach',
-    ],
-  },
-  {
-    name: 'Fishing',
-    slug: 'fishing',
-    tips: [
-      'Fishing spots are NPCs, not locations — use findNearbyNpc(/fishing spot/i)',
-      'Draynor Village (3087, 3230) has level-1 net/bait spots for shrimp',
-      'WARNING: Lumbridge area has NO level-1 fishing spots — use Draynor',
-      'You need a small fishing net (buy from Port Sarim at 3014, 3224 for 5gp)',
-      'Drop fish when inventory is full to keep fishing without banking',
-    ],
-  },
-  {
-    name: 'Mining',
-    slug: 'mining',
-    tips: [
-      'Rocks are locations with a "Mine" option — use findNearbyLoc(/rocks/i)',
-      'SE Varrock mine (3285, 3365) has copper (2090/2091), tin (2093/2094), and iron (2092/2095)',
-      'You need a pickaxe — buy bronze pickaxe from Bob\'s Axes in Lumbridge (3230, 3203) for 1gp',
-      'Iron ore gives good XP but requires Mining level 15',
-      'Drop ore when inventory is full to keep mining without banking',
-    ],
-  },
-  // Processing
-  {
-    name: 'Cooking',
-    slug: 'cooking',
-    tips: [
-      'Cook raw food on a range using bot.useItemOnLoc(rawFood, range)',
-      'Lumbridge range near Bob\'s Axes (3211, 3215) works without any quests',
-      'WARNING: Lumbridge Castle kitchen range requires Cook\'s Assistant quest — avoid it',
-      'You need raw food first — fish shrimp at Draynor (3087, 3230) then cook them',
-      'Higher cooking level reduces burn rate',
-    ],
-  },
-  {
-    name: 'Fletching',
-    slug: 'fletching',
-    tips: [
-      'Use a knife on logs to fletch — bot.fletchLogs() handles this',
-      'Knife spawns at (3224, 3202) SE of Lumbridge castle',
-      'Arrow shafts from regular logs give good early XP (~375 XP per log with bonus)',
-      'Shortbows can be made at level 5 for better XP',
-      'Chop trees for logs, then fletch them — combine woodcutting + fletching',
-    ],
-  },
-  {
-    name: 'Crafting',
-    slug: 'crafting',
-    tips: [
-      'Leather crafting: use bot.craftLeather() with needle + thread + leather',
-      'Jewelry crafting at furnace: gold bar + mould → rings/necklaces/amulets',
-      'Gold ring gives 375 Crafting XP, gold necklace gives 500 XP, gold amulet gives 750 XP',
-      'Buy needle and thread from a crafting shop, or find them',
-      'Cowhides must be tanned into leather at a tanner before crafting',
-    ],
-  },
-  {
-    name: 'Smithing',
-    slug: 'smithing',
-    tips: [
-      'Smelt ores at a furnace: copper + tin → bronze bar (use sendUseItemOnLoc with ore on furnace)',
-      'Lumbridge furnace is at (3225, 3256)',
-      'Smith bars at an anvil: use bot.smithAtAnvil(product) — requires a hammer',
-      'Buy hammer from Lumbridge General Store (3210, 3244) for 1gp',
-      'Mine equal copper (2090/2091) and tin (2093/2094) at SE Varrock mine (3285, 3365)',
-    ],
-  },
-  // Utility
-  {
-    name: 'Firemaking',
-    slug: 'firemaking',
-    tips: [
-      'Use a tinderbox on logs to light them — bot.burnLogs() handles this',
-      'Buy tinderbox from Lumbridge General Store (3210, 3244)',
-      'Chop trees for logs near Lumbridge (3200, 3220), then burn them',
-      'You need open ground to light fires — move if "can\'t light fire here"',
-      'Higher-level logs give more Firemaking XP',
-    ],
-  },
-  {
-    name: 'Thieving',
-    slug: 'thieving',
-    tips: [
-      'Pickpocket men at Lumbridge castle (3222, 3218) for easy early XP',
-      'Use bot.pickpocketNpc(target) or find "Pickpocket" option on NPCs',
-      'Getting stunned is normal — wait ~5 seconds for recovery',
-      'Al Kharid men (3293, 3175) with kebabs from Karim (3273, 3180) for sustain',
-      'No tools or equipment needed — works from level 1 with empty inventory',
-    ],
-  },
+  { name: 'Attack', slug: 'attack' },
+  { name: 'Defence', slug: 'defence' },
+  { name: 'Strength', slug: 'strength' },
+  { name: 'Hitpoints', slug: 'hitpoints' },
+  { name: 'Ranged', slug: 'ranged' },
+  { name: 'Prayer', slug: 'prayer' },
+  { name: 'Magic', slug: 'magic' },
+  { name: 'Woodcutting', slug: 'woodcutting' },
+  { name: 'Fishing', slug: 'fishing' },
+  { name: 'Mining', slug: 'mining' },
+  { name: 'Cooking', slug: 'cooking' },
+  { name: 'Fletching', slug: 'fletching' },
+  { name: 'Crafting', slug: 'crafting' },
+  { name: 'Smithing', slug: 'smithing' },
+  { name: 'Firemaking', slug: 'firemaking' },
+  { name: 'Thieving', slug: 'thieving' },
 ];
 
 // ── Variant tasks (non-standard configurations) ──────────────────
 
 interface VariantTask {
   slug: string;
-  instruction: string;
+  taskDescription: string;
   agentTimeout: number;
   /** Verifier script filename in shared/ */
   verifier: string;
@@ -231,15 +65,9 @@ interface VariantTask {
 const VARIANTS: VariantTask[] = [
   {
     slug: 'woodcutting-xp-5m',
-    instruction: `Gain as much Woodcutting XP as possible within the time limit.
+    taskDescription: `Gain as much Woodcutting XP as possible within the time limit.
 
-The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.
-
-Tips:
-- Higher-level trees give more XP per log but take longer to chop
-- You need the right axe for your level
-- Optimize for XP/hour: balance tree type, banking, and movement
-`,
+The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`,
     agentTimeout: 300,
     verifier: 'check_xp.ts',
     testSh: `#!/bin/bash
@@ -251,7 +79,7 @@ cd /app && bun run /tests/check_xp.ts
   },
   {
     slug: 'woodcutting-10',
-    instruction: `Get level 10 in Woodcutting.
+    taskDescription: `Get level 10 in Woodcutting.
 
 The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.
 `,
@@ -299,7 +127,7 @@ allow_internet = true
 name = "rs-agent"
 transport = "stdio"
 command = "bash"
-args = ["-c", "cd /app && bun run mcp/server.ts"]
+args = ["-c", "/start-services.sh && cd /app && bun run mcp/server.ts"]
 `;
 }
 
@@ -330,19 +158,14 @@ allow_internet = true
 name = "rs-agent"
 transport = "stdio"
 command = "bash"
-args = ["-c", "cd /app && bun run mcp/server.ts"]
+args = ["-c", "/start-services.sh && cd /app && bun run mcp/server.ts"]
 `;
 }
 
-function generateInstructionMd(skill: SkillDef): string {
-  const tips = skill.tips.map(t => `- ${t}`).join('\n');
+function generateTaskDescription(skill: SkillDef): string {
   return `Gain as much ${skill.name} XP as possible within the time limit.
 
-The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.
-
-Tips:
-${tips}
-`;
+The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`;
 }
 
 function generateTestSh(skill: SkillDef): string {
@@ -374,7 +197,7 @@ for (const skill of SKILLS) {
   writeFileSync(join(envDir, 'Dockerfile'), `FROM ${DOCKER_IMAGE}\n`);
 
   writeFileSync(join(taskDir, 'task.toml'), skillToml);
-  writeFileSync(join(taskDir, 'instruction.md'), generateInstructionMd(skill));
+  writeFileSync(join(taskDir, 'instruction.md'), generateTaskDescription(skill));
   writeFileSync(join(testsDir, 'test.sh'), generateTestSh(skill));
   copyFileSync(join(SHARED_DIR, 'check_xp.ts'), join(testsDir, 'check_xp.ts'));
 }
@@ -388,7 +211,7 @@ for (const variant of VARIANTS) {
 
   mkdirSync(testsDir, { recursive: true });
   writeFileSync(join(taskDir, 'task.toml'), generateVariantTaskToml(variant));
-  writeFileSync(join(taskDir, 'instruction.md'), variant.instruction);
+  writeFileSync(join(taskDir, 'instruction.md'), variant.taskDescription);
   writeFileSync(join(testsDir, 'test.sh'), variant.testSh);
   copyFileSync(
     join(SHARED_DIR, variant.verifier),

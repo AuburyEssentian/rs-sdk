@@ -18,8 +18,13 @@ const GATEWAY_URL = process.env.GATEWAY_URL || 'ws://localhost:7780';
 async function main() {
     console.log(`[launch-bot] Launching headless browser for "${BOT_NAME}"...`);
 
+    // When DISPLAY is set (Xvfb), run non-headless so the game renders
+    // to the virtual display and can be captured by ffmpeg.
+    const useHeadless = !process.env.DISPLAY;
+    console.log(`[launch-bot] Headless: ${useHeadless} (DISPLAY=${process.env.DISPLAY || 'unset'})`);
+
     const browser = await puppeteer.launch({
-        headless: true,
+        headless: useHeadless,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -29,6 +34,7 @@ async function main() {
             '--mute-audio',
             '--disable-extensions',
             '--disable-background-timer-throttling',
+            '--window-size=800,600',
         ],
     });
 

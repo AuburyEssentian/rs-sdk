@@ -29,7 +29,7 @@ harbor run -p benchmark/<task-dir> -a <agent> -m <model> --env daytona
 
 Run the full dataset with parallelism:
 ```bash
-harbor run -p benchmark/ -a claude-code -m anthropic/claude-sonnet-4-20250514 --env daytona -n 16
+harbor run -p benchmark/ -a claude-code -m anthropic/claude-sonnet-4-5 --env daytona -n 16
 ```
 
 Each task has an `environment/Dockerfile` that `FROM`s the pre-built GHCR image, so Daytona pulls the image with no build step beyond the layer cache.

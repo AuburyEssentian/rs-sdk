@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     unzip \
     ca-certificates \
     procps \
+    xvfb \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install bun
@@ -62,7 +64,12 @@ RUN curl -fsSL https://claude.ai/install.sh | bash \
 
 # Copy entrypoint and helper scripts
 COPY entrypoint.sh /entrypoint.sh
+COPY start-services.sh /start-services.sh
 COPY launch-bot.ts /app/server/gateway/launch-bot.ts
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /start-services.sh
+
+# Override .mcp.json so Claude Code starts game services before the MCP server.
+# Services start in background (&) so the MCP server is immediately responsive.
+RUN echo '{"mcpServers":{"rs-agent":{"command":"bash","args":["-c","/start-services.sh & cd /app && bun run mcp/server.ts"]}}}' > /app/.mcp.json
 
 ENTRYPOINT ["/entrypoint.sh"]
