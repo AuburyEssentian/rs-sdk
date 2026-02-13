@@ -1,0 +1,5 @@
+# Generated task directories — regenerate with: bun benchmark/generate-tasks.ts
+# Keep only source files: generate-tasks.ts, shared/, docker/
+*-xp-10m/
+*-xp-5m/
+woodcutting-10/
