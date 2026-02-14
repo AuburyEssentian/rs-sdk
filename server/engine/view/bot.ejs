@@ -32,6 +32,27 @@
             display: none;
         }
 
+        body.minimal {
+            overflow: hidden;
+        }
+
+        body.minimal #controls,
+        body.minimal #bot-controls,
+        body.minimal #sdk-panel-container {
+            display: none !important;
+        }
+
+        body.minimal #game {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        body.minimal canvas {
+            width: 100vw !important;
+            height: 100vh !important;
+            max-width: none !important;
+        }
+
         #game {
             padding-left: 0;
             padding-right: 0;
@@ -162,12 +183,18 @@
         }
 
         function loadSettings() {
+            const urlParams = new URLSearchParams(window.location.search);
+
+            // Minimal mode: canvas only, no chrome
+            if (urlParams.has('minimal')) {
+                document.body.classList.add('minimal');
+            }
+
             // Apply canvas size (default to auto)
             let size = localStorage.getItem('canvasSize') || 'auto';
             setSize(size);
 
             // Load username from URL ?bot= param, or generate random if none
-            const urlParams = new URLSearchParams(window.location.search);
             const botUsername = urlParams.get('bot');
             const usernameField = document.getElementById('bot-username');
 

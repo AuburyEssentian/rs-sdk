@@ -403,7 +403,7 @@ export class Client extends GameShell {
     private textureBuffer: Int8Array = new Int8Array(16384);
     private levelCollisionMap: (CollisionMap | null)[] = new TypedArray1d(CollisionConstants.LEVELS, null);
     private currentLevel: number = 0;
-    private orbitCameraPitch: number = 128;
+    private orbitCameraPitch: number = 200;
     private orbitCameraYaw: number = 0;
     private orbitCameraYawVelocity: number = 0;
     private orbitCameraPitchVelocity: number = 0;
@@ -938,6 +938,27 @@ export class Client extends GameShell {
         ];
         this.writePacketOpcode(opcodes[optionIndex - 1]);
         this.out.p2(npcIndex);
+
+        return true;
+    }
+
+    /**
+     * Interact with a player using a specific option (1-4)
+     * Option 2 is Attack (wilderness only), Option 3 is Follow, Option 4 is Trade
+     */
+    interactPlayer(playerIndex: number, optionIndex: number): boolean {
+        if (!this.ingame || !this.out || playerIndex < 0 || optionIndex < 1 || optionIndex > 4) {
+            return false;
+        }
+
+        const opcodes = [
+            ClientProt.OPPLAYER1,
+            ClientProt.OPPLAYER2,
+            ClientProt.OPPLAYER3,
+            ClientProt.OPPLAYER4
+        ];
+        this.writePacketOpcode(opcodes[optionIndex - 1]);
+        this.out.p2(playerIndex);
 
         return true;
     }

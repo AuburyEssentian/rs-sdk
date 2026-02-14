@@ -786,6 +786,11 @@ export class BotSDK {
         return this.sendAction({ type: 'interactNpc', npcIndex, optionIndex: option, reason: 'SDK' });
     }
 
+    /** Interact with a player by index and option. Option 2 = Attack (wilderness), 3 = Follow, 4 = Trade. */
+    async sendInteractPlayer(playerIndex: number, option: number = 2): Promise<ActionResult> {
+        return this.sendAction({ type: 'interactPlayer', playerIndex, optionIndex: option, reason: 'SDK' });
+    }
+
     /** Talk to an NPC by index. */
     async sendTalkToNpc(npcIndex: number): Promise<ActionResult> {
         return this.sendAction({ type: 'talkToNpc', npcIndex, reason: 'SDK' });
