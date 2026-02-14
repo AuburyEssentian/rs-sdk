@@ -193,7 +193,7 @@ function generateVariantTaskToml(v: VariantTask): string {
   // with stdout/stderr redirected to a log file (to avoid corrupting MCP stdio)
   const hasTracker = v.extraSharedFiles?.includes('skill_tracker.ts');
   const mcpCommand = hasTracker
-    ? '/start-services.sh && cd /app && bun run benchmark/shared/skill_tracker.ts > /logs/verifier/skill_tracker.log 2>&1 & bun run mcp/server.ts'
+    ? '/start-services.sh && mkdir -p /logs/verifier && cd /app && bun run benchmark/shared/skill_tracker.ts > /logs/verifier/skill_tracker.log 2>&1 & bun run mcp/server.ts'
     : '/start-services.sh && cd /app && bun run mcp/server.ts';
 
   return `version = "1.0"
