@@ -12,7 +12,6 @@ export default class ReportAbuseHandler extends ClientGameMessageHandler<ReportA
         }
 
         if (message.reason < ReportAbuseReason.OFFENSIVE_LANGUAGE || message.reason > ReportAbuseReason.REAL_WORLD_TRADING) {
-            World.notifyPlayerBan('automated', player.username, Date.now() + 172800000);
             return false;
         }
 

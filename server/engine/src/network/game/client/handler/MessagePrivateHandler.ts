@@ -19,11 +19,6 @@ export default class MessagePrivateHandler extends ClientGameMessageHandler<Mess
             return false;
         }
 
-        if (fromBase37(username) === 'invalid_name') {
-            World.notifyPlayerBan('automated', player.username, Date.now() + 172800000);
-            return false;
-        }
-
         const buf: Packet = Packet.alloc(0);
         buf.pdata(input, 0, input.length);
         buf.pos = 0;

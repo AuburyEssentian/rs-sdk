@@ -63,6 +63,7 @@ export default {
     // entities cap
     NODE_MAX_PLAYERS: tryParseInt(process.env.NODE_MAX_PLAYERS, 2047),
     NODE_MAX_CONNECTED: tryParseInt(process.env.NODE_MAX_CONNECTED, 1000),
+    NODE_MAX_LOGINS_PER_IP: tryParseInt(process.env.NODE_MAX_LOGINS_PER_IP, 100),
     NODE_MAX_NPCS: tryParseInt(process.env.NODE_MAX_NPCS, 8191),
     NODE_DEBUGPROC_CHAR: tryParseString(process.env.NODE_DEBUGPROC_CHAR, '~'),
     NODE_WS_ONDEMAND: tryParseBoolean(process.env.NODE_WS_ONDEMAND, false),

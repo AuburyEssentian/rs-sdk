@@ -142,6 +142,37 @@ async function updateHiscores(account: { id: number, staffmodlevel: number } | u
 export default class LoginServer {
     private server: WebSocketServer;
     private loginRequests: Set<string> = new Set();
+    // In-memory tracking of concurrent logins per IP
+    private ipLoginCount: Map<string, Set<number>> = new Map();
+    private accountIp: Map<number, string> = new Map();
+
+    private trackLogin(ip: string, accountId: number) {
+        // Remove any existing tracking for this account (handles IP changes, takeovers)
+        this.untrackLogin(accountId);
+        if (!this.ipLoginCount.has(ip)) {
+            this.ipLoginCount.set(ip, new Set());
+        }
+        this.ipLoginCount.get(ip)!.add(accountId);
+        this.accountIp.set(accountId, ip);
+    }
+
+    private untrackLogin(accountId: number) {
+        const oldIp = this.accountIp.get(accountId);
+        if (oldIp) {
+            const set = this.ipLoginCount.get(oldIp);
+            if (set) {
+                set.delete(accountId);
+                if (set.size === 0) {
+                    this.ipLoginCount.delete(oldIp);
+                }
+            }
+            this.accountIp.delete(accountId);
+        }
+    }
+
+    private getLoginCountForIp(ip: string): number {
+        return this.ipLoginCount.get(ip)?.size ?? 0;
+    }
 
     rejectLoginForSafety(s: WebSocket, replyTo: number) {
         // Send opcode 7 ('Please try again') if something has gone wrong
@@ -190,6 +221,17 @@ export default class LoginServer {
                     const { type, nodeId, nodeTime, profile } = msg;
 
                     if (type === 'world_startup') {
+                        // Untrack all accounts that were logged in on this node
+                        const loggedInOnNode = await db
+                            .selectFrom('account_login')
+                            .select('account_id')
+                            .where('logged_in', '=', nodeId)
+                            .where('profile', '=', profile)
+                            .execute();
+                        for (const row of loggedInOnNode) {
+                            this.untrackLogin(row.account_id);
+                        }
+
                         await db
                             .updateTable('account_login')
                             .set({
@@ -295,7 +337,20 @@ export default class LoginServer {
                                     return;
                                 }
 
-                                // todo: concurrent logins by ip
+                                // Concurrent logins per IP limit (staff exempt)
+                                // if (account.staffmodlevel < 2 && Environment.NODE_MAX_LOGINS_PER_IP > 0) {
+                                //     const currentCount = this.getLoginCountForIp(remoteAddress);
+                                //     if (currentCount >= Environment.NODE_MAX_LOGINS_PER_IP) {
+                                //         console.log(`[LOGIN] IP ${remoteAddress} rejected: ${currentCount} concurrent logins (limit ${Environment.NODE_MAX_LOGINS_PER_IP})`);
+                                //         s.send(
+                                //             JSON.stringify({
+                                //                 replyTo,
+                                //                 response: 8
+                                //             })
+                                //         );
+                                //         return;
+                                //     }
+                                // }
 
                                 await db
                                     .insertInto('login')
@@ -364,6 +419,9 @@ export default class LoginServer {
                                     })
                                     .execute();
 
+                                // Re-establish in-memory tracking on reconnect
+                                this.trackLogin(remoteAddress, account.id);
+
                                 const messageCount = await getUnreadMessageCount(account.id);
 
                                 if (!hasSave) {
@@ -404,6 +462,7 @@ export default class LoginServer {
                                 // Clear the old session's logged_in state so the new login can proceed
                                 // The old world will handle the orphaned session gracefully on disconnect
                                 console.log(`[LOGIN] Account ${username} already logged in on world ${account.logged_in}, new login taking over`);
+                                this.untrackLogin(account.id);
                                 await db.updateTable('account_login')
                                     .set({
                                         logged_in: 0,
@@ -487,7 +546,8 @@ export default class LoginServer {
                                 );
                             }
 
-                            // Login is valid - update account table
+                            // Login is valid - update account table and track IP
+                            this.trackLogin(remoteAddress, account.id);
                             if (account.account_id) {
                                 await db.updateTable('account_login')
                                     .set({
@@ -534,6 +594,7 @@ export default class LoginServer {
                             .executeTakeFirst();
                         
                         if (account?.account_id) {
+                            this.untrackLogin(account.id);
                             await db
                                 .updateTable('account_login')
                                 .set({
@@ -582,6 +643,7 @@ export default class LoginServer {
                             .executeTakeFirst();
 
                         if (account?.account_id) {
+                            this.untrackLogin(account.id);
                             await db
                                 .updateTable('account_login')
                                 .set({
@@ -592,7 +654,7 @@ export default class LoginServer {
                                 .where('profile', '=', profile)
                                 .executeTakeFirst();
                         }
-                        
+
                     } else if (type === 'player_ban') {
                         const { _staff, username, until } = msg;
 
