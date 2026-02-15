@@ -12,8 +12,8 @@ WORKDIR /opt/server
 # === DEPENDENCY LAYER (cached unless package files change) ===
 
 # Copy only package files first
-COPY engine/package.json engine/bun.lock /opt/server/engine/
-COPY gateway/package.json gateway/bun.lock /opt/server/gateway/
+COPY server/engine/package.json server/engine/bun.lock /opt/server/engine/
+COPY server/gateway/package.json server/gateway/bun.lock /opt/server/gateway/
 
 # Install engine deps with bun cache mount
 WORKDIR /opt/server/engine
@@ -30,10 +30,10 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 WORKDIR /opt/server
 
 # Copy source code
-COPY content /opt/server/content
-COPY webclient /opt/server/webclient
-COPY engine /opt/server/engine
-COPY gateway /opt/server/gateway
+COPY server/content /opt/server/content
+COPY server/webclient /opt/server/webclient
+COPY server/engine /opt/server/engine
+COPY server/gateway /opt/server/gateway
 COPY sdk /opt/sdk
 
 # Patch and build engine
