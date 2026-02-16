@@ -13,7 +13,7 @@
  * Run: bun run benchmark/shared/skill_tracker.ts
  */
 import { BotSDK } from '../../sdk/index';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
 
 const botName = process.env.BOT_NAME || 'agent';
@@ -60,12 +60,27 @@ async function main() {
     }
   }
 
-  const startTime = new Date();
-  const trackingData: TrackingData = {
-    botName,
-    startTime: startTime.toISOString(),
-    samples: [],
-  };
+  // Load existing tracking data if present (survives tracker restarts)
+  let trackingData: TrackingData;
+  let startTime: Date;
+  if (existsSync(outFile)) {
+    try {
+      const existing = JSON.parse(readFileSync(outFile, 'utf-8')) as TrackingData;
+      if (existing.samples && existing.startTime) {
+        trackingData = existing;
+        startTime = new Date(existing.startTime);
+        console.log(`[skill-tracker] Resuming with ${existing.samples.length} existing samples from ${existing.startTime}`);
+      } else {
+        throw new Error('invalid format');
+      }
+    } catch {
+      startTime = new Date();
+      trackingData = { botName, startTime: startTime.toISOString(), samples: [] };
+    }
+  } else {
+    startTime = new Date();
+    trackingData = { botName, startTime: startTime.toISOString(), samples: [] };
+  }
 
   function takeSample() {
     const skills = sdk.getSkills();

@@ -8,7 +8,11 @@
 import { BotSDK } from '/app/sdk/index';
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 
-const TRACKING_FILE = '/logs/verifier/skill_tracking.json';
+// Check multiple locations for tracking data (agent phase may write to /app/)
+const TRACKING_PATHS = [
+    '/app/skill_tracking.json',
+    '/logs/verifier/skill_tracking.json',
+];
 
 async function main() {
     const sdk = new BotSDK({
@@ -42,17 +46,21 @@ async function main() {
 
         mkdirSync('/logs/verifier', { recursive: true });
 
-        // Read tracking data if it exists
+        // Read tracking data from whichever location the tracker used
         let trackingData = null;
-        if (existsSync(TRACKING_FILE)) {
-            try {
-                trackingData = JSON.parse(readFileSync(TRACKING_FILE, 'utf-8'));
-                console.log(`Tracking data: ${trackingData.samples?.length ?? 0} samples`);
-            } catch (err) {
-                console.error('Failed to read tracking data:', err);
+        for (const trackingPath of TRACKING_PATHS) {
+            if (existsSync(trackingPath)) {
+                try {
+                    trackingData = JSON.parse(readFileSync(trackingPath, 'utf-8'));
+                    console.log(`Tracking data: ${trackingData.samples?.length ?? 0} samples (from ${trackingPath})`);
+                    break;
+                } catch (err) {
+                    console.error(`Failed to read tracking data from ${trackingPath}:`, err);
+                }
             }
-        } else {
-            console.log('No tracking data file found');
+        }
+        if (!trackingData) {
+            console.log('No tracking data file found in:', TRACKING_PATHS.join(', '));
         }
 
         // Write reward files

@@ -96,10 +96,9 @@ import { runScript } from '../../sdk/runner';
 const result = await runScript(async (ctx) => {
   const { bot, sdk, log } = ctx;
 
-  const endTime = Date.now() + 5 * 60_000; // 5 minutes
   let logsChopped = 0;
 
-  while (Date.now() < endTime) {
+  while (logsChopped < 50) {
     const tree = sdk.findNearbyLoc(/^tree$/i);
     if (tree) {
       const r = await bot.chopTree(tree);
@@ -110,7 +109,7 @@ const result = await runScript(async (ctx) => {
   log(`Chopped ${logsChopped} logs`);
   return { logsChopped };
 }, {
-  timeout: 6 * 60_000,  // Overall timeout
+  timeout: 3 * 60_000,  // 3 minute timeout
 });
 
 console.log(`Success: ${result.success}`);
@@ -197,7 +196,7 @@ Record observations in `lab_log.md`, then improve the script.
 |----------|----------|
 | **10-30s** | New script, single actions, untested logic, debugging |
 | **2-5 min** | Validated approach, building confidence |
-| **10+ min** | Proven strategy, grinding runs |
+| **10+ min** | Proven strategy, grinding runs. USE SPARINGLY |
 
 A failed 5-minute run wastes more time than five 30 second diagnostic runs. **Fail fast and start simple.**
 

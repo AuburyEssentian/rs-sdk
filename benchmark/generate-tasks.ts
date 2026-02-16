@@ -8,7 +8,7 @@
  *
  * Usage: bun benchmark/generate-tasks.ts
  */
-import { mkdirSync, writeFileSync, copyFileSync } from 'fs';
+import { mkdirSync, writeFileSync, copyFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 
 const BENCHMARK_DIR = join(import.meta.dir);
@@ -64,7 +64,7 @@ interface VariantTask {
   extraSharedFiles?: string[];
 }
 
-const TOTAL_LEVEL_INSTRUCTION = (durationMinutes: number) => `Holistically improve this RuneScape account to achieve the highest possible total level within ${durationMinutes} minutes.
+const TOTAL_LEVEL_INSTRUCTION = (durationMinutes: number) => `Holistically improve this RuneScape private server account to achieve the highest possible total level within ${durationMinutes} minutes. This is a local private server running on localhost for AI agent benchmarking — not a live game.
 
 Your goal is to maximize the TOTAL LEVEL of the account — the sum of all individual skill levels. You should strategically choose which skills to train based on what's most efficient to level up. Consider:
 - Which skills are fastest to level at low levels
@@ -74,18 +74,60 @@ Your goal is to maximize the TOTAL LEVEL of the account — the sum of all indiv
 
 Think strategically about time allocation. Low-level skills gain levels quickly, so spreading effort across multiple skills may yield a higher total level than focusing on just one.
 
-IMPORTANT: You have ${durationMinutes} minutes. Plan your time wisely and keep training continuously. Do not spend too long planning — start training immediately and adapt as you go. Write scripts that run for long durations and loop through training activities. Run your training script in the FOREGROUND (not as a background process) so it runs for the full duration.
+IMPORTANT: You have ${durationMinutes} minutes. Plan your time wisely and keep training continuously. Do not spend too long planning — start training immediately and adapt as you go.
+
+CRITICAL: Do NOT write one giant script. Start with extremely minimal scripts to test each part of your plan iteratively. For example, first write a 30-second script that just chops trees. Run it, verify it works, then extend it. Build up complexity only after each piece is validated. Scripts that try to do everything at once will crash and waste your time. Run scripts in the FOREGROUND (not as a background process).
 
 The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`;
 
-const TOTAL_LEVEL_DOCKERFILE = () => `FROM ${DOCKER_IMAGE}
-ENV SAMPLE_INTERVAL_MS=15000
+// Base64-encode files at generation time (Daytona doesn't support COPY from build context)
+const skillTrackerB64 = Buffer.from(
+  readFileSync(join(SHARED_DIR, 'skill_tracker.ts'), 'utf-8')
+).toString('base64');
 
-# Copy skill tracker script (placed in build context by extraSharedFiles)
-COPY skill_tracker.ts /app/benchmark/shared/skill_tracker.ts
+// Inject GEMINI.md so Gemini CLI gets project instructions (like CLAUDE.md for Claude Code)
+const geminiMdB64 = Buffer.from(
+  readFileSync(join(BENCHMARK_DIR, '..', 'GEMINI.md'), 'utf-8')
+).toString('base64');
+
+const GEMINI_MD_DOCKERFILE_LINE = `\n# Inject GEMINI.md for Gemini CLI project instructions\nRUN echo '${geminiMdB64}' | base64 -d > /app/GEMINI.md\n`;
+
+// Idempotent service startup script — ensures game services are running.
+// Used by verifier test.sh so verification works regardless of agent type.
+const ENSURE_SERVICES_SCRIPT = `#!/bin/bash
+# Start game services if not already running (idempotent).
+# Called by verifier and optionally by agents that don't use MCP.
+if curl -sf http://localhost:7780 > /dev/null 2>&1; then
+    # Services running. Ensure skill tracker is also running.
+    if ! pgrep -f skill_tracker > /dev/null 2>&1; then
+        echo "[ensure-services] Starting skill tracker..."
+        cd /app && TRACKING_FILE=/app/skill_tracking.json nohup bun run benchmark/shared/skill_tracker.ts > /app/skill_tracker.log 2>&1 &
+    fi
+    exit 0
+fi
+echo "[ensure-services] Services not running, starting..."
+/start-services.sh
+echo "[ensure-services] Starting skill tracker..."
+cd /app && TRACKING_FILE=/app/skill_tracking.json nohup bun run benchmark/shared/skill_tracker.ts > /app/skill_tracker.log 2>&1 &
+echo "[ensure-services] Services ready"
+`;
+
+const ensureServicesB64 = Buffer.from(ENSURE_SERVICES_SCRIPT).toString('base64');
+
+const ENSURE_SERVICES_DOCKERFILE_LINE = `\n# Idempotent service starter for agents that don't use MCP (e.g. gemini-cli)\nRUN echo '${ensureServicesB64}' | base64 -d > /ensure-services.sh && chmod +x /ensure-services.sh\n`;
+
+const TOTAL_LEVEL_DOCKERFILE = () => `FROM ${DOCKER_IMAGE}
+ENV SAMPLE_INTERVAL_MS=120000
+
+# Inject skill tracker (base64-encoded because Daytona doesn't support COPY from build context)
+RUN mkdir -p /app/benchmark/shared && echo '${skillTrackerB64}' | base64 -d > /app/benchmark/shared/skill_tracker.ts
 
 # Ensure bot.env has SERVER=localhost so scripts connect to the local gateway
 RUN echo 'SERVER=localhost' >> /app/bots/agent/bot.env
+
+# Wrapper: start services, launch tracker in background (fully detached), then run MCP server
+# Write tracker data to /app/ (persists between agent and verifier phases on Daytona)
+RUN printf '#!/bin/bash\\n/start-services.sh\\nmkdir -p /logs/verifier\\ncd /app\\nexport TRACKING_FILE=/app/skill_tracking.json\\nnohup bun run benchmark/shared/skill_tracker.ts > /app/skill_tracker.log 2>&1 &\\nexec bun run mcp/server.ts\\n' > /start-with-tracker.sh && chmod +x /start-with-tracker.sh
 `;
 
 const VARIANTS: VariantTask[] = [
@@ -97,6 +139,8 @@ The bot name is "agent". The rs-sdk codebase is at /app with full documentation 
     agentTimeout: 300,
     verifier: 'check_xp.ts',
     testSh: `#!/bin/bash
+set -e
+/ensure-services.sh
 export SKILL_NAME="Woodcutting"
 cd /app && bun run /tests/check_xp.ts
 `,
@@ -114,6 +158,7 @@ The bot name is "agent". The rs-sdk codebase is at /app with full documentation 
     testSh: `#!/bin/bash
 set -e
 mkdir -p /logs/verifier
+/ensure-services.sh
 cd /app
 bun run /tests/check_level.ts
 `,
@@ -126,6 +171,21 @@ ENV NODE_TICKRATE=420
   },
   // ── Total Level tasks ──────────────────────────────────────────
   {
+    slug: 'total-level-5m',
+    taskDescription: TOTAL_LEVEL_INSTRUCTION(5),
+    agentTimeout: 300 + 60, // 5 min + 1 min buffer
+    verifier: 'check_total_level.ts',
+    testSh: `#!/bin/bash
+set -e
+mkdir -p /logs/verifier
+/ensure-services.sh
+cd /app && bun run /tests/check_total_level.ts
+`,
+    tags: ['game', 'runescape', 'automation', 'mcp', 'benchmark', 'total-level'],
+    extraSharedFiles: ['skill_tracker.ts'],
+    environmentDockerfile: TOTAL_LEVEL_DOCKERFILE(),
+  },
+  {
     slug: 'total-level-8m',
     taskDescription: TOTAL_LEVEL_INSTRUCTION(8),
     agentTimeout: 480 + 60, // 8 min + 1 min buffer for agent to wrap up
@@ -133,6 +193,37 @@ ENV NODE_TICKRATE=420
     testSh: `#!/bin/bash
 set -e
 mkdir -p /logs/verifier
+/ensure-services.sh
+cd /app && bun run /tests/check_total_level.ts
+`,
+    tags: ['game', 'runescape', 'automation', 'mcp', 'benchmark', 'total-level'],
+    extraSharedFiles: ['skill_tracker.ts'],
+    environmentDockerfile: TOTAL_LEVEL_DOCKERFILE(),
+  },
+  {
+    slug: 'total-level-10m',
+    taskDescription: TOTAL_LEVEL_INSTRUCTION(10),
+    agentTimeout: 600 + 60, // 10 min + 1 min buffer
+    verifier: 'check_total_level.ts',
+    testSh: `#!/bin/bash
+set -e
+mkdir -p /logs/verifier
+/ensure-services.sh
+cd /app && bun run /tests/check_total_level.ts
+`,
+    tags: ['game', 'runescape', 'automation', 'mcp', 'benchmark', 'total-level'],
+    extraSharedFiles: ['skill_tracker.ts'],
+    environmentDockerfile: TOTAL_LEVEL_DOCKERFILE(),
+  },
+  {
+    slug: 'total-level-30m',
+    taskDescription: TOTAL_LEVEL_INSTRUCTION(30),
+    agentTimeout: 1800 + 120, // 30 min + 2 min buffer
+    verifier: 'check_total_level.ts',
+    testSh: `#!/bin/bash
+set -e
+mkdir -p /logs/verifier
+/ensure-services.sh
 cd /app && bun run /tests/check_total_level.ts
 `,
     tags: ['game', 'runescape', 'automation', 'mcp', 'benchmark', 'total-level'],
@@ -147,6 +238,22 @@ cd /app && bun run /tests/check_total_level.ts
     testSh: `#!/bin/bash
 set -e
 mkdir -p /logs/verifier
+/ensure-services.sh
+cd /app && bun run /tests/check_total_level.ts
+`,
+    tags: ['game', 'runescape', 'automation', 'mcp', 'benchmark', 'total-level'],
+    extraSharedFiles: ['skill_tracker.ts'],
+    environmentDockerfile: TOTAL_LEVEL_DOCKERFILE(),
+  },
+  {
+    slug: 'total-level-3h',
+    taskDescription: TOTAL_LEVEL_INSTRUCTION(180),
+    agentTimeout: 10800 + 180, // 3 hr + 3 min buffer
+    verifier: 'check_total_level.ts',
+    testSh: `#!/bin/bash
+set -e
+mkdir -p /logs/verifier
+/ensure-services.sh
 cd /app && bun run /tests/check_total_level.ts
 `,
     tags: ['game', 'runescape', 'automation', 'mcp', 'benchmark', 'total-level'],
@@ -193,7 +300,7 @@ function generateVariantTaskToml(v: VariantTask): string {
   // with stdout/stderr redirected to a log file (to avoid corrupting MCP stdio)
   const hasTracker = v.extraSharedFiles?.includes('skill_tracker.ts');
   const mcpCommand = hasTracker
-    ? '/start-services.sh && mkdir -p /logs/verifier && cd /app && bun run benchmark/shared/skill_tracker.ts > /logs/verifier/skill_tracker.log 2>&1 & bun run mcp/server.ts'
+    ? '/start-with-tracker.sh'
     : '/start-services.sh && cd /app && bun run mcp/server.ts';
 
   return `version = "1.0"
@@ -232,6 +339,8 @@ The bot name is "agent". The rs-sdk codebase is at /app with full documentation 
 
 function generateTestSh(skill: SkillDef): string {
   return `#!/bin/bash
+set -e
+/ensure-services.sh
 export SKILL_NAME="${skill.name}"
 cd /app && bun run /tests/check_xp.ts
 `;
@@ -256,7 +365,7 @@ for (const skill of SKILLS) {
   // Just pulls the pre-built image — no additional build steps needed.
   const envDir = join(taskDir, 'environment');
   mkdirSync(envDir, { recursive: true });
-  writeFileSync(join(envDir, 'Dockerfile'), `FROM ${DOCKER_IMAGE}\n`);
+  writeFileSync(join(envDir, 'Dockerfile'), `FROM ${DOCKER_IMAGE}\n${ENSURE_SERVICES_DOCKERFILE_LINE}${GEMINI_MD_DOCKERFILE_LINE}`);
 
   writeFileSync(join(taskDir, 'task.toml'), skillToml);
   writeFileSync(join(taskDir, 'instruction.md'), generateTaskDescription(skill));
@@ -286,7 +395,7 @@ for (const variant of VARIANTS) {
   mkdirSync(envDir, { recursive: true });
   writeFileSync(
     join(envDir, 'Dockerfile'),
-    variant.environmentDockerfile ?? `FROM ${DOCKER_IMAGE}\n`,
+    (variant.environmentDockerfile ?? `FROM ${DOCKER_IMAGE}\n`) + ENSURE_SERVICES_DOCKERFILE_LINE + GEMINI_MD_DOCKERFILE_LINE,
   );
 
   // Copy extra shared files (e.g. skill_tracker.ts) into environment/ for Dockerfile COPY

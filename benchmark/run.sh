@@ -17,6 +17,7 @@ declare -A MODELS=(
   [sonnet]="anthropic/claude-sonnet-4-5"
   [haiku]="anthropic/claude-haiku-4-5"
   [gemini]="google/gemini-3-pro-preview"
+  [glm]="glm-5"
 )
 
 # ── Agent mapping (model name -> harbor agent) ───────────────────
@@ -25,6 +26,7 @@ declare -A AGENTS=(
   [sonnet]="claude-code"
   [haiku]="claude-code"
   [gemini]="gemini-cli"
+  [glm]="claude-code"
 )
 
 # ── Defaults ──────────────────────────────────────────────────────
@@ -44,7 +46,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: benchmark/run.sh [-t task] [-m model] [-n trials] [-c concurrency]"
       echo ""
-      echo "Models: opus, sonnet, haiku, gemini (default: all four)"
+      echo "Models: opus, sonnet, haiku, gemini, glm (default: all five)"
       echo "Task:   any task dir name (default: woodcutting-xp-10m)"
       exit 0
       ;;
@@ -55,7 +57,13 @@ done
 
 # Default to all models if none specified
 if [ -z "$SELECTED_MODELS" ]; then
-  SELECTED_MODELS="sonnet opus haiku gemini"
+  SELECTED_MODELS="sonnet opus haiku gemini glm"
+fi
+
+# Load GLM_API_KEY from .env for GLM model runs
+GLM_KEY=""
+if [ -f "$SCRIPT_DIR/../.env" ]; then
+  GLM_KEY=$(grep '^GLM_API_KEY=' "$SCRIPT_DIR/../.env" | cut -d= -f2-)
 fi
 
 # ── Regenerate tasks ──────────────────────────────────────────────
@@ -68,8 +76,19 @@ for name in $SELECTED_MODELS; do
   model="${MODELS[$name]}"
   agent="${AGENTS[$name]}"
   if [ -z "$model" ]; then
-    echo "Unknown model: $name (available: opus, sonnet, haiku, gemini)"
+    echo "Unknown model: $name (available: opus, sonnet, haiku, gemini, glm)"
     exit 1
+  fi
+
+  # GLM needs custom env: use GLM_API_KEY and route through Z.AI proxy.
+  # Override ANTHROPIC_API_KEY to prevent sending real Anthropic key.
+  ENV_PREFIX=""
+  if [ "$name" = "glm" ]; then
+    if [ -z "$GLM_KEY" ]; then
+      echo "  WARNING: GLM_API_KEY not found in .env, skipping glm"
+      continue
+    fi
+    ENV_PREFIX="ANTHROPIC_API_KEY=$GLM_KEY ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic API_TIMEOUT_MS=3000000"
   fi
 
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -78,14 +97,14 @@ for name in $SELECTED_MODELS; do
   echo "  Trials:  $N_TRIALS"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  harbor run \
-    -p "$SCRIPT_DIR/$TASK" \
-    -a "$agent" \
-    -m "$model" \
+  eval "$ENV_PREFIX harbor run \
+    -p '$SCRIPT_DIR/$TASK' \
+    -a '$agent' \
+    -m '$model' \
     --env daytona \
-    -n "$CONCURRENCY" \
-    -k "$N_TRIALS" \
-    $EXTRA_ARGS
+    -n '$CONCURRENCY' \
+    -k '$N_TRIALS' \
+    $EXTRA_ARGS"
 
   echo ""
 done
