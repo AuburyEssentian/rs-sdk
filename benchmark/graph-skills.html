@@ -425,7 +425,10 @@ function extractSkillPoints(skillData, skill) {
   if (!skillData || !skillData.samples || skillData.samples.length === 0) return [];
   const skillNameCaps = SKILL_DISPLAY[skill] || skill;
 
-  const points = skillData.samples.map(s => {
+  const points = [];
+  for (const s of skillData.samples) {
+    const x = s.elapsedMs / 60000;
+    if (x > 30) break;
     let xp = 0;
     if (s.skills) {
       for (const [sName, sData] of Object.entries(s.skills)) {
@@ -436,8 +439,8 @@ function extractSkillPoints(skillData, skill) {
         }
       }
     }
-    return { x: s.elapsedMs / 60000, y: xp };
-  });
+    points.push({ x, y: xp });
+  }
 
   return sanitizePoints(points);
 }
@@ -446,7 +449,7 @@ function extractSkillPoints(skillData, skill) {
 
 const endIconPlugin = {
   id: 'endIcon',
-  afterDatasetsDraw(chart) {
+  afterDraw(chart) {
     const ctx = chart.ctx;
     for (const dataset of chart.data.datasets) {
       if (!dataset._modelKey) continue;
@@ -526,7 +529,7 @@ function renderGrid() {
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
-        layout: { padding: { top: 8, right: 12, bottom: 2 } },
+        layout: { padding: { top: 8, right: 20, bottom: 2 } },
         interaction: { mode: 'nearest', intersect: false },
         scales: {
           x: {
@@ -580,8 +583,7 @@ function renderCumulative() {
   const models = getModelsInData().filter(m => !hiddenModels.has(m));
   const datasets = [];
 
-  // For each model, average XP across all 16 skills at each time bucket
-  // Normalize time to 0-30 min buckets (1 min intervals)
+  // For each model, average XP across all 16 skills at each time bucket (1 min intervals)
   const BUCKET_COUNT = 31; // 0, 1, 2, ... 30 minutes
 
   for (const model of models) {
@@ -634,7 +636,7 @@ function renderCumulative() {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      layout: { padding: { top: 10, right: 18, bottom: 2 } },
+      layout: { padding: { top: 10, right: 24, bottom: 2 } },
       interaction: { mode: 'nearest', intersect: false },
       scales: {
         x: {
