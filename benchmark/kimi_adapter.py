@@ -113,16 +113,52 @@ class KimiOpenCode(BaseInstalledAgent):
             "echo '[kimi-setup] Wrote /app/opencode.json'"
         )
 
-        # Run: start services then run opencode (no restart loop — let it exit
-        # naturally so the verifier phase can run on Modal environments)
+        # Run: start services then run opencode in a restart loop.
+        # Kimi tends to exit early ("I'm done") with time remaining.
+        # We detect this and relaunch with a "continue" prompt until
+        # the agent timeout is nearly exhausted (leave 60s buffer for verifier).
+        escaped_model = shlex.quote(model_name)
+        continue_instruction = shlex.quote(
+            "You were previously working on this task but stopped early. "
+            "There is still time remaining. Check the current game state with "
+            "sdk.getState() and CONTINUE training. Do NOT write a summary — "
+            "keep grinding. " + instruction
+        )
+
         run_command = (
             "echo '[kimi-setup] Starting game services...'; "
             "/ensure-services.sh; "
             "echo '[kimi-setup] Services ready, starting opencode'; "
-            "cd /app && "
-            f"opencode --model {shlex.quote(model_name)} run --format=json {escaped_instruction} "
-            f"2>&1 </dev/null | tee -a /logs/agent/opencode-kimi.txt; "
-            "echo '[kimi] opencode exited' | tee -a /logs/agent/opencode-kimi.txt"
+            "cd /app; "
+            "KIMI_START=$(date +%s); "
+            # Budget: 1620s (27min) — leaves 5min buffer before harbor's
+            # 1920s agent timeout so the verifier can run.
+            "KIMI_TIMEOUT=${KIMI_TIMEOUT:-1620}; "
+            # Don't restart unless at least 3min remain (short runs are wasteful)
+            "KIMI_MIN_RESTART=180; "
+            "KIMI_RUN=1; "
+            # First run uses the original instruction
+            f"echo \"[kimi-loop] Run $KIMI_RUN starting (budget=${{KIMI_TIMEOUT}}s)\" | tee -a /logs/agent/opencode-kimi.txt; "
+            f"timeout ${{KIMI_TIMEOUT}}s opencode --model {escaped_model} run --format=json {escaped_instruction} "
+            "2>&1 </dev/null | tee -a /logs/agent/opencode-kimi.txt; "
+            "echo '[kimi-loop] opencode exited' | tee -a /logs/agent/opencode-kimi.txt; "
+            # Restart loop: keep relaunching while enough time remains
+            "while true; do "
+            "  KIMI_ELAPSED=$(( $(date +%s) - KIMI_START )); "
+            "  KIMI_REMAINING=$(( KIMI_TIMEOUT - KIMI_ELAPSED )); "
+            "  echo \"[kimi-loop] Elapsed: ${KIMI_ELAPSED}s, Remaining: ${KIMI_REMAINING}s\" | tee -a /logs/agent/opencode-kimi.txt; "
+            "  if [ $KIMI_REMAINING -lt $KIMI_MIN_RESTART ]; then "
+            "    echo \"[kimi-loop] Less than ${KIMI_MIN_RESTART}s remaining, stopping restart loop\" | tee -a /logs/agent/opencode-kimi.txt; "
+            "    break; "
+            "  fi; "
+            "  KIMI_RUN=$((KIMI_RUN + 1)); "
+            f"  echo \"[kimi-loop] Run $KIMI_RUN starting (${{KIMI_REMAINING}}s remaining)\" | tee -a /logs/agent/opencode-kimi.txt; "
+            # Cap each restart with `timeout` so it can't overrun the budget
+            f"  timeout ${{KIMI_REMAINING}}s opencode --model {escaped_model} run --format=json {continue_instruction} "
+            "  2>&1 </dev/null | tee -a /logs/agent/opencode-kimi.txt; "
+            "  echo '[kimi-loop] opencode exited' | tee -a /logs/agent/opencode-kimi.txt; "
+            "done; "
+            "echo \"[kimi-loop] Finished after $KIMI_RUN runs\" | tee -a /logs/agent/opencode-kimi.txt"
         )
 
         return [

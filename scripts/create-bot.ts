@@ -20,7 +20,7 @@ async function replaceInFile(filePath: string, replacements: Record<string, stri
     await writeFile(filePath, content);
 }
 
-async function createBot(username?: string, serverOverride?: string) {
+async function createBot(username?: string, serverOverride?: string, showChat?: boolean) {
     // Generate username if not provided
     const botUsername = username || generateRandomString(9);
 
@@ -70,11 +70,18 @@ async function createBot(username?: string, serverOverride?: string) {
         console.log(`Created ${file}`);
     }
 
+    const envPath = join(botDir, 'bot.env');
+
     // Override server if --local or --server= was passed
     if (serverOverride) {
-        const envPath = join(botDir, 'bot.env');
         await replaceInFile(envPath, { 'rs-sdk-demo.fly.dev': serverOverride });
         console.log(`Server set to: ${serverOverride}`);
+    }
+
+    // Enable public chat if --show-chat was passed
+    if (showChat) {
+        await replaceInFile(envPath, { 'SHOW_CHAT=false': 'SHOW_CHAT=true' });
+        console.log(`Public chat: enabled`);
     }
 
     console.log(`\n✓ Bot "${botUsername}" created successfully!`);
@@ -87,15 +94,18 @@ async function createBot(username?: string, serverOverride?: string) {
 const args = process.argv.slice(2);
 const positional: string[] = [];
 let serverOverride: string | undefined;
+let showChat = false;
 
 for (const arg of args) {
     if (arg === '--local') {
         serverOverride = 'localhost';
     } else if (arg.startsWith('--server=')) {
         serverOverride = arg.slice('--server='.length);
+    } else if (arg === '--show-chat') {
+        showChat = true;
     } else {
         positional.push(arg);
     }
 }
 
-createBot(positional[0], serverOverride).catch(console.error);
+createBot(positional[0], serverOverride, showChat).catch(console.error);

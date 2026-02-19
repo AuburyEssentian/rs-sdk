@@ -1,6 +1,10 @@
 #!/bin/bash
 # Start game services if not already running (idempotent).
 # Called by verifier and optionally by agents that don't use MCP.
+
+# Prevent agents from using generateSave to pre-level characters (cheating)
+rm -f /app/sdk/test/utils/save-generator.ts /app/sdk/test/utils/save-generator.js 2>/dev/null || true
+
 if curl -sf http://localhost:7780 > /dev/null 2>&1; then
     # Services running. Ensure skill tracker is also running.
     if ! pgrep -f skill_tracker > /dev/null 2>&1; then
