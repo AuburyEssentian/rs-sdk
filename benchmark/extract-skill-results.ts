@@ -20,7 +20,7 @@ import { join, basename } from 'path';
 const RESULTS_DIR = join(import.meta.dir, 'results', 'skills-30m');
 const JOBS_DIR = join(import.meta.dir, '..', 'jobs');
 
-const KNOWN_MODELS = ['opus', 'sonnet46', 'sonnet45', 'haiku', 'codex', 'gemini', 'glm', 'kimi'];
+const KNOWN_MODELS = ['opus', 'opus45', 'sonnet46', 'sonnet45', 'haiku', 'codex53', 'codex', 'gemini31', 'gemini', 'glm', 'kimi'];
 
 const KNOWN_SKILLS = [
   'attack', 'defence', 'strength', 'hitpoints', 'ranged', 'prayer', 'magic',
@@ -63,11 +63,14 @@ function detectModelFromConfig(jobDir: string): string {
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
     const modelName = config?.agents?.[0]?.model_name || '';
     const lower = modelName.toLowerCase();
+    // Check gemini31 before gemini to avoid false match on gemini-3.1-pro-preview
+    if (lower.includes('gemini-3.1') || lower.includes('gemini-3_1')) return 'gemini31';
     for (const m of KNOWN_MODELS) {
       if (lower.includes(m)) return m;
     }
     const agentName = config?.agents?.[0]?.name || '';
     if (agentName.includes('codex')) return 'codex';
+    if (lower.includes('gemini-3.1') || lower.includes('gemini-3_1')) return 'gemini31';
     if (agentName.includes('gemini')) return 'gemini';
     if (agentName.includes('kimi') || agentName.includes('opencode')) return 'kimi';
   } catch {}
@@ -207,6 +210,144 @@ function findTokenUsage(jobDir: string): TokenUsage | null {
   return null;
 }
 
+interface TrajectoryStep {
+  source: 'agent' | 'tool' | 'user';
+  text: string;
+}
+
+/** Extract trajectory steps from agent logs, filtering out code/file contents.
+ *  Returns {strategy, steps} where strategy is a short summary and steps are
+ *  the non-code trajectory entries. */
+function extractTrajectory(jobDir: string): { strategy: string; steps: TrajectoryStep[] } | null {
+  for (const trialDir of getTrialDirs(jobDir)) {
+    const agentDir = join(trialDir, 'agent');
+    if (!existsSync(agentDir)) continue;
+
+    // Claude Code agents: trajectory.json
+    const trajectoryPath = join(agentDir, 'trajectory.json');
+    if (existsSync(trajectoryPath)) {
+      try {
+        const traj = JSON.parse(readFileSync(trajectoryPath, 'utf-8'));
+        return parseClaudeTrajectory(traj);
+      } catch {}
+    }
+
+    // Codex agents: codex.txt (JSONL)
+    const codexPath = join(agentDir, 'codex.txt');
+    if (existsSync(codexPath)) {
+      try {
+        const content = readFileSync(codexPath, 'utf-8');
+        return parseCodexLog(content);
+      } catch {}
+    }
+
+    // Kimi/OpenCode agents: opencode-kimi.txt (JSONL)
+    const kimiPath = join(agentDir, 'opencode-kimi.txt');
+    if (existsSync(kimiPath)) {
+      try {
+        const content = readFileSync(kimiPath, 'utf-8');
+        return parseKimiLog(content);
+      } catch {}
+    }
+  }
+  return null;
+}
+
+function parseClaudeTrajectory(traj: any): { strategy: string; steps: TrajectoryStep[] } {
+  const rawSteps = traj.steps || [];
+  const steps: TrajectoryStep[] = [];
+  const strategyParts: string[] = [];
+
+  for (const step of rawSteps) {
+    const src = step.source;
+    const msg: string = step.message || '';
+    if (!msg) continue;
+
+    if (src === 'agent') {
+      if (msg.startsWith('Executed ')) {
+        // Tool execution — include as brief tool reference
+        const toolName = msg.replace('Executed ', '').split(' ')[0];
+        steps.push({ source: 'tool', text: toolName });
+      } else {
+        steps.push({ source: 'agent', text: msg });
+        if (strategyParts.length < 8) strategyParts.push(msg);
+      }
+    }
+  }
+
+  const strategy = strategyParts.join('\n\n').slice(0, 2000);
+  return { strategy, steps: steps.slice(0, 200) };
+}
+
+function parseCodexLog(content: string): { strategy: string; steps: TrajectoryStep[] } {
+  const steps: TrajectoryStep[] = [];
+  const strategyParts: string[] = [];
+
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line);
+      if (entry.type === 'item.completed' && entry.item) {
+        const item = entry.item;
+        if (item.type === 'agent_message' && item.text) {
+          steps.push({ source: 'agent', text: item.text });
+          if (strategyParts.length < 8) strategyParts.push(item.text);
+        } else if (item.type === 'reasoning' && item.text) {
+          steps.push({ source: 'agent', text: item.text });
+          if (strategyParts.length < 4) strategyParts.push(item.text);
+        } else if (item.type === 'command_execution' && item.command) {
+          // Skip showing full output, just the command
+          steps.push({ source: 'tool', text: item.command });
+        } else if (item.type === 'file_change') {
+          steps.push({ source: 'tool', text: `file_change: ${item.filename || 'unknown'}` });
+        }
+      }
+    } catch {}
+  }
+
+  const strategy = strategyParts.join('\n\n').slice(0, 2000);
+  return { strategy, steps: steps.slice(0, 200) };
+}
+
+function parseKimiLog(content: string): { strategy: string; steps: TrajectoryStep[] } {
+  const steps: TrajectoryStep[] = [];
+  const strategyParts: string[] = [];
+
+  for (const line of content.split('\n')) {
+    if (!line.trim()) continue;
+    // Kimi loop control messages
+    if (line.startsWith('[kimi-loop]')) {
+      steps.push({ source: 'agent', text: line });
+      continue;
+    }
+    try {
+      const entry = JSON.parse(line);
+      if (entry.type === 'text') {
+        const text = entry.part?.content || '';
+        if (text) {
+          steps.push({ source: 'agent', text });
+          if (strategyParts.length < 8) strategyParts.push(text);
+        }
+      } else if (entry.type === 'tool_use') {
+        const tool = entry.part?.tool || '';
+        const input = entry.part?.state?.input || {};
+        if (tool === 'bash') {
+          steps.push({ source: 'tool', text: `bash: ${input.command || ''}`.slice(0, 200) });
+        } else if (tool === 'read') {
+          steps.push({ source: 'tool', text: `read: ${input.filePath || ''}` });
+        } else if (tool === 'write') {
+          steps.push({ source: 'tool', text: `write: ${input.filePath || ''}` });
+        } else if (tool) {
+          steps.push({ source: 'tool', text: tool });
+        }
+      }
+    } catch {}
+  }
+
+  const strategy = strategyParts.join('\n\n').slice(0, 2000);
+  return { strategy, steps: steps.slice(0, 200) };
+}
+
 // ── Main ─────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
@@ -280,6 +421,7 @@ for (const dir of jobDirs) {
   const tracking = findTracking(dir);
   const reward = findRewardData(dir);
   const tokenUsage = findTokenUsage(dir);
+  const trajectory = extractTrajectory(dir);
 
   // We need at least reward data or tracking data
   if (!tracking && !reward) {
@@ -313,6 +455,7 @@ for (const dir of jobDirs) {
       sampleCount: samples.length,
       samples,
       ...(tokenUsage ? { tokenUsage } : {}),
+      ...(trajectory ? { strategy: trajectory.strategy, trajectory: trajectory.steps } : {}),
     };
   }
 

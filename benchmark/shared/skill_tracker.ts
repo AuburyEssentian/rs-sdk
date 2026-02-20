@@ -22,8 +22,59 @@ const gatewayUrl = process.env.GATEWAY_URL || 'ws://localhost:7780';
 const intervalMs = parseInt(process.env.SAMPLE_INTERVAL_MS || '15000');
 const outFile = process.env.TRACKING_FILE || '/logs/verifier/skill_tracking.json';
 
+const COINS_ID = 995;
+const INV_TYPE = 93;
+const BANK_TYPE = 95;
+const SAV_MAGIC = 0x2004;
+const SAVE_PATHS = [
+  '/app/server/engine/data/players/main/agent.sav',
+  '/app/engine/data/players/main/agent.sav',
+];
+
+function readBankGoldFromSave(): number {
+  for (const p of SAVE_PATHS) {
+    if (!existsSync(p)) continue;
+    try {
+      const data = new Uint8Array(readFileSync(p).buffer);
+      const view = new DataView(data.buffer);
+      let pos = 0;
+      const g1 = () => data[pos++]!;
+      const g2 = () => { const v = view.getUint16(pos, false); pos += 2; return v; };
+      const g4s = () => { const v = view.getInt32(pos, false); pos += 4; return v; };
+
+      if (g2() !== SAV_MAGIC) return 0;
+      const version = g2();
+      pos += 5; // x, z, level
+      pos += 13; // appearance (7 body + 5 colors + 1 gender)
+      pos += 2; // run energy
+      pos += version >= 2 ? 4 : 2; // playtime
+      pos += 21 * 5; // skills (xp:4 + level:1 each)
+      const varpCount = g2();
+      pos += varpCount * 4;
+
+      const invCount = g1();
+      let bankGold = 0;
+      for (let i = 0; i < invCount; i++) {
+        const type = g2();
+        const size = version >= 5 ? g2() : 28;
+        let typeCoins = 0;
+        for (let slot = 0; slot < size; slot++) {
+          const id = g2() - 1;
+          if (id === -1) continue;
+          let count = g1();
+          if (count === 255) count = g4s();
+          if (id === COINS_ID && type === BANK_TYPE) typeCoins += count;
+        }
+        if (type === BANK_TYPE) bankGold = typeCoins;
+      }
+      return bankGold;
+    } catch { return 0; }
+  }
+  return 0;
+}
+
 interface SkillSnapshot { level: number; xp: number; }
-interface Sample { timestamp: string; elapsedMs: number; skills: Record<string, SkillSnapshot>; totalLevel: number; }
+interface Sample { timestamp: string; elapsedMs: number; skills: Record<string, SkillSnapshot>; totalLevel: number; gold?: number; inventoryGold?: number; bankGold?: number; }
 interface TrackingData { botName: string; startTime: string; samples: Sample[]; }
 
 async function main() {
@@ -95,11 +146,19 @@ async function main() {
       totalLevel += s.baseLevel;
     }
 
+    const inventory = sdk.getInventory();
+    const inventoryGold = inventory.filter(i => i.id === COINS_ID).reduce((sum, i) => sum + i.count, 0);
+    const bankGold = readBankGoldFromSave();
+    const gold = inventoryGold + bankGold;
+
     const sample: Sample = {
       timestamp: now.toISOString(),
       elapsedMs: now.getTime() - startTime.getTime(),
       skills: skillMap,
       totalLevel,
+      gold,
+      inventoryGold,
+      bankGold,
     };
 
     trackingData.samples.push(sample);
@@ -110,7 +169,7 @@ async function main() {
       console.log('[skill-tracker] Failed to write tracking file:', err);
     }
 
-    console.log(`[skill-tracker] Sample #${trackingData.samples.length}: totalLevel=${totalLevel} elapsed=${Math.round(sample.elapsedMs / 1000)}s`);
+    console.log(`[skill-tracker] Sample #${trackingData.samples.length}: totalLevel=${totalLevel} gold=${gold} (inv=${inventoryGold} bank=${bankGold}) elapsed=${Math.round(sample.elapsedMs / 1000)}s`);
   }
 
   takeSample();

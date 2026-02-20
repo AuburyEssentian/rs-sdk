@@ -10,7 +10,7 @@
  * Writes to reward.json: { gold, inventoryGold, bankGold, tracking }
  * Writes raw gold to reward.txt for Harbor compatibility.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
 
 const COINS_ID = 995;
 const SAV_MAGIC = 0x2004;
@@ -162,6 +162,25 @@ function main() {
 
     if (!savePath) {
         console.error('No save file found at:', SAVE_PATHS.join(', '));
+        // Debug: list what IS in the data directories
+        for (const base of ['/app/server/engine/data/players', '/app/engine/data/players']) {
+            try {
+                if (existsSync(base)) {
+                    const profiles = readdirSync(base);
+                    console.error(`  ${base}/ contains: ${profiles.join(', ')}`);
+                    for (const p of profiles) {
+                        try {
+                            const files = readdirSync(`${base}/${p}`);
+                            console.error(`  ${base}/${p}/ contains: ${files.join(', ')}`);
+                        } catch {}
+                    }
+                } else {
+                    console.error(`  ${base}/ does not exist`);
+                }
+            } catch (e) {
+                console.error(`  Error listing ${base}:`, e);
+            }
+        }
         writeFileSync('/logs/verifier/reward.txt', '0');
         writeFileSync('/logs/verifier/reward.json', JSON.stringify({
             gold: 0, inventoryGold: 0, bankGold: 0, error: 'no save file found',

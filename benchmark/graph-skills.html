@@ -100,52 +100,11 @@
     height: 450px !important;
   }
 
-  /* Heatmap view */
-  .heatmap-container {
-    overflow-x: auto;
-    flex: 1;
-  }
-  .heatmap-table {
-    border-collapse: collapse;
-    width: 100%;
-  }
-  .heatmap-table th, .heatmap-table td {
-    padding: 10px 16px;
-    text-align: center;
-    font-size: 13px;
-    border: 1px solid #e8e8e8;
-  }
-  .heatmap-table th {
-    background: #fafafa;
-    font-weight: 600;
-    color: #333;
-    position: sticky;
-    top: 0;
-  }
-  .heatmap-table th.skill-header {
-    text-align: left;
-    min-width: 120px;
-  }
-  .heatmap-table td.skill-cell {
-    text-align: left;
-    font-weight: 500;
-    color: #333;
-    background: #fafafa;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .heatmap-cell {
-    font-weight: 600;
-    border-radius: 4px;
-    min-width: 80px;
-  }
-  .heatmap-cell .xp-value { font-size: 14px; }
-  .heatmap-cell .level-value {
-    font-size: 11px;
-    opacity: 0.7;
-    margin-top: 2px;
-  }
+  /* Trajectory steps */
+  .traj-step { padding: 4px 0; border-bottom: 1px solid #f0f0f0; }
+  .traj-step:last-child { border-bottom: none; }
+  .traj-step.agent { color: #1a1a1a; }
+  .traj-step.tool { color: #999; font-family: monospace; font-size: 12px; padding: 2px 0; }
 
   /* Legend */
   .bottom-legend {
@@ -231,7 +190,6 @@
     <span class="view-toggle" id="viewToggle" style="display:none">
       <button data-view="grid" class="active" onclick="setView('grid')">Grid</button>
       <button data-view="cumulative" onclick="setView('cumulative')">Average</button>
-      <button data-view="heatmap" onclick="setView('heatmap')">Heatmap</button>
     </span>
   </h1>
 </div>
@@ -240,7 +198,20 @@
 
 <div id="gridContainer" class="grid-container" style="display:none"></div>
 <div id="cumulativeContainer" class="cumulative-container" style="display:none"></div>
-<div id="heatmapContainer" class="heatmap-container" style="display:none"></div>
+<!-- Trajectory modal -->
+<div id="trajectoryModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.5); overflow:auto" onclick="if(event.target===this)closeTrajectory()">
+  <div style="max-width:720px; margin:40px auto; background:#fff; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.2); max-height:calc(100vh - 80px); display:flex; flex-direction:column">
+    <div id="trajHeader" style="padding:16px 20px; border-bottom:1px solid #e8e8e8; flex-shrink:0">
+      <div style="display:flex; justify-content:space-between; align-items:center">
+        <h3 id="trajTitle" style="font-size:16px; font-weight:600; margin:0"></h3>
+        <button onclick="closeTrajectory()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#999; padding:0 4px">&times;</button>
+      </div>
+      <div id="trajSubtitle" style="font-size:12px; color:#999; margin-top:2px"></div>
+    </div>
+    <div id="trajStrategy" style="padding:12px 20px; background:#f8f8f8; border-bottom:1px solid #e8e8e8; font-size:13px; line-height:1.5; color:#333; flex-shrink:0; max-height:200px; overflow:auto; display:none; white-space:pre-wrap"></div>
+    <div id="trajSteps" style="padding:16px 20px; overflow-y:auto; flex:1; font-size:13px; line-height:1.6"></div>
+  </div>
+</div>
 
 <div id="loadSection">
   <div class="load-bar" id="loadBar">
@@ -257,13 +228,16 @@
 <script>
 const MODEL_CONFIG = {
   'opus':     { displayName: 'Claude Opus 4.6',   color: '#8b7355', order: 1, icon: 'model-icons/anthropic.svg' },
-  'sonnet46': { displayName: 'Claude Sonnet 4.6', color: '#d4442a', order: 2, icon: 'model-icons/anthropic.svg' },
-  'sonnet45': { displayName: 'Claude Sonnet 4.5', color: '#e07850', order: 3, icon: 'model-icons/anthropic.svg' },
-  'gemini':   { displayName: 'Gemini 3 Pro',      color: '#4285f4', order: 4, icon: 'model-icons/gemini.webp' },
-  'haiku':    { displayName: 'Claude Haiku 3.5',   color: '#e06090', order: 5, icon: 'model-icons/anthropic.svg' },
-  'codex':    { displayName: 'Codex CLI',          color: '#10a37f', order: 6, icon: 'model-icons/openai.png' },
-  'glm':      { displayName: 'GLM 5',             color: '#6c5ce7', order: 7, icon: 'model-icons/zai.png' },
-  'kimi':     { displayName: 'Kimi K2.5',         color: '#00b4d8', order: 8, icon: 'model-icons/kimi.png' },
+  'opus45':   { displayName: 'Claude Opus 4.5',   color: '#a08060', order: 2, icon: 'model-icons/anthropic.svg' },
+  'sonnet46': { displayName: 'Claude Sonnet 4.6', color: '#d4442a', order: 3, icon: 'model-icons/anthropic.svg' },
+  'sonnet45': { displayName: 'Claude Sonnet 4.5', color: '#e07850', order: 4, icon: 'model-icons/anthropic.svg' },
+  'gemini':   { displayName: 'Gemini 3 Pro',      color: '#4285f4', order: 5, icon: 'model-icons/gemini.webp' },
+  'gemini31': { displayName: 'Gemini 3.1 Pro',    color: '#1a57c4', order: 6, icon: 'model-icons/gemini.webp' },
+  'haiku':    { displayName: 'Claude Haiku 3.5',   color: '#e06090', order: 7, icon: 'model-icons/anthropic.svg' },
+  'codex':    { displayName: 'Codex CLI 5.2',       color: '#10a37f', order: 8, icon: 'model-icons/openai.png' },
+  'codex53':  { displayName: 'Codex CLI 5.3',       color: '#0d8c6b', order: 9, icon: 'model-icons/openai.png' },
+  'glm':      { displayName: 'GLM 5',             color: '#6c5ce7', order: 10, icon: 'model-icons/zai.png' },
+  'kimi':     { displayName: 'Kimi K2.5',         color: '#00b4d8', order: 11, icon: 'model-icons/kimi.png' },
 };
 
 const SKILL_ORDER = [
@@ -369,20 +343,34 @@ function toggleModel(name) {
   renderCurrentView();
 }
 
+function getModelAvgXp(model) {
+  const skills = combinedData[model];
+  if (!skills) return 0;
+  const xps = Object.values(skills).map(s => s.finalXp || 0);
+  return xps.length ? xps.reduce((a, b) => a + b, 0) / xps.length : 0;
+}
+
 function getModelsInData() {
   return Object.keys(combinedData)
     .sort((a, b) => ((MODEL_CONFIG[a] || {order:99}).order) - ((MODEL_CONFIG[b] || {order:99}).order));
 }
 
+function getModelsByPerformance() {
+  return Object.keys(combinedData)
+    .sort((a, b) => getModelAvgXp(b) - getModelAvgXp(a));
+}
+
 function renderLegend() {
-  const models = getModelsInData();
+  const models = currentView === 'cumulative' ? getModelsByPerformance() : getModelsInData();
   const el = document.getElementById('bottomLegend');
   el.innerHTML = models.map(name => {
     const config = MODEL_CONFIG[name] || { displayName: name, color: '#999' };
     const isHidden = hiddenModels.has(name);
+    const avgXp = getModelAvgXp(name);
+    const avgStr = currentView === 'cumulative' && avgXp > 0 ? ` (${formatXp(avgXp)})` : '';
     return `<div class="legend-item ${isHidden ? 'hidden' : ''}" onclick="toggleModel('${name}')">
       <div class="legend-dot" style="background:${config.color}"></div>
-      <span>${config.displayName}</span>
+      <span>${config.displayName}${avgStr}</span>
     </div>`;
   }).join('');
 }
@@ -390,7 +378,6 @@ function renderLegend() {
 function renderCurrentView() {
   document.getElementById('gridContainer').style.display = 'none';
   document.getElementById('cumulativeContainer').style.display = 'none';
-  document.getElementById('heatmapContainer').style.display = 'none';
 
   if (currentView === 'grid') {
     document.getElementById('gridContainer').style.display = 'grid';
@@ -398,9 +385,6 @@ function renderCurrentView() {
   } else if (currentView === 'cumulative') {
     document.getElementById('cumulativeContainer').style.display = 'flex';
     renderCumulative();
-  } else {
-    document.getElementById('heatmapContainer').style.display = 'block';
-    renderHeatmap();
   }
 }
 
@@ -513,11 +497,10 @@ function renderGrid() {
         borderColor: config.color,
         backgroundColor: config.color,
         fill: false,
-        stepped: 'after',
         pointRadius: 0,
         pointHoverRadius: 3,
         borderWidth: 1.5,
-        tension: 0,
+        tension: 0.3,
         _modelKey: model,
       });
     }
@@ -531,6 +514,12 @@ function renderGrid() {
         animation: false,
         layout: { padding: { top: 8, right: 20, bottom: 2 } },
         interaction: { mode: 'nearest', intersect: false },
+        onClick: (event, elements) => {
+          if (elements.length > 0) {
+            const ds = datasets[elements[0].datasetIndex];
+            if (ds._modelKey) openTrajectory(ds._modelKey, skill);
+          }
+        },
         scales: {
           x: {
             type: 'linear',
@@ -565,14 +554,21 @@ function renderGrid() {
         },
       },
     });
+    canvas.style.cursor = 'pointer';
     gridCharts.push(chart);
   }
 }
 
 // ── Cumulative Average View ─────────────────────────────────────
 
+// Store per-model skill datasets for hover reveal
+let cumulativeSkillDatasets = {}; // model -> [{label, data, color}, ...]
+let cumulativeSkillFinalXp = {}; // model -> [{skill, label, finalXp}, ...] sorted desc
+
 function renderCumulative() {
   if (cumulativeChart) { cumulativeChart.destroy(); cumulativeChart = null; }
+  cumulativeSkillDatasets = {};
+  cumulativeSkillFinalXp = {};
 
   const container = document.getElementById('cumulativeContainer');
   container.innerHTML = '';
@@ -591,11 +587,15 @@ function renderCumulative() {
     const bucketSums = new Array(BUCKET_COUNT).fill(0);
     const bucketCounts = new Array(BUCKET_COUNT).fill(0);
 
+    // Collect individual skill curves for hover reveal
+    const skillCurves = [];
+
     for (const skill of SKILL_ORDER) {
       const points = extractSkillPoints(combinedData[model]?.[skill], skill);
       if (points.length === 0) continue;
 
-      // For each bucket, find the latest point <= that minute
+      // Bucket this skill's points
+      const skillBuckets = [];
       for (let min = 0; min < BUCKET_COUNT; min++) {
         let lastXp = 0;
         for (const p of points) {
@@ -604,8 +604,25 @@ function renderCumulative() {
         }
         bucketSums[min] += lastXp;
         bucketCounts[min]++;
+        skillBuckets.push({ x: min, y: lastXp });
       }
+
+      skillCurves.push({
+        label: SKILL_DISPLAY[skill] || skill,
+        data: skillBuckets,
+      });
     }
+
+    cumulativeSkillDatasets[model] = skillCurves;
+
+    // Build sorted skill final XP list for tooltip
+    const skillFinals = [];
+    for (const skill of SKILL_ORDER) {
+      const sd = combinedData[model]?.[skill];
+      if (sd) skillFinals.push({ skill, label: SKILL_DISPLAY[skill] || skill, finalXp: sd.finalXp || 0 });
+    }
+    skillFinals.sort((a, b) => b.finalXp - a.finalXp);
+    cumulativeSkillFinalXp[model] = skillFinals;
 
     const avgPoints = [];
     for (let min = 0; min < BUCKET_COUNT; min++) {
@@ -620,24 +637,68 @@ function renderCumulative() {
       borderColor: config.color,
       backgroundColor: config.color,
       fill: false,
-      stepped: 'after',
       pointRadius: 0,
       pointHoverRadius: 4,
       borderWidth: 2.5,
-      tension: 0,
+      tension: 0.3,
       _modelKey: model,
+      _isAverage: true,
     });
   }
+
+  // Plugin: draw individual skill lines at 50% opacity when hovering a model
+  const skillOverlayPlugin = {
+    id: 'skillOverlay',
+    afterDatasetsDraw(chart) {
+      if (!chart._hoveredModel) return;
+      const model = chart._hoveredModel;
+      const curves = cumulativeSkillDatasets[model];
+      if (!curves) return;
+      const config = MODEL_CONFIG[model] || { color: '#999' };
+      const ctx = chart.ctx;
+      const xScale = chart.scales.x;
+      const yScale = chart.scales.y;
+
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = config.color;
+      ctx.lineWidth = 1.2;
+
+      for (const curve of curves) {
+        ctx.beginPath();
+        let started = false;
+        for (const pt of curve.data) {
+          const px = xScale.getPixelForValue(pt.x);
+          const py = yScale.getPixelForValue(pt.y);
+          if (!started) { ctx.moveTo(px, py); started = true; }
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  };
 
   cumulativeChart = new Chart(canvas, {
     type: 'line',
     data: { datasets },
+    plugins: [skillOverlayPlugin],
     options: {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
       layout: { padding: { top: 10, right: 24, bottom: 2 } },
       interaction: { mode: 'nearest', intersect: false },
+      onHover: (event, elements, chart) => {
+        const prev = chart._hoveredModel;
+        if (elements.length > 0) {
+          const ds = chart.data.datasets[elements[0].datasetIndex];
+          chart._hoveredModel = ds._modelKey || null;
+        } else {
+          chart._hoveredModel = null;
+        }
+        if (chart._hoveredModel !== prev) chart.draw();
+      },
       scales: {
         x: {
           type: 'linear',
@@ -665,9 +726,25 @@ function renderCumulative() {
         legend: { display: false },
         tooltip: {
           enabled: true,
+          displayColors: false,
+          bodyFont: { size: 11 },
+          titleFont: { size: 12, weight: 'bold' },
+          padding: 10,
           callbacks: {
-            title: items => items[0] ? `${items[0].parsed.x} min` : '',
-            label: item => `${item.dataset.label}: ${item.parsed.y.toLocaleString()} avg XP`,
+            title: items => {
+              if (!items[0]) return '';
+              const ds = items[0].dataset;
+              return `${ds.label} — ${items[0].parsed.x} min`;
+            },
+            label: item => {
+              const modelKey = item.dataset._modelKey;
+              const lines = [`Avg: ${item.parsed.y.toLocaleString()} XP`, ''];
+              const skills = cumulativeSkillFinalXp[modelKey] || [];
+              for (const s of skills) {
+                lines.push(`${s.label}: ${formatXp(s.finalXp)}`);
+              }
+              return lines;
+            },
           },
         },
       },
@@ -675,60 +752,64 @@ function renderCumulative() {
   });
 }
 
-// ── Heatmap View ────────────────────────────────────────────────
+// ── Trajectory Viewer ────────────────────────────────────────────
 
-function renderHeatmap() {
-  const container = document.getElementById('heatmapContainer');
-  const models = getModelsInData().filter(m => !hiddenModels.has(m));
+function openTrajectory(model, skill) {
+  const data = combinedData[model]?.[skill];
+  if (!data) return;
 
-  const skillMaxXp = {};
-  for (const skill of SKILL_ORDER) {
-    let max = 0;
-    for (const model of models) {
-      const xp = combinedData[model]?.[skill]?.finalXp || 0;
-      if (xp > max) max = xp;
-    }
-    skillMaxXp[skill] = max;
+  const config = MODEL_CONFIG[model] || { displayName: model, color: '#999' };
+  const skillName = SKILL_DISPLAY[skill] || skill;
+
+  document.getElementById('trajTitle').textContent = `${config.displayName} — ${skillName}`;
+  document.getElementById('trajSubtitle').textContent =
+    `${formatXp(data.finalXp)} XP (Lv ${data.finalLevel}) · ${data.jobName || ''}`;
+
+  // Strategy
+  const strategyEl = document.getElementById('trajStrategy');
+  if (data.strategy) {
+    strategyEl.textContent = data.strategy;
+    strategyEl.style.display = 'block';
+  } else {
+    strategyEl.style.display = 'none';
   }
 
-  let html = '<table class="heatmap-table"><thead><tr><th class="skill-header">Skill</th>';
-  for (const model of models) {
-    const config = MODEL_CONFIG[model] || { displayName: model, color: '#999' };
-    html += `<th style="color:${config.color}">${config.displayName}</th>`;
-  }
-  html += '</tr></thead><tbody>';
-
-  for (const skill of SKILL_ORDER) {
-    const iconSrc = 'skill-icons/' + skill + '.png';
-    html += `<tr><td class="skill-cell"><img src="${iconSrc}" width="18" height="18" onerror="this.style.display='none'"> ${SKILL_DISPLAY[skill] || skill}</td>`;
-    for (const model of models) {
-      const data = combinedData[model]?.[skill];
-      const xp = data?.finalXp || 0;
-      const level = data?.finalLevel || 1;
-      const maxXp = skillMaxXp[skill] || 1;
-      const intensity = maxXp > 0 ? xp / maxXp : 0;
-      const config = MODEL_CONFIG[model] || { color: '#999' };
-
-      const alpha = Math.max(0.08, intensity * 0.6);
-      const bg = hexToRgba(config.color, alpha);
-      const textColor = intensity > 0.5 ? config.color : '#666';
-      const fontWeight = intensity >= 0.99 ? '700' : '500';
-
-      html += `<td class="heatmap-cell" style="background:${bg};color:${textColor};font-weight:${fontWeight}">`;
-      if (xp > 0) {
-        html += `<div class="xp-value">${formatXp(xp)}</div>`;
-        html += `<div class="level-value">Lv ${level}</div>`;
+  // Steps
+  const stepsEl = document.getElementById('trajSteps');
+  const steps = data.trajectory || [];
+  if (steps.length === 0) {
+    stepsEl.innerHTML = '<div style="color:#999; text-align:center; padding:32px">No trajectory data available for this run.</div>';
+  } else {
+    let html = '';
+    for (const step of steps) {
+      if (step.source === 'tool') {
+        html += `<div class="traj-step tool">${escapeHtml(step.text)}</div>`;
       } else {
-        html += '<div class="xp-value" style="color:#ccc">&mdash;</div>';
+        html += `<div class="traj-step agent">${escapeHtml(step.text)}</div>`;
       }
-      html += '</td>';
     }
-    html += '</tr>';
+    stepsEl.innerHTML = html;
   }
 
-  html += '</tbody></table>';
-  container.innerHTML = html;
+  document.getElementById('trajectoryModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
 }
+
+function closeTrajectory() {
+  document.getElementById('trajectoryModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Close modal on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeTrajectory();
+});
 
 // ── Helpers ─────────────────────────────────────────────────────
 

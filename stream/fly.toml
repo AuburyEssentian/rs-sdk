@@ -1,0 +1,21 @@
+app = "rs-agent-stream"
+primary_region = "iad"
+
+[build]
+  context = ".."
+  dockerfile = "Dockerfile"
+  ignorefile = "stream/.dockerignore"
+
+[env]
+  ENABLE_VIDEO = "true"
+  CHAT_INTERVAL_MS = "300000"
+  CLAUDE_TIMEOUT_MS = "240000"
+  CLAUDE_MAX_TURNS = "10"
+  BOT_SERVER = "rs-sdk-demo.fly.dev"
+  GAME_CLIENT_URL = "https://rs-sdk-demo.fly.dev"
+
+# This is a long-running worker, no HTTP service needed
+[[vm]]
+  memory = "8gb"
+  cpu_kind = "performance"
+  cpus = 4

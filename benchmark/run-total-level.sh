@@ -18,7 +18,7 @@ claude-code|anthropic/claude-opus-4-6|opus
 claude-code|anthropic/claude-sonnet-4-6|sonnet46
 claude-code|anthropic/claude-sonnet-4-5|sonnet45
 claude-code|anthropic/claude-haiku-4-5|haiku
-codex|openai/gpt-codex-5.3|codex
+codex|openai/gpt-5.3-codex|codex
 gemini-cli|google/gemini-3-pro-preview|gemini
 claude-code|glm-5|glm
 kimi-opencode|openrouter/moonshotai/kimi-k2.5|kimi
