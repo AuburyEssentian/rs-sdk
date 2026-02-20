@@ -166,7 +166,7 @@ This shows: position, inventory, skills, nearby NPCs/objects, and more.
 
 **Exception**: Skip this if you just created the character and know it's at spawn.
 
-**Tutorial Check**: If the character is in the tutorial area, call `await bot.sendSkipTutorial()` before running any other scripts. The tutorial blocks normal gameplay.
+**Tutorial Check**: If the character is in the tutorial area, call `await bot.skipTutorial()` before running any other scripts. The tutorial blocks normal gameplay.
 
 ### 2. Write Your Script
 

@@ -176,14 +176,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
 
         const isLongCode = code.length > 2000;
 
-        // Auto-connect if not already connected
-        let connection = botManager.get(botName);
-        if (!connection) {
-          console.error(`[MCP] Bot "${botName}" not connected, auto-connecting...`);
-          connection = await botManager.connect(botName);
-        }
-
-        // Capture console output
+        // Capture console output BEFORE connecting to prevent SDK logs from corrupting MCP JSON-RPC stdout
         const logs: string[] = [];
         const originalLog = console.log;
         const originalWarn = console.warn;
@@ -192,6 +185,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         console.log = (...args) => logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
         console.warn = (...args) => logs.push('[warn] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
         // Don't capture console.error - let it go to stderr for MCP debugging
+
+        // Auto-connect if not already connected
+        let connection = botManager.get(botName);
+        if (!connection) {
+          console.error(`[MCP] Bot "${botName}" not connected, auto-connecting...`);
+          connection = await botManager.connect(botName);
+          // Wait up to 15s for initial world state after fresh connection
+          try {
+            await connection.sdk.waitForCondition(() => connection!.sdk.getState() !== null, 15000);
+          } catch {
+            console.error(`[MCP] Warning: initial state not received within 15s for bot "${botName}"`);
+          }
+        }
 
         try {
           const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;

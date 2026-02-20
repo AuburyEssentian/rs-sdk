@@ -16,11 +16,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # ── Model definitions (agent|model-id|label) ────────────────────
 ALL_MODELS="
 claude-code|anthropic/claude-opus-4-6|opus
+claude-code|anthropic/claude-opus-4-5|opus45
 claude-code|anthropic/claude-sonnet-4-6|sonnet46
 claude-code|anthropic/claude-sonnet-4-5|sonnet45
 claude-code|anthropic/claude-haiku-4-5|haiku
-codex|openai/gpt-codex-5.3|codex
+codex|openai/gpt-5.2-codex|codex
+codex|openai/gpt-5.3-codex|codex53
 gemini-cli|google/gemini-3-pro-preview|gemini
+gemini-cli|google/gemini-3.1-pro-preview|gemini31
 claude-code|glm-5|glm
 kimi-opencode|openrouter/moonshotai/kimi-k2.5|kimi
 "
@@ -51,7 +54,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: benchmark/run-skills-30m.sh [-m model] [-s skill]"
       echo ""
-      echo "Models: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi (default: all)"
+      echo "Models: opus, opus45, sonnet46, sonnet45, haiku, codex, codex53, gemini, gemini31, glm, kimi (default: all)"
       echo "Skills: attack, defence, strength, hitpoints, ranged, prayer, magic,"
       echo "        woodcutting, fishing, mining, cooking, fletching, crafting,"
       echo "        smithing, firemaking, thieving (default: all sixteen)"
@@ -64,7 +67,7 @@ done
 
 # Default to all if none specified
 if [ -z "$SELECTED_MODELS" ]; then
-  SELECTED_MODELS="opus sonnet46 sonnet45 haiku codex gemini glm kimi"
+  SELECTED_MODELS="opus opus45 sonnet46 sonnet45 haiku codex codex53 gemini gemini31 glm kimi"
 fi
 if [ -z "$SELECTED_SKILLS" ]; then
   SELECTED_SKILLS="$ALL_SKILLS"
@@ -91,22 +94,31 @@ ALL_JOBS=""  # "pid|model_name|skill" entries
 for model_name in $SELECTED_MODELS; do
   entry=$(lookup_model "$model_name")
   if [ -z "$entry" ]; then
-    echo "Unknown model: $model_name (available: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi)"
+    echo "Unknown model: $model_name (available: opus, opus45, sonnet46, sonnet45, haiku, codex, codex53, gemini, gemini31, glm, kimi)"
     exit 1
   fi
 
   IFS='|' read -r agent model label <<< "$entry"
 
-  # GLM needs custom env
+  # Per-model config (reset each iteration)
   ENV_PREFIX=""
   AGENT_FLAG="-a '$agent'"
   HARBOR_ENV="modal"
+  MODEL_EXTRA_ARGS=""
   if [ "$model_name" = "glm" ]; then
     if [ -z "$GLM_KEY" ]; then
       echo "  WARNING: GLM_API_KEY not found in .env, skipping glm"
       continue
     fi
     ENV_PREFIX="ANTHROPIC_API_KEY=$GLM_KEY ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic API_TIMEOUT_MS=3000000"
+  elif [ "$model_name" = "codex53" ]; then
+    # Codex 5.3 requires OAuth (ChatGPT login), not API key
+    CODEX_AUTH_FILE="$HOME/.codex/auth.json"
+    if [ ! -f "$CODEX_AUTH_FILE" ]; then
+      echo "  WARNING: ~/.codex/auth.json not found, skipping codex53 (OAuth required)"
+      continue
+    fi
+    ENV_PREFIX="CODEX_AUTH_JSON=\$(cat '$CODEX_AUTH_FILE')"
   elif [ "$model_name" = "kimi" ]; then
     if [ -z "$OPENROUTER_API_KEY" ]; then
       echo "  WARNING: OPENROUTER_API_KEY not found in .env, skipping kimi"
@@ -115,6 +127,10 @@ for model_name in $SELECTED_MODELS; do
     ENV_PREFIX="PYTHONPATH=$SCRIPT_DIR:\${PYTHONPATH:-}"
     AGENT_FLAG="--agent-import-path 'kimi_adapter:KimiOpenCode'"
     HARBOR_ENV="modal"
+    # Kimi adapter has its own restart loop that self-limits to ~27min.
+    # Use 2x multiplier to give the verifier plenty of time to restart
+    # game services and verify (ensure-services.sh can take 2+ min).
+    MODEL_EXTRA_ARGS="--timeout-multiplier 2"
   fi
 
   for skill in $SELECTED_SKILLS; do
@@ -132,7 +148,7 @@ for model_name in $SELECTED_MODELS; do
       --env $HARBOR_ENV \
       -n 1 \
       -k 1 \
-      $EXTRA_ARGS" > "$LOG_FILE" 2>&1 &
+      $EXTRA_ARGS $MODEL_EXTRA_ARGS" > "$LOG_FILE" 2>&1 &
 
     PID=$!
     ALL_PIDS="$ALL_PIDS $PID"

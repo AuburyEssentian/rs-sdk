@@ -57,7 +57,6 @@
  * - sendCastSpellOnNpc(spellName, npcIndex) - Cast spell on NPC
  * - sendCastSpellOnItem(spellName, slot) - Cast spell on item
  * - sendCastSpellOnGroundItem(spellName, x, z, itemId) - Cast spell on ground item
- * - sendSkipTutorial() - Skip tutorial
  *
  * == Utility ==
  * - findPath(startX, startZ, endX, endZ) - Find walkable path between two points
