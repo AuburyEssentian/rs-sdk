@@ -231,19 +231,25 @@ export class ActionExecutor {
                         'Failed to switch tab'
                     );
 
-                case 'bankDeposit':
-                    return this.wrapBool(
-                        this.client.bankDeposit(action.slot, action.amount),
-                        `Depositing from slot ${action.slot}`,
-                        'Failed to deposit'
-                    );
+                case 'bankDeposit': {
+                    const needsCountDialog = action.amount !== 1 && action.amount !== 5 && action.amount !== 10 && action.amount !== -1 && action.amount < 2147483647;
+                    const depositOk = this.client.bankDeposit(action.slot, action.amount);
+                    if (!depositOk) return { success: false, message: 'Failed to deposit' };
+                    if (needsCountDialog) {
+                        return this.waitForCountDialogAndSubmit(action.amount, `Depositing ${action.amount} from slot ${action.slot}`);
+                    }
+                    return { success: true, message: `Depositing from slot ${action.slot}` };
+                }
 
-                case 'bankWithdraw':
-                    return this.wrapBool(
-                        this.client.bankWithdraw(action.slot, action.amount),
-                        `Withdrawing from slot ${action.slot}`,
-                        'Failed to withdraw'
-                    );
+                case 'bankWithdraw': {
+                    const needsCountDialog = action.amount !== 1 && action.amount !== 5 && action.amount !== 10 && action.amount !== -1 && action.amount < 2147483647;
+                    const withdrawOk = this.client.bankWithdraw(action.slot, action.amount);
+                    if (!withdrawOk) return { success: false, message: 'Failed to withdraw' };
+                    if (needsCountDialog) {
+                        return this.waitForCountDialogAndSubmit(action.amount, `Withdrawing ${action.amount} from slot ${action.slot}`);
+                    }
+                    return { success: true, message: `Withdrawing from slot ${action.slot}` };
+                }
 
                 case 'acceptCharacterDesign':
                     // TODO: Should be parameterized as (gender, kits[7], colours[5])
@@ -351,6 +357,22 @@ export class ActionExecutor {
         if (pos) {
             this.client.setBotClickVisual(pos.x, pos.y, 2);
         }
+    }
+
+    // Wait for the server to open the count dialog (P_COUNTDIALOG), then submit the value
+    private async waitForCountDialogAndSubmit(amount: number, successMsg: string): Promise<ActionResult> {
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+            if (this.client.isChatBackInputOpen()) {
+                const ok = this.client.submitCountDialog(amount);
+                if (ok) {
+                    return { success: true, message: successMsg };
+                }
+                return { success: false, message: 'Failed to submit count dialog' };
+            }
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        return { success: false, message: 'Timeout waiting for count dialog' };
     }
 }
 

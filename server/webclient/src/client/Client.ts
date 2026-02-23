@@ -1287,9 +1287,13 @@ export class Client extends GameShell {
         const itemId = obj.id;
 
         // Map amount to option index: 1->2 (Buy 1), 5->3 (Buy 5), 10->4 (Buy 10)
+        // Shops only support 1, 5, 10 — no custom amount dialog
         let optionIndex = 2; // Default to Buy 1
         if (amount === 5) optionIndex = 3;
         else if (amount === 10) optionIndex = 4;
+        else if (amount !== 1) {
+            console.log(`[Client] shopBuy: unsupported amount ${amount}, only 1/5/10 supported. Use buyFromShop() for arbitrary amounts.`);
+        }
 
         // INV_BUTTON opcodes for shop interface actions
         const opcodes = [
@@ -1335,9 +1339,13 @@ export class Client extends GameShell {
         const itemId = obj.id;
 
         // Map amount to option index: 1->2 (Sell 1), 5->3 (Sell 5), 10->4 (Sell 10)
+        // Shops only support 1, 5, 10 — no custom amount dialog
         let optionIndex = 2; // Default to Sell 1
         if (amount === 5) optionIndex = 3;
         else if (amount === 10) optionIndex = 4;
+        else if (amount !== 1) {
+            console.log(`[Client] shopSell: unsupported amount ${amount}, only 1/5/10 supported. Use sellToShop() for arbitrary amounts.`);
+        }
 
         // INV_BUTTON opcodes for shop interface actions
         const opcodes = [
@@ -1471,10 +1479,12 @@ export class Client extends GameShell {
         // inv_button2 -> deposit 5
         // inv_button3 -> deposit 10
         // inv_button4 -> deposit all
+        // inv_button5 -> deposit X (custom amount via count dialog)
         let optionIndex = 1; // Default to deposit 1
         if (amount === 5) optionIndex = 2;
         else if (amount === 10) optionIndex = 3;
         else if (amount === -1 || amount >= 2147483647) optionIndex = 4; // All
+        else if (amount !== 1) optionIndex = 5; // Custom amount -> Deposit-X
 
         const opcodes = [
             ClientProt.INV_BUTTON1,
@@ -1527,10 +1537,12 @@ export class Client extends GameShell {
         // inv_button2 -> withdraw 5
         // inv_button3 -> withdraw 10
         // inv_button4 -> withdraw all
+        // inv_button5 -> withdraw X (custom amount via count dialog)
         let optionIndex = 1; // Default to withdraw 1
         if (amount === 5) optionIndex = 2;
         else if (amount === 10) optionIndex = 3;
         else if (amount === -1 || amount >= 2147483647) optionIndex = 4; // All
+        else if (amount !== 1) optionIndex = 5; // Custom amount -> Withdraw-X
 
         const opcodes = [
             ClientProt.INV_BUTTON1,
@@ -1546,6 +1558,30 @@ export class Client extends GameShell {
         this.out.p2(BANK_MAIN_INV_ID);
 
         console.log(`[Client] bankWithdraw: slot=${slot}, itemId=${itemId}, amount=${amount}, optionIndex=${optionIndex}`);
+        return true;
+    }
+
+    /**
+     * Submit a value for the P_COUNTDIALOG prompt (e.g. Withdraw-X, Deposit-X).
+     * The count dialog must already be open (chatbackInputOpen === true).
+     */
+    submitCountDialog(value: number): boolean {
+        if (!this.ingame || !this.out) {
+            console.log('[Client] submitCountDialog failed - not in game');
+            return false;
+        }
+
+        if (!this.chatbackInputOpen) {
+            console.log('[Client] submitCountDialog failed - count dialog not open');
+            return false;
+        }
+
+        this.out.p1isaac(ClientProt.RESUME_P_COUNTDIALOG);
+        this.out.p4(value);
+        this.chatbackInputOpen = false;
+        this.redrawChatback = true;
+
+        console.log(`[Client] submitCountDialog: value=${value}`);
         return true;
     }
 

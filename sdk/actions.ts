@@ -1024,54 +1024,74 @@ export class BotActions {
             return this.sellAllToShop(sellItem, startTick);
         }
 
-        const validAmount = [1, 5, 10].includes(amount) ? amount : 1;
-
-        const result = await this.sdk.sendShopSell(sellItem.slot, validAmount);
-        if (!result.success) {
-            return { success: false, message: result.message };
-        }
-
         const getTotalCount = (playerItems: typeof shop.playerItems) =>
             playerItems.filter(i => i.id === sellItem.id).reduce((sum, i) => sum + i.count, 0);
+
+        // Decompose amount into valid sell commands (10, 5, 1)
+        let remaining = Math.max(1, Math.floor(amount));
+        const sellSteps: number[] = [];
+        while (remaining > 0) {
+            if (remaining >= 10) { sellSteps.push(10); remaining -= 10; }
+            else if (remaining >= 5) { sellSteps.push(5); remaining -= 5; }
+            else { sellSteps.push(1); remaining -= 1; }
+        }
+
         const totalCountBefore = getTotalCount(shop.playerItems);
 
-        try {
-            const finalState = await this.sdk.waitForCondition(state => {
-                for (const msg of state.gameMessages) {
+        for (const stepAmount of sellSteps) {
+            const countBefore = getTotalCount(this.sdk.getState()?.shop.playerItems ?? []);
+
+            const result = await this.sdk.sendShopSell(sellItem.slot, stepAmount);
+            if (!result.success) {
+                const totalSold = totalCountBefore - getTotalCount(this.sdk.getState()?.shop.playerItems ?? []);
+                if (totalSold > 0) {
+                    return { success: true, message: `Sold ${sellItem.name} x${totalSold} (wanted ${amount})`, amountSold: totalSold };
+                }
+                return { success: false, message: result.message };
+            }
+
+            try {
+                const finalState = await this.sdk.waitForCondition(state => {
+                    for (const msg of state.gameMessages) {
+                        if (msg.tick > startTick) {
+                            const text = msg.text.toLowerCase();
+                            if (text.includes("can't sell this item")) {
+                                return true;
+                            }
+                        }
+                    }
+
+                    const totalCountNow = getTotalCount(state.shop.playerItems);
+                    return totalCountNow < countBefore;
+                }, 5000);
+
+                for (const msg of finalState.gameMessages) {
                     if (msg.tick > startTick) {
                         const text = msg.text.toLowerCase();
+                        if (text.includes("can't sell this item to this shop")) {
+                            return { success: false, message: `Shop doesn't buy ${sellItem.name}`, rejected: true };
+                        }
+                        if (text.includes("can't sell this item to a shop")) {
+                            return { success: false, message: `Cannot sell ${sellItem.name} to any shop`, rejected: true };
+                        }
                         if (text.includes("can't sell this item")) {
-                            return true;
+                            return { success: false, message: `${sellItem.name} is not tradeable`, rejected: true };
                         }
                     }
                 }
-
-                const totalCountNow = getTotalCount(state.shop.playerItems);
-                return totalCountNow < totalCountBefore;
-            }, 5000);
-
-            for (const msg of finalState.gameMessages) {
-                if (msg.tick > startTick) {
-                    const text = msg.text.toLowerCase();
-                    if (text.includes("can't sell this item to this shop")) {
-                        return { success: false, message: `Shop doesn't buy ${sellItem.name}`, rejected: true };
-                    }
-                    if (text.includes("can't sell this item to a shop")) {
-                        return { success: false, message: `Cannot sell ${sellItem.name} to any shop`, rejected: true };
-                    }
-                    if (text.includes("can't sell this item")) {
-                        return { success: false, message: `${sellItem.name} is not tradeable`, rejected: true };
-                    }
+            } catch {
+                const totalSold = totalCountBefore - getTotalCount(this.sdk.getState()?.shop.playerItems ?? []);
+                if (totalSold > 0) {
+                    return { success: true, message: `Sold ${sellItem.name} x${totalSold} (wanted ${amount})`, amountSold: totalSold };
                 }
+                return { success: false, message: `Failed to sell ${sellItem.name} (timeout)` };
             }
-
-            const totalCountAfter = getTotalCount(finalState.shop.playerItems);
-            const amountSold = totalCountBefore - totalCountAfter;
-
-            return { success: true, message: `Sold ${sellItem.name} x${amountSold}`, amountSold };
-        } catch {
-            return { success: false, message: `Failed to sell ${sellItem.name} (timeout)` };
         }
+
+        const totalCountAfter = getTotalCount(this.sdk.getState()?.shop.playerItems ?? []);
+        const totalSold = totalCountBefore - totalCountAfter;
+
+        return { success: true, message: `Sold ${sellItem.name} x${totalSold}`, amountSold: totalSold };
     }
 
     private async sellAllToShop(sellItem: ShopItem, startTick: number): Promise<ShopSellResult> {
