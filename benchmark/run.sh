@@ -22,6 +22,8 @@ codex|openai/gpt-5.3-codex|codex
 gemini-cli|google/gemini-3-pro-preview|gemini
 claude-code|glm-5|glm
 kimi-opencode|openrouter/moonshotai/kimi-k2.5|kimi
+qwen3-opencode|openrouter/qwen/qwen3-coder-next|qwen3
+
 "
 
 # ── Lookup helper (bash 3 compatible) ────────────────────────────
@@ -52,7 +54,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: benchmark/run.sh [-t task] [-m model] [-n trials] [-c concurrency]"
       echo ""
-      echo "Models: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi (default: all)"
+      echo "Models: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi, qwen3 (default: all)"
       echo "Task:   any task dir name (default: woodcutting-xp-10m)"
       exit 0
       ;;
@@ -63,7 +65,7 @@ done
 
 # Default to all models if none specified
 if [ -z "$SELECTED_MODELS" ]; then
-  SELECTED_MODELS="sonnet46 sonnet45 opus haiku codex gemini glm kimi"
+  SELECTED_MODELS="sonnet46 sonnet45 opus haiku codex gemini glm kimi qwen3"
 fi
 
 # Export API keys from .env so Harbor's agent classes can snapshot them.
@@ -88,7 +90,7 @@ PIDS=""
 for name in $SELECTED_MODELS; do
   entry=$(lookup_model "$name")
   if [ -z "$entry" ]; then
-    echo "Unknown model: $name (available: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi)"
+    echo "Unknown model: $name (available: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi, qwen3)"
     exit 1
   fi
 
@@ -111,6 +113,13 @@ for name in $SELECTED_MODELS; do
     fi
     ENV_PREFIX="PYTHONPATH=$SCRIPT_DIR:\${PYTHONPATH:-}"
     AGENT_FLAG="--agent-import-path 'kimi_adapter:KimiOpenCode'"
+  elif [ "$name" = "qwen3" ]; then
+    if [ -z "$OPENROUTER_API_KEY" ]; then
+      echo "  WARNING: OPENROUTER_API_KEY not found in .env, skipping qwen3"
+      continue
+    fi
+    ENV_PREFIX="PYTHONPATH=$SCRIPT_DIR:\${PYTHONPATH:-}"
+    AGENT_FLAG="--agent-import-path 'qwen3_adapter:Qwen3OpenCode'"
   fi
 
   JOB_NAME="${TASK}-${label}-${TIMESTAMP}"

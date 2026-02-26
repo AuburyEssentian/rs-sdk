@@ -15,7 +15,7 @@ const BENCHMARK_DIR = join(import.meta.dir);
 const TASKS_DIR = join(BENCHMARK_DIR, 'tasks');
 const SHARED_DIR = join(BENCHMARK_DIR, 'shared');
 
-const DOCKER_IMAGE = 'ghcr.io/maxbittker/rs-agent-benchmark:v15';
+const DOCKER_IMAGE = 'ghcr.io/maxbittker/rs-agent-benchmark:v16';
 const DEFAULT_AGENT_TIMEOUT = 600; // 10 minutes
 const VERIFIER_TIMEOUT = 400; //  ensure-services.sh can take 2+ min if services died
 
@@ -85,7 +85,7 @@ TIMEOUT BEST PRACTICE: Keep individual script timeouts SHORT — no more than 5 
 
 BANKING: Periodically deposit your coins and valuable items in the bank to avoid losing them. The verifier counts coins in BOTH inventory and bank.
 
-The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`;
+The bot name is "agent".`;
 
 const GOLD_2H_INSTRUCTION = GOLD_INSTRUCTION(120);
 const GOLD_30M_INSTRUCTION = GOLD_INSTRUCTION(30);
@@ -100,7 +100,7 @@ IMPORTANT — FRESH ACCOUNT EACH RUN:
 - You can run as many attempts as you want within the 30-minute time limit
 
 WORKFLOW:
-1. Read the docs: sdk/API.md for methods, learnings/ folder for tips (especially learnings/combat.md)
+1. Read the CLAUDE.md and learnings/ folder for tips (especially learnings/combat.md)
 2. Write a combat training script (e.g., /app/combat.ts)
 3. Run it with: bun /app/benchmark/shared/fresh_run.ts /app/combat.ts
 4. Observe the results — combat level, skill levels, errors
@@ -138,7 +138,7 @@ STRATEGY TIPS:
 - Focus on making your script RELIABLE first, then optimize for speed
 - If a run errors out, you get combat level 0 — reliability matters more than aggression
 
-The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`;
+The bot name is "agent".`;
 
 const FRESH_RUN_DOCKERFILE = `FROM ${DOCKER_IMAGE}
 COPY fresh_run.ts /app/benchmark/shared/fresh_run.ts
@@ -160,7 +160,7 @@ CRITICAL: Do NOT write one giant script. Start with extremely minimal scripts to
 
 TIMEOUT BEST PRACTICE: Keep individual script timeouts SHORT — no more than 5 to 10 minutes each. Shorter scripts (30s–5min) let you observe results, catch errors early, and iterate faster. If a script runs for 10+ minutes and fails, you've wasted significant time. Break long tasks into multiple short runs instead.
 
-The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`;
+The bot name is "agent".`;
 
 // Stop ffmpeg and remove recording before verifier runs — the recording.mp4 can be
 // 50+ MB and Harbor's download_dir times out trying to pull it from Modal.
@@ -186,7 +186,7 @@ CRITICAL: Do NOT write one giant script. Start with extremely minimal scripts to
 
 TIMEOUT BEST PRACTICE: Keep individual script timeouts SHORT — no more than 5 to 10 minutes each. Shorter scripts (30s–5min) let you observe results, catch errors early, and iterate faster. If a script runs for 10+ minutes and fails, you've wasted significant time. Break long tasks into multiple short runs instead.
 
-The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`;
+The bot name is "agent".`;
 
 // Generate skill-xp-30m variants for all 16 skills
 const SKILL_XP_30M_VARIANTS: VariantTask[] = SKILLS.map(skill => ({
@@ -437,9 +437,7 @@ args = ["-c", "${mcpCommand}"]
 }
 
 function generateTaskDescription(skill: SkillDef): string {
-  return `Gain as much ${skill.name} XP as possible within the time limit.
-
-The bot name is "agent". The rs-sdk codebase is at /app with full documentation in sdk/API.md and learnings/.`;
+  return `Gain as much ${skill.name} XP as possible within the time limit. The bot name is "agent".`;
 }
 
 function generateTestSh(skill: SkillDef): string {

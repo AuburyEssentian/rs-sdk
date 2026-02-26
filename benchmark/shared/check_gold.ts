@@ -21,7 +21,7 @@ const WORN_TYPE = 94;  // Equipment (14 slots)
 const BANK_TYPE = 95;  // Bank (496 slots)
 
 const TRACKING_PATHS = [
-    '/app/skill_tracking.json',
+    '/logs/tracking/skill_tracking.json',
     '/logs/verifier/skill_tracking.json',
 ];
 

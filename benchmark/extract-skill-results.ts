@@ -20,7 +20,7 @@ import { join, basename } from 'path';
 const RESULTS_DIR = join(import.meta.dir, 'results', 'skills-30m');
 const JOBS_DIR = join(import.meta.dir, '..', 'jobs');
 
-const KNOWN_MODELS = ['opus', 'opus45', 'sonnet46', 'sonnet45', 'haiku', 'codex53', 'codex', 'gemini31', 'gemini', 'glm', 'kimi'];
+const KNOWN_MODELS = ['opus', 'opus45', 'sonnet46', 'sonnet45', 'haiku', 'codex53', 'codex', 'gemini31', 'gemini', 'glm', 'kimi', 'qwen3'];
 
 const KNOWN_SKILLS = [
   'attack', 'defence', 'strength', 'hitpoints', 'ranged', 'prayer', 'magic',
