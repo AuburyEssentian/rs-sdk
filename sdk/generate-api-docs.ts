@@ -3,7 +3,7 @@
  * Generate API documentation from SDK source files.
  * Extracts method signatures and JSDoc comments to create sdk/API.md
  *
- * Run: bun scripts/generate-api-docs.ts
+ * Run: bun sdk/generate-api-docs.ts
  */
 
 import { readFile, writeFile } from 'fs/promises';
@@ -236,7 +236,7 @@ function generateMarkdown(
         '# SDK API Reference',
         '',
         '> Auto-generated from source. Do not edit directly.',
-        '> Run `bun scripts/generate-api-docs.ts` to regenerate.',
+        '> Run `bun sdk/generate-api-docs.ts` to regenerate.',
         '',
         '## BotActions (High-Level)',
         '',
@@ -382,7 +382,7 @@ function formatSignature(method: MethodDoc): string {
 }
 
 async function main() {
-    const sdkDir = join(import.meta.dir, '..', 'sdk');
+    const sdkDir = import.meta.dir;
 
     // Read source files
     const actionsSource = await readFile(join(sdkDir, 'actions.ts'), 'utf-8');

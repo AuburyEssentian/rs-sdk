@@ -10,16 +10,16 @@ Ask the user for a bot name (max 12 chars, alphanumeric). If they skip, use the 
 
 ```bash
 # With custom username
-bun scripts/create-bot.ts {username}
+bun bots/create-bot.ts {username}
 
 # Auto-generate random username
-bun scripts/create-bot.ts
+bun bots/create-bot.ts
 
 # Use local server (sets SERVER=localhost in bot.env)
-bun scripts/create-bot.ts {username} --local
+bun bots/create-bot.ts {username} --local
 
 # Use a custom server
-bun scripts/create-bot.ts {username} --server=myserver.example.com
+bun bots/create-bot.ts {username} --server=myserver.example.com
 ```
 
 This automatically creates:
@@ -68,87 +68,7 @@ execute_code({
 ```
 
 
-**When to use MCP vs Scripts:**
-- **MCP**: One-off fixes, probing, experimenting, quick state checks
-- **Scripts**: Anything running in a loop, long-running automation, reproducible tasks, version control
-
 See `mcp/README.md` for detailed API reference.
-
-## Script Runner API
-
-Scripts should leverage `runScript` to manage their connections, initialization, and timeouts.
-Make new scripts for different skills, for instance fishing.ts, woodcutting.ts, combat.ts, etc.
-You may also wish to import or re-use code between them.
-
-**Run scripts:**
-```bash
-bun bots/{username}/script.ts
-```
-
-The runner automatically finds `bot.env` in the same directory as the script. Alternative methods:
-- `bun script.ts {botname}` - loads `bots/{botname}/bot.env`
-- `bun --env-file=bots/{name}/bot.env script.ts` - explicit env file
-
-```typescript
-// bots/mybot/woodcutter.ts
-import { runScript } from '../../sdk/runner';
-
-const result = await runScript(async (ctx) => {
-  const { bot, sdk, log } = ctx;
-
-  let logsChopped = 0;
-
-  while (logsChopped < 50) {
-    const tree = sdk.findNearbyLoc(/^tree$/i);
-    if (tree) {
-      const r = await bot.chopTree(tree);
-      if (r.success) logsChopped++;
-    }
-  }
-
-  log(`Chopped ${logsChopped} logs`);
-  return { logsChopped };
-}, {
-  timeout: 3 * 60_000,  // 3 minute timeout
-});
-
-console.log(`Success: ${result.success}`);
-```
-
-### ScriptContext
-
-Scripts receive a context object with:
-
-| Property | Description |
-|----------|-------------|
-| `bot` | BotActions instance (high-level actions) |
-| `sdk` | BotSDK instance (low-level SDK) |
-| `log` | Captured logging (like console.log) |
-| `warn` | Captured warnings |
-| `error` | Captured errors |
-
-### RunOptions
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `timeout` | none | Overall timeout in ms |
-| `autoConnect` | true | Connect if not connected |
-| `disconnectAfter` | false | Disconnect when done |
-
-### RunResult
-
-```typescript
-interface RunResult {
-  success: boolean;
-  result?: any;           // Return value from script
-  error?: Error;          // If failed
-  duration: number;       // Total ms
-  logs: LogEntry[];       // Captured logs
-  finalState: BotWorldState;
-}
-```
-
-The runner automatically prints formatted world state after execution 
 
 ## Session Workflow
 

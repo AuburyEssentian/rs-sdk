@@ -35,7 +35,7 @@ claude "start a new bot with name: {username}"
 Manually:
 ```sh
 bun install
-bun scripts/create-bot.ts {username}
+bun bots/create-bot.ts {username}
 bun bots/{username}/script.ts 
 ```
 
