@@ -1,7 +1,7 @@
 # SDK API Reference
 
 > Auto-generated from source. Do not edit directly.
-> Run `bun scripts/generate-api-docs.ts` to regenerate.
+> Run `bun sdk/generate-api-docs.ts` to regenerate.
 
 ## BotActions (High-Level)
 

@@ -42,6 +42,9 @@ RUN cd server/webclient && bun install && bun run build
 RUN cp -r server/webclient/out/bot server/engine/public/bot
 RUN cd mcp && bun install
 
+# Remove scripts/ directory — benchmark agents waste budget reading/running these
+RUN rm -rf /app/scripts
+
 # Pre-pack game cache and let engine fully start so all data files are generated.
 # Wait for "World ready" in output, then kill. This ensures maps, scripts, configs are all packed.
 RUN cd server/engine && \

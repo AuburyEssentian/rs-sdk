@@ -15,7 +15,7 @@ const BENCHMARK_DIR = join(import.meta.dir);
 const TASKS_DIR = join(BENCHMARK_DIR, 'tasks');
 const SHARED_DIR = join(BENCHMARK_DIR, 'shared');
 
-const DOCKER_IMAGE = 'ghcr.io/maxbittker/rs-agent-benchmark:v16';
+const DOCKER_IMAGE = 'ghcr.io/maxbittker/rs-agent-benchmark:v17';
 const DEFAULT_AGENT_TIMEOUT = 600; // 10 minutes
 const VERIFIER_TIMEOUT = 400; //  ensure-services.sh can take 2+ min if services died
 

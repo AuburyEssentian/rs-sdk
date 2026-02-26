@@ -13,7 +13,7 @@ Claude Code auto-discovers the MCP server via `.mcp.json`. Just:
 
 2. **Create a bot (if you haven't):**
    ```bash
-   bun scripts/create-bot.ts mybot
+   bun bots/create-bot.ts mybot
    ```
 
 3. **Open the project in Claude Code** — it will prompt you to approve the MCP server.
@@ -119,7 +119,7 @@ mcp/
 ## Troubleshooting
 
 **"Bot not found"**
-- Create the bot first: `bun scripts/create-bot.ts {name}`
+- Create the bot first: `bun bots/create-bot.ts {name}`
 - Check `bots/{name}/bot.env` exists
 
 **"Bot is not connected"**

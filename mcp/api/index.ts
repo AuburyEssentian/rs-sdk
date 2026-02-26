@@ -46,7 +46,7 @@ class BotManager {
       const envPath = join(process.cwd(), 'bots', name, 'bot.env');
 
       if (!existsSync(envPath)) {
-        throw new Error(`Bot "${name}" not found. Create it first with: bun scripts/create-bot.ts ${name}`);
+        throw new Error(`Bot "${name}" not found. Create it first with: bun bots/create-bot.ts ${name}`);
       }
 
       const envContent = await readFile(envPath, 'utf-8');
