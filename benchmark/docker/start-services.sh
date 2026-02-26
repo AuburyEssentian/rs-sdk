@@ -66,8 +66,9 @@ echo "[services] Bot should be ready"
 # ── Skill tracker (runs for full container lifetime) ──────────
 if ! pgrep -f skill_tracker > /dev/null 2>&1; then
     echo "[services] Starting skill tracker..."
-    cd /app && TRACKING_FILE=/app/skill_tracking.json \
-      nohup bun run benchmark/shared/skill_tracker.ts > /app/skill_tracker.log 2>&1 &
+    mkdir -p /logs/tracking
+    cd /app && TRACKING_FILE=/logs/tracking/skill_tracking.json \
+      nohup bun run benchmark/shared/skill_tracker.ts > /logs/tracking/skill_tracker.log 2>&1 &
     echo "[services] Skill tracker started (pid=$!)"
 else
     echo "[services] Skill tracker already running"

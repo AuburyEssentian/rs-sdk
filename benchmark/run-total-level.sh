@@ -22,6 +22,8 @@ codex|openai/gpt-5.3-codex|codex
 gemini-cli|google/gemini-3-pro-preview|gemini
 claude-code|glm-5|glm
 kimi-opencode|openrouter/moonshotai/kimi-k2.5|kimi
+qwen3-opencode|openrouter/qwen/qwen3-coder-next|qwen3
+
 "
 
 # ── Lookup helper (bash 3 compatible) ────────────────────────────
@@ -80,7 +82,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --duration, -d   5m, 8m (default), 10m, 30m, 1h, 3h"
-            echo "  --model, -m      opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi (default: all)"
+            echo "  --model, -m      opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi, qwen3 (default: all)"
             echo "  --concurrency    Number of concurrent trials (default: 1)"
             exit 0
             ;;
@@ -119,7 +121,7 @@ esac
 
 # Default to all models if none specified
 if [ -z "$SELECTED_MODELS" ]; then
-    SELECTED_MODELS="opus sonnet46 sonnet45 haiku codex gemini glm kimi"
+    SELECTED_MODELS="opus sonnet46 sonnet45 haiku codex gemini glm kimi qwen3"
 fi
 
 # ── Regenerate tasks ──────────────────────────────────────────────
@@ -133,7 +135,7 @@ JOB_PREFIX="total-level-$(date +%Y%m%d-%H%M%S)"
 for name in $SELECTED_MODELS; do
     entry=$(lookup_model "$name")
     if [ -z "$entry" ]; then
-        echo "Unknown model: $name (available: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi)"
+        echo "Unknown model: $name (available: opus, sonnet46, sonnet45, haiku, codex, gemini, glm, kimi, qwen3)"
         exit 1
     fi
 
@@ -155,6 +157,13 @@ for name in $SELECTED_MODELS; do
         fi
         ENV_PREFIX="PYTHONPATH=$SCRIPT_DIR:\${PYTHONPATH:-}"
         AGENT_FLAG="--agent-import-path 'kimi_adapter:KimiOpenCode'"
+    elif [ "$name" = "qwen3" ]; then
+        if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "  WARNING: OPENROUTER_API_KEY not found in .env, skipping qwen3"
+            continue
+        fi
+        ENV_PREFIX="PYTHONPATH=$SCRIPT_DIR:\${PYTHONPATH:-}"
+        AGENT_FLAG="--agent-import-path 'qwen3_adapter:Qwen3OpenCode'"
     fi
 
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

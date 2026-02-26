@@ -26,6 +26,8 @@ gemini-cli|google/gemini-3-pro-preview|gemini
 gemini-cli|google/gemini-3.1-pro-preview|gemini31
 claude-code|glm-5|glm
 kimi-opencode|openrouter/moonshotai/kimi-k2.5|kimi
+qwen3-opencode|openrouter/qwen/qwen3-coder-next|qwen3
+
 "
 
 ALL_SKILLS="attack defence strength hitpoints ranged prayer magic woodcutting fishing mining cooking fletching crafting smithing firemaking thieving"
@@ -54,7 +56,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: benchmark/run-skills-30m.sh [-m model] [-s skill]"
       echo ""
-      echo "Models: opus, opus45, sonnet46, sonnet45, haiku, codex, codex53, gemini, gemini31, glm, kimi (default: all)"
+      echo "Models: opus, opus45, sonnet46, sonnet45, haiku, codex, codex53, gemini, gemini31, glm, kimi, qwen3 (default: all)"
       echo "Skills: attack, defence, strength, hitpoints, ranged, prayer, magic,"
       echo "        woodcutting, fishing, mining, cooking, fletching, crafting,"
       echo "        smithing, firemaking, thieving (default: all sixteen)"
@@ -67,7 +69,7 @@ done
 
 # Default to all if none specified
 if [ -z "$SELECTED_MODELS" ]; then
-  SELECTED_MODELS="opus opus45 sonnet46 sonnet45 haiku codex codex53 gemini gemini31 glm kimi"
+  SELECTED_MODELS="opus opus45 sonnet46 sonnet45 haiku codex codex53 gemini gemini31 glm kimi qwen3"
 fi
 if [ -z "$SELECTED_SKILLS" ]; then
   SELECTED_SKILLS="$ALL_SKILLS"
@@ -94,7 +96,7 @@ ALL_JOBS=""  # "pid|model_name|skill" entries
 for model_name in $SELECTED_MODELS; do
   entry=$(lookup_model "$model_name")
   if [ -z "$entry" ]; then
-    echo "Unknown model: $model_name (available: opus, opus45, sonnet46, sonnet45, haiku, codex, codex53, gemini, gemini31, glm, kimi)"
+    echo "Unknown model: $model_name (available: opus, opus45, sonnet46, sonnet45, haiku, codex, codex53, gemini, gemini31, glm, kimi, qwen3)"
     exit 1
   fi
 
@@ -130,6 +132,15 @@ for model_name in $SELECTED_MODELS; do
     # Kimi adapter has its own restart loop that self-limits to ~27min.
     # Use 2x multiplier to give the verifier plenty of time to restart
     # game services and verify (ensure-services.sh can take 2+ min).
+    MODEL_EXTRA_ARGS="--timeout-multiplier 2"
+  elif [ "$model_name" = "qwen3" ]; then
+    if [ -z "$OPENROUTER_API_KEY" ]; then
+      echo "  WARNING: OPENROUTER_API_KEY not found in .env, skipping qwen3"
+      continue
+    fi
+    ENV_PREFIX="PYTHONPATH=$SCRIPT_DIR:\${PYTHONPATH:-}"
+    AGENT_FLAG="--agent-import-path 'qwen3_adapter:Qwen3OpenCode'"
+    HARBOR_ENV="modal"
     MODEL_EXTRA_ARGS="--timeout-multiplier 2"
   fi
 

@@ -3,7 +3,7 @@
  *
  * Hybrid of check_xp.ts (single-skill XP) and check_total_level.ts (tracking embed).
  * Reads SKILL_NAME env var, reports that skill's XP as reward.
- * Also reads /app/skill_tracking.json and embeds time-series data in reward.json
+ * Also reads skill_tracking.json and embeds time-series data in reward.json
  * so extract-skill-results.ts can find per-sample data.
  *
  * Writes to reward.json: { skill, xp, level, tracking }
@@ -19,9 +19,9 @@ if (!SKILL_NAME) {
     process.exit(1);
 }
 
-// Check multiple locations for tracking data (agent phase may write to /app/)
+// Check multiple locations for tracking data
 const TRACKING_PATHS = [
-    '/app/skill_tracking.json',
+    '/logs/tracking/skill_tracking.json',
     '/logs/verifier/skill_tracking.json',
 ];
 

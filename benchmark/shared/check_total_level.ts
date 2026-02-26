@@ -9,9 +9,9 @@
 import { BotSDK } from '/app/sdk/index';
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 
-// Check multiple locations for tracking data (agent phase may write to /app/)
+// Check multiple locations for tracking data
 const TRACKING_PATHS = [
-    '/app/skill_tracking.json',
+    '/logs/tracking/skill_tracking.json',
     '/logs/verifier/skill_tracking.json',
 ];
 

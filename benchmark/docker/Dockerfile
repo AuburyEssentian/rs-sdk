@@ -75,8 +75,8 @@ COPY skill_tracker.ts /app/benchmark/shared/skill_tracker.ts
 RUN echo 'SERVER=localhost' >> /app/bots/agent/bot.env
 
 # Wrapper: start services, launch tracker in background (fully detached), then run MCP server.
-# Tracker writes to /app/skill_tracking.json (persists between agent and verifier phases).
-RUN printf '#!/bin/bash\n/start-services.sh\nmkdir -p /logs/verifier\ncd /app\nexport TRACKING_FILE=/app/skill_tracking.json\nnohup bun run benchmark/shared/skill_tracker.ts > /app/skill_tracker.log 2>&1 &\nexec bun run mcp/server.ts\n' > /start-with-tracker.sh && chmod +x /start-with-tracker.sh
+# Tracker writes to /logs/tracking/ (outside /app/ so agents don't see benchmark infra files).
+RUN printf '#!/bin/bash\n/start-services.sh\nmkdir -p /logs/verifier /logs/tracking\ncd /app\nexport TRACKING_FILE=/logs/tracking/skill_tracking.json\nnohup bun run benchmark/shared/skill_tracker.ts > /logs/tracking/skill_tracker.log 2>&1 &\nexec bun run mcp/server.ts\n' > /start-with-tracker.sh && chmod +x /start-with-tracker.sh
 
 # Override .mcp.json so Claude Code starts game services before the MCP server.
 # Services start in background (&) so the MCP server is immediately responsive.
