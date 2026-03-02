@@ -1,18 +1,21 @@
 /**
- * Aubury's autonomous bot script — v4
+ * Aubury's autonomous bot script — v5
  *
  * Strategy: Prioritise skills by XP/hr efficiency.
  * Phase 1: WC + FM to 15 (quick start)
  * Phase 2: Thieving at Draynor (men, then guards, then masters)
  * Phase 3: Fishing + Cooking + Banking at Draynor
  * Phase 4: Mining + Smelting + Smithing (copper+tin → bronze bars → items)
- * Phase 5: Combat (chickens near Lumbridge) + Bury bones for Prayer XP
+ * Phase 5: Combat — chickens (1–40) then cows (40–70) + Bury bones for Prayer XP
  *
- * v4 changes:
- *   - Banking at Draynor: bank cooked fish and bronze smithed items instead of dropping
- *   - Phase 5: Attack chickens at Lumbridge for melee XP, bury bones for Prayer
- *   - Combat style cycling: controlled/aggressive/defensive to train all melee stats
- *   - Low HP detection: eat from bank if HP < 25%
+ * v5 changes:
+ *   - Fix: remove erroneous sendDropItem() before sendUseItem() for burying bones
+ *     (bones were being dropped on the ground and never buried — wasting Prayer XP)
+ *   - Add Phase 5b: cow training at Lumbridge cow pen (x:3254 z:3265) for 40-70 melee
+ *     Cows give ~3x the HP/XP of chickens and respawn faster in the pen
+ *   - Thieving: bank coins at Draynor instead of dropping (accumulate gp)
+ *   - Thieving: escalate target at lvl 25 → guards (better XP/hr at Draynor)
+ *   - Log banner updated to v5
  *
  * Runs indefinitely. Picks the best available activity each cycle.
  */
@@ -31,6 +34,7 @@ await runScript(async (ctx) => {
     const VARROCK_ANVIL   = { x: 3188, z: 3421 };  // Varrock west smithy anvil
     const DRAYNOR_BANK    = { x: 3092, z: 3243 };  // Draynor Village bank
     const LUMB_CHICKENS   = { x: 3229, z: 3296 };  // Lumbridge chicken pen
+    const LUMB_COWS       = { x: 3254, z: 3265 };  // Lumbridge cow pen (east of castle)
     const MAX_DRIFT       = 18;
 
     // Rock IDs at SE Varrock mine (from learnings/mining.md)
@@ -121,10 +125,14 @@ await runScript(async (ctx) => {
 
     // =====================================================================
     // PHASE 2: Thieving
+    // At lvl 1-24: pickpocket men/women at Draynor
+    // At lvl 25+:  pickpocket guards (better XP/hr — ~16k vs 9k)
+    // Banking: deposit accumulated coins at Draynor bank when inventory full
     // =====================================================================
     const runThieving = async (durationMs: number) => {
         const thievingLvl = getLevel('thieving');
-        log(`=== Thieving (level ${thievingLvl}, ${durationMs / 1000}s) ===`);
+        const useGuards = thievingLvl >= 25;
+        log(`=== Thieving (level ${thievingLvl}, target: ${useGuards ? 'guards' : 'men/women'}, ${durationMs / 1000}s) ===`);
 
         await bot.walkTo(THIEVE_AREA.x, THIEVE_AREA.z);
 
@@ -135,12 +143,20 @@ await runScript(async (ctx) => {
             await dismissDialogs();
             const state = await getState();
 
+            // Bank when full instead of dropping coins (accumulate gp)
             if (state.inventory.length >= 26) {
-                const coins = state.inventory.filter(i => /^coins$/i.test(i.name));
-                for (const c of coins) {
-                    await sdk.sendDropItem(c.slot);
-                    await sdk.waitForTicks(1);
+                log('Thieving — inventory full, banking coins at Draynor');
+                await bot.walkTo(DRAYNOR_BANK.x, DRAYNOR_BANK.z);
+                const openResult = await bot.openBank(8_000);
+                if (openResult.success) {
+                    const bankState = sdk.getState();
+                    const coins = bankState?.inventory.filter(i => /^coins$/i.test(i.name)) ?? [];
+                    for (const c of coins) {
+                        await bot.depositItem(c, -1);
+                        await sdk.waitForTicks(1);
+                    }
                 }
+                await bot.walkTo(THIEVE_AREA.x, THIEVE_AREA.z);
                 continue;
             }
 
@@ -150,10 +166,19 @@ await runScript(async (ctx) => {
                 continue;
             }
 
-            const target = state.nearbyNpcs.find(npc =>
-                /\bman\b|\bwoman\b/i.test(npc.name) &&
-                npc.optionsWithIndex?.some(o => /pickpocket/i.test(o.text))
-            );
+            // Pick target NPC — guards at 25+, men/women below
+            const target = useGuards
+                ? state.nearbyNpcs.find(npc =>
+                    /\bguard\b/i.test(npc.name) &&
+                    npc.optionsWithIndex?.some(o => /pickpocket/i.test(o.text))
+                  ) ?? state.nearbyNpcs.find(npc =>
+                    /\bman\b|\bwoman\b/i.test(npc.name) &&
+                    npc.optionsWithIndex?.some(o => /pickpocket/i.test(o.text))
+                  )
+                : state.nearbyNpcs.find(npc =>
+                    /\bman\b|\bwoman\b/i.test(npc.name) &&
+                    npc.optionsWithIndex?.some(o => /pickpocket/i.test(o.text))
+                  );
 
             if (target) {
                 const ppOpt = target.optionsWithIndex?.find(o => /pickpocket/i.test(o.text));
@@ -489,14 +514,22 @@ await runScript(async (ctx) => {
     };
 
     // =====================================================================
-    // PHASE 5: Combat — attack chickens at Lumbridge pen
+    // PHASE 5: Combat — chickens (1-40) or cows (40-70)
+    // Cows give ~3x the HP and better XP than chickens at higher levels.
     // Cycles combat style to train Attack/Strength/Defence evenly.
-    // Buries bones dropped by chickens for Prayer XP.
+    // Buries bones for Prayer XP.
     // Eats cooked fish from inventory when HP drops below 50%.
     // =====================================================================
     const runCombat = async (durationMs: number) => {
-        log(`=== Combat (chickens) | Atk:${getLevel('attack')} Str:${getLevel('strength')} Def:${getLevel('defence')} Prayer:${getLevel('prayer')} ===`);
-        await bot.walkTo(LUMB_CHICKENS.x, LUMB_CHICKENS.z);
+        const atk = getLevel('attack');
+        const str = getLevel('strength');
+        const def = getLevel('defence');
+        const useCows = atk >= 40 && str >= 40 && def >= 40;
+        const TARGET_AREA = useCows ? LUMB_COWS : LUMB_CHICKENS;
+        const targetName  = useCows ? /^cow$/i : /^chicken$/i;
+
+        log(`=== Combat (${useCows ? 'cows' : 'chickens'}) | Atk:${atk} Str:${str} Def:${def} Prayer:${getLevel('prayer')} ===`);
+        await bot.walkTo(TARGET_AREA.x, TARGET_AREA.z);
         await sdk.waitForTicks(3);
 
         // Cycle through styles: 0=attack(accurate), 1=attack(aggressive), 2=strength, 3=defence
@@ -537,12 +570,9 @@ await runScript(async (ctx) => {
                 }
             }
 
-            // Bury any bones in inventory
+            // Bury any bones in inventory — sendUseItem triggers the default "Bury" action
             const bones = sdk.findInventoryItem(/^bones?$/i);
             if (bones) {
-                await sdk.sendDropItem(bones.slot); // bury = use item on ground... use drop for now
-                // Actually bones get buried by right-clicking "Bury"
-                // sendUseItem triggers the default action which should be "Bury" for bones
                 await sdk.sendUseItem(bones.slot);
                 await sdk.waitForTicks(2);
                 bonesBuried++;
@@ -568,9 +598,9 @@ await runScript(async (ctx) => {
                     await sdk.waitForTicks(2);
                     bonesBuried++;
                 }
-                // Drop feathers/misc junk to make room
-                const feathers = state.inventory.filter(i => /^feather$/i.test(i.name));
-                for (const f of feathers) {
+                // Drop feathers/misc junk to make room (cows drop cow hides — bank those instead)
+                const junk = state.inventory.filter(i => /^feather$/i.test(i.name));
+                for (const f of junk) {
                     await sdk.sendDropItem(f.slot);
                     await sdk.waitForTicks(1);
                 }
@@ -585,20 +615,20 @@ await runScript(async (ctx) => {
                 await sdk.waitForTicks(1);
             }
 
-            // Attack a chicken
+            // Attack target (chicken or cow)
             const { worldX, worldZ } = state.player;
-            if (distFrom(worldX, worldZ, LUMB_CHICKENS.x, LUMB_CHICKENS.z) > MAX_DRIFT) {
-                await bot.walkTo(LUMB_CHICKENS.x, LUMB_CHICKENS.z);
+            if (distFrom(worldX, worldZ, TARGET_AREA.x, TARGET_AREA.z) > MAX_DRIFT) {
+                await bot.walkTo(TARGET_AREA.x, TARGET_AREA.z);
                 continue;
             }
 
-            // Skip chickens already in combat with someone else if possible
+            // Prefer targets not already in combat with someone else
             const chicken = state.nearbyNpcs.find(npc =>
-                /^chicken$/i.test(npc.name) &&
+                targetName.test(npc.name) &&
                 !npc.isInCombat &&
                 npc.optionsWithIndex?.some(o => /^attack$/i.test(o.text))
             ) ?? state.nearbyNpcs.find(npc =>
-                /^chicken$/i.test(npc.name) &&
+                targetName.test(npc.name) &&
                 npc.optionsWithIndex?.some(o => /^attack$/i.test(o.text))
             );
 
@@ -616,7 +646,7 @@ await runScript(async (ctx) => {
             }
         }
 
-        log(`Combat done — ${kills} kills, ${bonesBuried} bones buried | Atk:${getLevel('attack')} Str:${getLevel('strength')} Def:${getLevel('defence')} Prayer:${getLevel('prayer')}`);
+        log(`Combat done (${useCows ? 'cows' : 'chickens'}) — ${kills} kills, ${bonesBuried} bones buried | Atk:${getLevel('attack')} Str:${getLevel('strength')} Def:${getLevel('defence')} Prayer:${getLevel('prayer')}`);
     };
 
     // =====================================================================
@@ -624,8 +654,8 @@ await runScript(async (ctx) => {
     // =====================================================================
     log('');
     log('╔══════════════════════════════════════════╗');
-    log('║  Aubury Bot v4 — Indefinite Skilling     ║');
-    log('║  + Banking + Combat + Prayer             ║');
+    log('║  Aubury Bot v5 — Indefinite Skilling     ║');
+    log('║  + Banking + Cows + Bones Fix + Guards   ║');
     log('╚══════════════════════════════════════════╝');
     log('');
 
@@ -678,9 +708,9 @@ await runScript(async (ctx) => {
             await runBanking();
         }
 
-        // Combat (chickens) every 2 cycles — great XP when low level
-        // Stop at 40/40/40 melee since we'd need better targets after that
-        if (cycle % 2 === 0 && (atk < 40 || str < 40 || def < 40)) {
+        // Combat: chickens until 40/40/40, then cows until 70/70/70
+        // Stop at 70 — would need better targets (Al-Kharid warriors, etc.) after that
+        if (cycle % 2 === 0 && (atk < 70 || str < 70 || def < 70)) {
             await runCombat(4 * 60_000);
         }
 
