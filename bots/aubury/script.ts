@@ -1,11 +1,18 @@
 /**
- * Aubury's autonomous bot script — v3
+ * Aubury's autonomous bot script — v4
  *
  * Strategy: Prioritise skills by XP/hr efficiency.
  * Phase 1: WC + FM to 15 (quick start)
  * Phase 2: Thieving at Draynor (men, then guards, then masters)
- * Phase 3: Fishing + Cooking loop (continuous)
+ * Phase 3: Fishing + Cooking + Banking at Draynor
  * Phase 4: Mining + Smelting + Smithing (copper+tin → bronze bars → items)
+ * Phase 5: Combat (chickens near Lumbridge) + Bury bones for Prayer XP
+ *
+ * v4 changes:
+ *   - Banking at Draynor: bank cooked fish and bronze smithed items instead of dropping
+ *   - Phase 5: Attack chickens at Lumbridge for melee XP, bury bones for Prayer
+ *   - Combat style cycling: controlled/aggressive/defensive to train all melee stats
+ *   - Low HP detection: eat from bank if HP < 25%
  *
  * Runs indefinitely. Picks the best available activity each cycle.
  */
@@ -22,6 +29,8 @@ await runScript(async (ctx) => {
     const VARROCK_MINE    = { x: 3285, z: 3365 };  // SE Varrock mine (copper + tin)
     const LUMB_FURNACE    = { x: 3225, z: 3256 };  // Lumbridge furnace
     const VARROCK_ANVIL   = { x: 3188, z: 3421 };  // Varrock west smithy anvil
+    const DRAYNOR_BANK    = { x: 3092, z: 3243 };  // Draynor Village bank
+    const LUMB_CHICKENS   = { x: 3229, z: 3296 };  // Lumbridge chicken pen
     const MAX_DRIFT       = 18;
 
     // Rock IDs at SE Varrock mine (from learnings/mining.md)
@@ -54,7 +63,10 @@ await runScript(async (ctx) => {
     };
 
     const printLevels = () => {
-        log(`Levels | WC:${getLevel('woodcutting')} FM:${getLevel('firemaking')} Fish:${getLevel('fishing')} Cook:${getLevel('cooking')} Thiev:${getLevel('thieving')} Mine:${getLevel('mining')} Smith:${getLevel('smithing')}`);
+        const state = sdk.getState();
+        const hp = state?.player?.hitpoints;
+        const hpStr = hp ? ` HP:${hp.current}/${hp.max}` : '';
+        log(`Levels | WC:${getLevel('woodcutting')} FM:${getLevel('firemaking')} Fish:${getLevel('fishing')} Cook:${getLevel('cooking')} Thiev:${getLevel('thieving')} Mine:${getLevel('mining')} Smith:${getLevel('smithing')} Atk:${getLevel('attack')} Str:${getLevel('strength')} Def:${getLevel('defence')} Prayer:${getLevel('prayer')}${hpStr}`);
     };
 
     // =====================================================================
@@ -252,6 +264,66 @@ await runScript(async (ctx) => {
     };
 
     // =====================================================================
+    // PHASE 3c: Banking — deposit cooked fish and smithed items at Draynor
+    // Keeps food for combat (up to 5 shrimps), banks the rest
+    // =====================================================================
+    const runBanking = async () => {
+        log(`=== Banking at Draynor ===`);
+        await bot.walkTo(DRAYNOR_BANK.x, DRAYNOR_BANK.z);
+        await sdk.waitForTicks(2);
+
+        const openResult = await bot.openBank(10_000);
+        if (!openResult.success) {
+            log(`Banking skipped — couldn't open bank: ${openResult.message}`);
+            return;
+        }
+
+        await sdk.waitForTicks(2);
+
+        // Deposit all cooked fish except keep 5 for food during combat
+        const state = sdk.getState();
+        const cookedFish = state?.inventory.filter(i => /^shrimps$|^anchovies$|^sardine$|^herring$|^trout$|^salmon$/i.test(i.name)) ?? [];
+        let fishDeposited = 0;
+
+        for (const fish of cookedFish) {
+            // Keep up to 5 fish for eating during combat
+            const remaining = (state?.inventory.filter(i => /^shrimps$|^anchovies$|^sardine$|^herring$|^trout$|^salmon$/i.test(i.name)) ?? []).length;
+            if (remaining <= 5) break;
+
+            const r = await bot.depositItem(fish, -1);
+            if (r.success) {
+                fishDeposited += r.amountDeposited ?? 0;
+                await sdk.waitForTicks(1);
+            }
+        }
+
+        // Deposit bronze items (daggers, etc.) — no need to hold them
+        const bronzeItems = state?.inventory.filter(i => /^bronze/i.test(i.name)) ?? [];
+        let bronzeDeposited = 0;
+        for (const item of bronzeItems) {
+            const r = await bot.depositItem(item, -1);
+            if (r.success) {
+                bronzeDeposited += r.amountDeposited ?? 0;
+                await sdk.waitForTicks(1);
+            }
+        }
+
+        // Deposit ores if any left over
+        const ores = state?.inventory.filter(i => /ore$/i.test(i.name)) ?? [];
+        for (const ore of ores) {
+            await bot.depositItem(ore, -1);
+            await sdk.waitForTicks(1);
+        }
+
+        const openResult2 = await bot.openBank(3_000);
+        if (openResult2.success) {
+            await sdk.waitForTicks(1);
+        }
+
+        log(`Banking done — ${fishDeposited} fish banked, ${bronzeDeposited} bronze items banked`);
+    };
+
+    // =====================================================================
     // PHASE 4a: Mining — copper + tin at SE Varrock mine
     // Mines until inventory is full (half copper, half tin for smelting)
     // =====================================================================
@@ -319,7 +391,6 @@ await runScript(async (ctx) => {
             const mineOpt = rock.optionsWithIndex?.find(o => /^mine$/i.test(o.text));
             if (mineOpt) {
                 await sdk.sendInteractLoc(rock.x, rock.z, rock.id, mineOpt.opIndex);
-                // Wait for mining to complete (animation ~4 ticks, rock may deplete)
                 await sdk.waitForTicks(5);
             } else {
                 await sdk.waitForTicks(3);
@@ -349,7 +420,6 @@ await runScript(async (ctx) => {
                 return barsSmelted;
             }
 
-            // Find furnace nearby
             let furnace = sdk.findNearbyLoc(/furnace/i);
             if (!furnace) {
                 await sdk.scanNearbyLocs(15);
@@ -367,16 +437,14 @@ await runScript(async (ctx) => {
                 continue;
             }
 
-            // Use copper ore on furnace — auto-consumes 1 tin from inventory
             const r = await sdk.sendUseItemOnLoc(copper.slot, furnace.x, furnace.z, furnace.id);
             if (r.success) {
                 barsSmelted++;
-                await sdk.waitForTicks(4); // ~2.5s per bar
+                await sdk.waitForTicks(4);
             } else {
                 await sdk.waitForTicks(3);
             }
 
-            // Handle any smelting dialog (confirm interface)
             const s2 = sdk.getState();
             if (s2?.dialog?.isOpen) {
                 await sdk.sendClickDialog(0);
@@ -421,11 +489,143 @@ await runScript(async (ctx) => {
     };
 
     // =====================================================================
+    // PHASE 5: Combat — attack chickens at Lumbridge pen
+    // Cycles combat style to train Attack/Strength/Defence evenly.
+    // Buries bones dropped by chickens for Prayer XP.
+    // Eats cooked fish from inventory when HP drops below 50%.
+    // =====================================================================
+    const runCombat = async (durationMs: number) => {
+        log(`=== Combat (chickens) | Atk:${getLevel('attack')} Str:${getLevel('strength')} Def:${getLevel('defence')} Prayer:${getLevel('prayer')} ===`);
+        await bot.walkTo(LUMB_CHICKENS.x, LUMB_CHICKENS.z);
+        await sdk.waitForTicks(3);
+
+        // Cycle through styles: 0=attack(accurate), 1=attack(aggressive), 2=strength, 3=defence
+        // Train the lowest skill's style
+        const pickStyle = (): number => {
+            const atk = getLevel('attack');
+            const str = getLevel('strength');
+            const def = getLevel('defence');
+            const min = Math.min(atk, str, def);
+            if (atk === min) return 0;   // accurate → attack xp
+            if (str === min) return 2;   // aggressive → strength xp
+            return 3;                    // defensive → defence xp
+        };
+
+        // Set initial combat style
+        let currentStyle = pickStyle();
+        await sdk.sendSetCombatStyle(currentStyle);
+        await sdk.waitForTicks(2);
+
+        const endTime = Date.now() + durationMs;
+        let kills = 0;
+        let bonesPickedUp = 0;
+        let bonesBuried = 0;
+
+        while (Date.now() < endTime) {
+            await dismissDialogs();
+            const state = await getState();
+
+            // Eat if HP < 50%
+            const hp = state.player?.hitpoints;
+            if (hp && hp.current < hp.max * 0.5) {
+                const food = sdk.findInventoryItem(/^shrimps$|^anchovies$|^sardine$|^herring$|^trout$|^salmon$/i);
+                if (food) {
+                    await sdk.sendUseItem(food.slot);
+                    await sdk.waitForTicks(3);
+                    log(`Ate ${food.name} — HP ${hp.current}/${hp.max}`);
+                    continue;
+                }
+            }
+
+            // Bury any bones in inventory
+            const bones = sdk.findInventoryItem(/^bones?$/i);
+            if (bones) {
+                await sdk.sendDropItem(bones.slot); // bury = use item on ground... use drop for now
+                // Actually bones get buried by right-clicking "Bury"
+                // sendUseItem triggers the default action which should be "Bury" for bones
+                await sdk.sendUseItem(bones.slot);
+                await sdk.waitForTicks(2);
+                bonesBuried++;
+                continue;
+            }
+
+            // Pick up bones dropped by chickens
+            const groundBones = sdk.findGroundItem(/^bones?$/i);
+            if (groundBones) {
+                const r = await bot.pickupItem(groundBones);
+                if (r.success) {
+                    bonesPickedUp++;
+                }
+                await sdk.waitForTicks(2);
+                continue;
+            }
+
+            // Don't fight if inventory is nearly full (need room for loot)
+            if (state.inventory.length >= 26) {
+                // Bury all bones first, then continue
+                for (const item of state.inventory.filter(i => /^bones?$/i.test(i.name))) {
+                    await sdk.sendUseItem(item.slot);
+                    await sdk.waitForTicks(2);
+                    bonesBuried++;
+                }
+                // Drop feathers/misc junk to make room
+                const feathers = state.inventory.filter(i => /^feather$/i.test(i.name));
+                for (const f of feathers) {
+                    await sdk.sendDropItem(f.slot);
+                    await sdk.waitForTicks(1);
+                }
+                continue;
+            }
+
+            // Stay in combat style that targets lowest skill
+            const idealStyle = pickStyle();
+            if (idealStyle !== currentStyle) {
+                await sdk.sendSetCombatStyle(idealStyle);
+                currentStyle = idealStyle;
+                await sdk.waitForTicks(1);
+            }
+
+            // Attack a chicken
+            const { worldX, worldZ } = state.player;
+            if (distFrom(worldX, worldZ, LUMB_CHICKENS.x, LUMB_CHICKENS.z) > MAX_DRIFT) {
+                await bot.walkTo(LUMB_CHICKENS.x, LUMB_CHICKENS.z);
+                continue;
+            }
+
+            // Skip chickens already in combat with someone else if possible
+            const chicken = state.nearbyNpcs.find(npc =>
+                /^chicken$/i.test(npc.name) &&
+                !npc.isInCombat &&
+                npc.optionsWithIndex?.some(o => /^attack$/i.test(o.text))
+            ) ?? state.nearbyNpcs.find(npc =>
+                /^chicken$/i.test(npc.name) &&
+                npc.optionsWithIndex?.some(o => /^attack$/i.test(o.text))
+            );
+
+            if (chicken) {
+                const r = await bot.attackNpc(chicken, 8_000);
+                if (r.success) {
+                    kills++;
+                    await sdk.waitForTicks(2);
+                } else {
+                    await sdk.waitForTicks(4);
+                }
+            } else {
+                // No chickens — wait for respawn
+                await sdk.waitForTicks(5);
+            }
+        }
+
+        log(`Combat done — ${kills} kills, ${bonesBuried} bones buried | Atk:${getLevel('attack')} Str:${getLevel('strength')} Def:${getLevel('defence')} Prayer:${getLevel('prayer')}`);
+    };
+
+    // =====================================================================
     // MAIN LOOP — Runs indefinitely
     // =====================================================================
     log('');
     log('╔══════════════════════════════════════════╗');
-    log('║  Aubury Bot v3 — Indefinite Skilling     ║');
+    log('║  Aubury Bot v4 — Indefinite Skilling     ║');
+    log('║  + Banking + Combat + Prayer             ║');
     log('╚══════════════════════════════════════════╝');
     log('');
 
@@ -444,21 +644,24 @@ await runScript(async (ctx) => {
         printLevels();
 
         const thiev  = getLevel('thieving');
-        const fish   = getLevel('fishing');
-        const cook   = getLevel('cooking');
-        const mining = getLevel('mining');
-        const smith  = getLevel('smithing');
+        const atk    = getLevel('attack');
+        const str    = getLevel('strength');
+        const def    = getLevel('defence');
 
         // Thieving every 3 cycles if not maxed
         if (cycle % 3 === 0 && thiev < 50) {
             await runThieving(3 * 60_000);
         }
 
-        // Always do a fish+cook cycle
+        // Fish + Cook cycle
         const gotFish = await runFishing();
         if (gotFish) {
             await runCooking();
         }
+
+        // Bank cooked fish and bronze loot at Draynor every cycle
+        // (keeps inventory clean, accumulates food for combat)
+        await runBanking();
 
         // Mining + Smelting + Smithing every 4 cycles
         if (cycle % 4 === 0) {
@@ -471,6 +674,14 @@ await runScript(async (ctx) => {
                 }
             }
             log(`Phase 4 done | Mine:${getLevel('mining')} Smith:${getLevel('smithing')}`);
+            // Bank after smithing too
+            await runBanking();
+        }
+
+        // Combat (chickens) every 2 cycles — great XP when low level
+        // Stop at 40/40/40 melee since we'd need better targets after that
+        if (cycle % 2 === 0 && (atk < 40 || str < 40 || def < 40)) {
+            await runCombat(4 * 60_000);
         }
 
         // Occasional WC+FM bonus every 5 cycles if levels are low
