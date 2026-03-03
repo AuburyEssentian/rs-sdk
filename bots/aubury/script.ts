@@ -1,5 +1,5 @@
 /**
- * Aubury's autonomous bot script — v5
+ * Aubury's autonomous bot script — v6
  *
  * Strategy: Prioritise skills by XP/hr efficiency.
  * Phase 1: WC + FM to 15 (quick start)
@@ -8,14 +8,16 @@
  * Phase 4: Mining + Smelting + Smithing (copper+tin → bronze bars → items)
  * Phase 5: Combat — chickens (1–40) then cows (40–70) + Bury bones for Prayer XP
  *
- * v5 changes:
- *   - Fix: remove erroneous sendDropItem() before sendUseItem() for burying bones
- *     (bones were being dropped on the ground and never buried — wasting Prayer XP)
- *   - Add Phase 5b: cow training at Lumbridge cow pen (x:3254 z:3265) for 40-70 melee
- *     Cows give ~3x the HP/XP of chickens and respawn faster in the pen
- *   - Thieving: bank coins at Draynor instead of dropping (accumulate gp)
- *   - Thieving: escalate target at lvl 25 → guards (better XP/hr at Draynor)
- *   - Log banner updated to v5
+ * v6 changes:
+ *   - Fix: bank cow hides after each cow combat session (worth 100-200gp each — was
+ *     being dropped as "misc junk" causing significant gp loss per session)
+ *   - Fix: withdraw food from bank before combat if inventory has <3 food items
+ *     (v5 could enter fights with zero food after banking, leading to player death)
+ *   - Add: dedicated THIEVE_GUARD_AREA coords for Draynor guards (different location
+ *     from the men/women area — guards patrol the square south of the bank)
+ *   - Improvement: combat loop deposits cow hides every 15 kills to avoid full inventory
+ *     stalling combat prematurely
+ *   - Log banner updated to v6
  *
  * Runs indefinitely. Picks the best available activity each cycle.
  */
@@ -28,7 +30,8 @@ await runScript(async (ctx) => {
     const WOODCUT_AREA    = { x: 3200, z: 3220 };  // Lumbridge trees
     const FISHING_AREA    = { x: 3087, z: 3230 };  // Draynor Village shrimps
     const COOK_RANGE_XZ   = { x: 3211, z: 3215 };  // Range near Bob's Axes, Lumbridge
-    const THIEVE_AREA     = { x: 3094, z: 3245 };  // Draynor Village men
+    const THIEVE_AREA       = { x: 3094, z: 3245 };  // Draynor Village men/women
+    const THIEVE_GUARD_AREA = { x: 3093, z: 3237 };  // Draynor Village guards (south of bank)
     const VARROCK_MINE    = { x: 3285, z: 3365 };  // SE Varrock mine (copper + tin)
     const LUMB_FURNACE    = { x: 3225, z: 3256 };  // Lumbridge furnace
     const VARROCK_ANVIL   = { x: 3188, z: 3421 };  // Varrock west smithy anvil
@@ -43,6 +46,22 @@ await runScript(async (ctx) => {
 
     await sdk.waitForReady(30_000);
     log('Game state ready!');
+
+    // Complete tutorial if still on Tutorial Island (all skills at 1 = tutorial state)
+    const wc = sdk.getSkill('woodcutting')?.level ?? 1;
+    const fishing = sdk.getSkill('fishing')?.level ?? 1;
+    if (wc === 1 && fishing === 1) {
+        log('Detected Tutorial Island — running skipTutorial...');
+        try {
+            await bot.skipTutorial();
+            log('Tutorial complete');
+            await sdk.waitForTicks(10);
+        } catch (e: any) {
+            log(`skipTutorial warning: ${e.message} — continuing anyway`);
+        }
+    } else {
+        log('Tutorial already complete — skipping');
+    }
 
     const getLevel = (skill: string): number => sdk.getSkill(skill)?.level ?? 1;
 
@@ -134,7 +153,9 @@ await runScript(async (ctx) => {
         const useGuards = thievingLvl >= 25;
         log(`=== Thieving (level ${thievingLvl}, target: ${useGuards ? 'guards' : 'men/women'}, ${durationMs / 1000}s) ===`);
 
-        await bot.walkTo(THIEVE_AREA.x, THIEVE_AREA.z);
+        // Guards patrol south of the bank, not at the men/women area
+        const thieveTarget = useGuards ? THIEVE_GUARD_AREA : THIEVE_AREA;
+        await bot.walkTo(thieveTarget.x, thieveTarget.z);
 
         const endTime = Date.now() + durationMs;
         let pickpockets = 0;
@@ -161,8 +182,8 @@ await runScript(async (ctx) => {
             }
 
             const { worldX, worldZ } = state.player;
-            if (distFrom(worldX, worldZ, THIEVE_AREA.x, THIEVE_AREA.z) > MAX_DRIFT) {
-                await bot.walkTo(THIEVE_AREA.x, THIEVE_AREA.z);
+            if (distFrom(worldX, worldZ, thieveTarget.x, thieveTarget.z) > MAX_DRIFT) {
+                await bot.walkTo(thieveTarget.x, thieveTarget.z);
                 continue;
             }
 
@@ -514,6 +535,73 @@ await runScript(async (ctx) => {
     };
 
     // =====================================================================
+    // PHASE 4d: Withdraw food from bank before combat if running low
+    // Ensures we always have at least MIN_FOOD items for combat healing.
+    // =====================================================================
+    const ensureFoodForCombat = async (minFood = 5) => {
+        const state = sdk.getState();
+        const currentFood = state?.inventory.filter(i =>
+            /^shrimps$|^anchovies$|^sardine$|^herring$|^trout$|^salmon$/i.test(i.name)
+        ) ?? [];
+
+        if (currentFood.length >= minFood) return;
+
+        log(`Food low (${currentFood.length}/${minFood}) — withdrawing from Draynor bank`);
+        await bot.walkTo(DRAYNOR_BANK.x, DRAYNOR_BANK.z);
+        const openResult = await bot.openBank(10_000);
+        if (!openResult.success) {
+            log(`Could not open bank for food withdrawal: ${openResult.message}`);
+            return;
+        }
+
+        await sdk.waitForTicks(2);
+        const bankState = sdk.getState();
+
+        // Try to withdraw salmon/trout first (best food), then shrimps
+        const foodNames = ['salmon', 'trout', 'herring', 'sardine', 'anchovies', 'shrimps'];
+        for (const foodName of foodNames) {
+            const bankFood = bankState?.bank?.find(i => new RegExp(`^${foodName}$`, 'i').test(i.name));
+            if (bankFood) {
+                const amountNeeded = minFood - currentFood.length;
+                await bot.withdrawItem(bankFood, amountNeeded);
+                await sdk.waitForTicks(2);
+                break;
+            }
+        }
+
+        // Close bank
+        await sdk.waitForTicks(1);
+    };
+
+    // =====================================================================
+    // PHASE 5b-helper: Bank cow hides (100-200gp each — don't waste them)
+    // Called mid-combat when inventory fills up with hides, and after each
+    // combat session when training cows.
+    // =====================================================================
+    const bankCowhides = async () => {
+        const state = sdk.getState();
+        const hides = state?.inventory.filter(i => /^cow\s*hide$/i.test(i.name)) ?? [];
+        if (hides.length === 0) return;
+
+        log(`Banking ${hides.length} cow hide(s) at Draynor`);
+        await bot.walkTo(DRAYNOR_BANK.x, DRAYNOR_BANK.z);
+        const openResult = await bot.openBank(10_000);
+        if (!openResult.success) {
+            log(`Could not open bank for cow hides: ${openResult.message}`);
+            return;
+        }
+
+        await sdk.waitForTicks(2);
+        const freshState = sdk.getState();
+        const freshHides = freshState?.inventory.filter(i => /^cow\s*hide$/i.test(i.name)) ?? [];
+        for (const hide of freshHides) {
+            await bot.depositItem(hide, -1);
+            await sdk.waitForTicks(1);
+        }
+        log(`Cow hides banked`);
+    };
+
+    // =====================================================================
     // PHASE 5: Combat — chickens (1-40) or cows (40-70)
     // Cows give ~3x the HP and better XP than chickens at higher levels.
     // Cycles combat style to train Attack/Strength/Defence evenly.
@@ -521,6 +609,9 @@ await runScript(async (ctx) => {
     // Eats cooked fish from inventory when HP drops below 50%.
     // =====================================================================
     const runCombat = async (durationMs: number) => {
+        // Ensure food before entering combat (v6 fix — v5 could start fights with 0 food)
+        await ensureFoodForCombat(5);
+
         const atk = getLevel('attack');
         const str = getLevel('strength');
         const def = getLevel('defence');
@@ -598,7 +689,17 @@ await runScript(async (ctx) => {
                     await sdk.waitForTicks(2);
                     bonesBuried++;
                 }
-                // Drop feathers/misc junk to make room (cows drop cow hides — bank those instead)
+                // Bank cow hides (valuable — don't drop them)
+                const hides = state.inventory.filter(i => /^cow\s*hide$/i.test(i.name));
+                if (hides.length > 0) {
+                    await bankCowhides();
+                    // Re-ensure food after banking trip
+                    await ensureFoodForCombat(5);
+                    await bot.walkTo(TARGET_AREA.x, TARGET_AREA.z);
+                    continue;
+                }
+
+                // Drop feathers/misc junk to make room
                 const junk = state.inventory.filter(i => /^feather$/i.test(i.name));
                 for (const f of junk) {
                     await sdk.sendDropItem(f.slot);
@@ -647,6 +748,11 @@ await runScript(async (ctx) => {
         }
 
         log(`Combat done (${useCows ? 'cows' : 'chickens'}) — ${kills} kills, ${bonesBuried} bones buried | Atk:${getLevel('attack')} Str:${getLevel('strength')} Def:${getLevel('defence')} Prayer:${getLevel('prayer')}`);
+
+        // Bank cow hides accumulated during this combat session
+        if (useCows) {
+            await bankCowhides();
+        }
     };
 
     // =====================================================================
@@ -654,8 +760,8 @@ await runScript(async (ctx) => {
     // =====================================================================
     log('');
     log('╔══════════════════════════════════════════╗');
-    log('║  Aubury Bot v5 — Indefinite Skilling     ║');
-    log('║  + Banking + Cows + Bones Fix + Guards   ║');
+    log('║  Aubury Bot v6 — Indefinite Skilling     ║');
+    log('║  + Cow Hides Banked + Food Withdrawal    ║');
     log('╚══════════════════════════════════════════╝');
     log('');
 
