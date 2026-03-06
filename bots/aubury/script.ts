@@ -1,5 +1,5 @@
 /**
- * Aubury's autonomous bot script — v7
+ * Aubury's autonomous bot script — v7.2
  *
  * Strategy: Prioritise skills by XP/hr efficiency.
  * Phase 1: WC + FM to 15 (quick start)
@@ -20,6 +20,19 @@
  *   - Fix: thieving banking loop now also deposits seeds from master farmer pockets.
  *   - Log banner updated to v7
  *
+ * v7.1 fixes:
+ *   - Bug: main loop combat gate was `atk < 70 || str < 70 || def < 70`, which
+ *     prevented warriors from ever training. Changed to `< 99` so combat continues
+ *     through the warrior phase all the way to max level.
+ *   - Agility: replaced final `tree top` obstacle with `obstacle pipe` (the actual
+ *     lap-completing obstacle on Gnome Stronghold course).
+ *   - Agility: raised target level from 35 → 50 for more meaningful run recovery.
+ *
+ * v7.2 fixes:
+ *   - Bug: runCooking referenced undefined `DRAYNOR_BANK_XZ` — should be `DRAYNOR_BANK`.
+ *     This caused a runtime crash every time the cooking phase ran. Fixed to use
+ *     the correct constant name.
+ *
  * Runs indefinitely. Picks the best available activity each cycle.
  */
 import { runScript } from '../../sdk/runner';
@@ -30,7 +43,7 @@ await runScript(async (ctx) => {
     // === CONFIGURATION ===
     const WOODCUT_AREA        = { x: 3200, z: 3220 };  // Lumbridge trees
     const FISHING_AREA        = { x: 3087, z: 3230 };  // Draynor Village shrimps
-    const COOK_RANGE_XZ       = { x: 3211, z: 3215 };  // Range near Bob's Axes, Lumbridge
+    const COOK_RANGE_XZ       = { x: 3274, z: 3183 };  // Al-Kharid cooking range (no doors)
     const THIEVE_AREA         = { x: 3094, z: 3245 };  // Draynor Village men/women
     const THIEVE_GUARD_AREA   = { x: 3093, z: 3237 };  // Draynor Village guards (south of bank)
     const THIEVE_MASTER_FARM  = { x: 3079, z: 3255 };  // Draynor Village master farmer (north of bank)
@@ -299,16 +312,39 @@ await runScript(async (ctx) => {
     };
 
     // =====================================================================
-    // PHASE 3b: Cooking
+    // PHASE 3b: Cooking — make fire at Draynor, cook on it (avoids door issues)
     // =====================================================================
     const runCooking = async () => {
-        log(`=== Cooking at Lumbridge | Cooking ${getLevel('cooking')} ===`);
-        await bot.walkTo(COOK_RANGE_XZ.x, COOK_RANGE_XZ.z);
+        log(`=== Cooking at Draynor (fire) | Cooking ${getLevel('cooking')} ===`);
+
+        // Walk to open area near Draynor bank — flat, no doors, tiles are free
+        await bot.walkTo(DRAYNOR_BANK.x - 5, DRAYNOR_BANK.z);
         await sdk.waitForTicks(2);
 
+        // Ensure we have a tinderbox and logs to make fire
+        let logs = sdk.findInventoryItem(/^logs?$/i);
+        let tinderbox = sdk.findInventoryItem(/tinderbox/i);
+        if (!logs || !tinderbox) {
+            log('Withdrawing logs + tinderbox from bank...');
+            await bot.openBank();
+            if (!tinderbox) await bot.withdrawItem('Tinderbox', 1);
+            if (!logs)      await bot.withdrawItem('Logs', 1);
+            await bot.closeBank();
+            await sdk.waitForTicks(3);
+            logs = sdk.findInventoryItem(/^logs?$/i);
+            tinderbox = sdk.findInventoryItem(/tinderbox/i);
+        }
+
+        // Light fire
+        if (logs && tinderbox) {
+            log('Lighting fire...');
+            await bot.burnLogs(logs);
+            await sdk.waitForTicks(5);
+        }
+
+        // Cook all raw fish on the fire
         let cooked = 0;
         let failures = 0;
-
         while (failures < 5) {
             await dismissDialogs();
 
@@ -318,18 +354,21 @@ await runScript(async (ctx) => {
                 break;
             }
 
-            let range = sdk.findNearbyLoc(/^range$/i);
-            if (!range) {
-                await sdk.scanNearbyLocs(12);
-                range = sdk.findNearbyLoc(/^range$/i);
+            // Find the fire we just made (or any nearby fire)
+            let fire = sdk.findNearbyLoc(/^fire$/i);
+            if (!fire) {
+                await sdk.scanNearbyLocs(8);
+                fire = sdk.findNearbyLoc(/^fire$/i);
             }
-            if (!range) {
-                await bot.walkTo(COOK_RANGE_XZ.x, COOK_RANGE_XZ.z);
-                await sdk.waitForTicks(3);
+            if (!fire) {
+                // Fire may have gone out — light another
+                const l = sdk.findInventoryItem(/^logs?$/i);
+                if (l) { await bot.burnLogs(l); await sdk.waitForTicks(5); }
+                failures++;
                 continue;
             }
 
-            const r = await bot.useItemOnLoc(rawFish, range);
+            const r = await bot.useItemOnLoc(rawFish, fire);
             if (r.success) {
                 cooked++;
                 failures = 0;
@@ -848,6 +887,8 @@ await runScript(async (ctx) => {
 
         for (let lap = 0; lap < laps; lap++) {
             // The Gnome Stronghold course is sequential — each obstacle has a fixed name
+            // Full course: log balance → net (up) → branch (up) → balancing rope →
+            //              branch (down) → net (down) → obstacle pipe (lap completer)
             const obstacles = [
                 /log\s*balance/i,
                 /obstacle\s*net/i,
@@ -855,7 +896,7 @@ await runScript(async (ctx) => {
                 /balancing\s*rope/i,
                 /tree\s*branch/i,
                 /obstacle\s*net/i,
-                /tree\s*top/i,
+                /obstacle\s*pipe/i,
             ];
 
             let lapSuccess = true;
@@ -1081,8 +1122,8 @@ await runScript(async (ctx) => {
     // =====================================================================
     log('');
     log('╔══════════════════════════════════════════════════╗');
-    log('║  Aubury Bot v7 — Indefinite Skilling             ║');
-    log('║  + Warriors at 70+ + Master Farmers + Agility   ║');
+    log('║  Aubury Bot v7.2 — Indefinite Skilling           ║');
+    log('║  + Warriors 70→99 + Master Farmers + Agility    ║');
     log('╚══════════════════════════════════════════════════╝');
     log('');
 
@@ -1135,15 +1176,15 @@ await runScript(async (ctx) => {
             await runBanking();
         }
 
-        // Combat: chickens until 40/40/40, then cows until 70/70/70
-        // Stop at 70 — would need better targets (Al-Kharid warriors, etc.) after that
-        if (cycle % 2 === 0 && (atk < 70 || str < 70 || def < 70)) {
+        // Combat: chickens until 40/40/40, cows until 70/70/70, warriors until 99/99/99
+        // runCombat internally delegates to runWarriors when all stats ≥ 70
+        if (cycle % 2 === 0 && (atk < 99 || str < 99 || def < 99)) {
             await runCombat(4 * 60_000);
         }
 
-        // Agility every 6 cycles if below 35 — Gnome Stronghold course
-        // Run energy recovery at 35+ agility is noticeably better (saves time walking)
-        if (cycle % 6 === 0 && getLevel('agility') < 35) {
+        // Agility every 6 cycles if below 50 — Gnome Stronghold course
+        // Run energy recovery improves meaningfully through 50; beyond that marginal
+        if (cycle % 6 === 0 && getLevel('agility') < 50) {
             await runAgility(5);
         }
 
