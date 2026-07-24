@@ -2877,7 +2877,13 @@ export class BotActions {
 
         const result = await this.sdk.sendInteractNpc(npc.index, pickOpt.opIndex);
         if (!result.success) {
-            return { success: false, message: result.message, reason: 'timeout' };
+            // Not retried by withDoorRetry: a dropped dispatch means the client
+            // stalled, and re-sending just burns another actionTimeout.
+            return {
+                success: false,
+                message: `Pickpocket dispatch failed on ${npc.name}: ${result.message}`,
+                reason: 'dispatch_failed'
+            };
         }
 
         try {

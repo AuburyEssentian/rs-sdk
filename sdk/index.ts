@@ -69,6 +69,19 @@ interface PendingAction {
     timeout: ReturnType<typeof setTimeout>;
 }
 
+/**
+ * A dispatch that never produced a result: the browser client didn't answer in
+ * time, the socket closed mid-flight, or the gateway reported an error.
+ * sendAction converts these into failed ActionResults so a single dropped
+ * action reports itself instead of killing the caller's script.
+ */
+class ActionDispatchError extends Error {
+    constructor(message: string, readonly reason: 'timeout' | 'disconnected' | 'error') {
+        super(message);
+        this.name = 'ActionDispatchError';
+    }
+}
+
 interface PendingScreenshot {
     resolve: (dataUrl: string) => void;
     reject: (error: Error) => void;
@@ -229,7 +242,7 @@ export class BotSDK {
 
                 for (const [actionId, pending] of this.pendingActions) {
                     clearTimeout(pending.timeout);
-                    pending.reject(new Error('Connection closed'));
+                    pending.reject(new ActionDispatchError('Connection closed', 'disconnected'));
                 }
                 this.pendingActions.clear();
 
@@ -953,22 +966,34 @@ export class BotSDK {
 
         const actionId = `act-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        return new Promise((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                this.pendingActions.delete(actionId);
-                reject(new Error(`Action timed out: ${action.type}`));
-            }, this.config.actionTimeout);
+        try {
+            return await new Promise<ActionResult>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    this.pendingActions.delete(actionId);
+                    reject(new ActionDispatchError(`Action timed out: ${action.type}`, 'timeout'));
+                }, this.config.actionTimeout);
 
-            this.pendingActions.set(actionId, { resolve, reject, timeout });
+                this.pendingActions.set(actionId, { resolve, reject, timeout });
 
-            this.send({
-                type: 'sdk_action',
-                username: this.config.botUsername,
-                actionId,
-                action,
-                actionTimeoutMs: this.config.actionTimeout
+                this.send({
+                    type: 'sdk_action',
+                    username: this.config.botUsername,
+                    actionId,
+                    action,
+                    actionTimeoutMs: this.config.actionTimeout
+                });
             });
-        });
+        } catch (err) {
+            // A dropped dispatch is a reportable failure, not a fatal one: callers
+            // check result.success and can retry, reposition, or give up. Losing
+            // the connection outright still throws from the guard above.
+            return {
+                success: false,
+                message: err instanceof Error ? err.message : String(err),
+                reason: err instanceof ActionDispatchError ? err.reason : 'error',
+                phase: 'dispatch'
+            };
+        }
     }
 
     /** Send walk command to coordinates. */
@@ -1639,7 +1664,7 @@ export class BotSDK {
                 if (message.result) {
                     pending.resolve(message.result);
                 } else {
-                    pending.reject(new Error('No result in action response'));
+                    pending.reject(new ActionDispatchError('No result in action response', 'error'));
                 }
             }
         }
@@ -1656,7 +1681,7 @@ export class BotSDK {
                 if (pending) {
                     clearTimeout(pending.timeout);
                     this.pendingActions.delete(message.actionId);
-                    pending.reject(new Error(message.error || 'Unknown error'));
+                    pending.reject(new ActionDispatchError(message.error || 'Unknown error', 'error'));
                 }
             }
             if (message.screenshotId) {
