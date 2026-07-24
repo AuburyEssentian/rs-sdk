@@ -13,7 +13,7 @@
  * Success criteria: Herblore XP gained (potion made)
  */
 
-import { runTest, dismissDialog, sleep } from './utils/test-runner';
+import { runTest, sleep } from './utils/test-runner';
 import { Items, Locations } from './utils/save-generator';
 
 const MAX_TURNS = 100;

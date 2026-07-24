@@ -3,7 +3,7 @@
  * Fletching Product Selection Test (SDK)
  * Tests that non-default products (bows) can be selected in the fletching dialog.
  *
- * This test reproduces Issue 2 from SDK_ISSUES.md:
+ * Regression test for the fletching product-selection bug:
  * - Clicking a product name in the fletching dialog should select it
  * - Then clicking "Ok" should craft the selected product
  *

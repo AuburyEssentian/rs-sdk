@@ -3,7 +3,7 @@
  * Shop Close Test (SDK)
  * Tests that shop interface properly closes after selling items.
  *
- * This test reproduces Issue 1 from SDK_ISSUES.md:
+ * Regression test for the shop-interface teardown bug:
  * - After selling items, the shop interface should fully close
  * - Both shop.isOpen AND interface.isOpen should become false
  *
@@ -115,7 +115,7 @@ runTest({
         console.log(`FAIL: interface.isOpen is still true!`);
         console.log(`       interfaceId=${interfaceState?.interfaceId}`);
         console.log(`       options=${JSON.stringify(interfaceState?.options)}`);
-        console.log('This is the bug from SDK_ISSUES.md - interface stays open after shop closes');
+        console.log('Regression: interface stays open after shop closes');
         return false;
     }
     console.log('PASS: interface.isOpen is false');

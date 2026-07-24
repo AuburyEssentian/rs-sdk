@@ -141,7 +141,6 @@ export async function getSharedBrowser(headless: boolean = true, background: boo
 /**
  * Release a reference to the shared browser.
  * Does NOT close the browser - it stays open for other processes.
- * Use closeSharedBrowser() to force-close the shared browser.
  */
 export async function releaseSharedBrowser(): Promise<void> {
     sharedBrowserRefCount--;
@@ -150,22 +149,6 @@ export async function releaseSharedBrowser(): Promise<void> {
         sharedBrowserRefCount = 0;
         // Don't close browser - leave it running for other processes
     }
-}
-
-/**
- * Force close the shared browser and clean up endpoint file.
- * Call this when you're done with all scripts and want to free resources.
- */
-export async function closeSharedBrowser(): Promise<void> {
-    // Clean up endpoint file
-    try { unlinkSync(BROWSER_ENDPOINT_FILE); } catch {}
-
-    if (sharedBrowser && sharedBrowser.connected) {
-        await sharedBrowser.close();
-        console.log('[Browser] Closed shared browser');
-    }
-    sharedBrowser = null;
-    sharedBrowserRefCount = 0;
 }
 
 export interface BrowserSession {

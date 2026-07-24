@@ -1,5 +1,30 @@
 # Test Principles
 
+## Two tiers of test
+
+**Unit tests** — `sdk/test/*.test.ts` and `server/webclient/src/bot/*.test.ts`.
+Pure logic over fabricated state, no game server, no browser. These run in CI
+via `bun run check` and finish in under a second:
+
+```bash
+bun run test        # every unit test
+```
+
+Write these with `bun:test` (`describe`/`test`/`expect`). Never call
+`process.exit()` in one — Bun runs all test files in a single process, so an
+exit truncates the run and the remaining files are silently skipped.
+
+**Integration scripts** — every other `sdk/test/*.ts`. Each is a standalone
+`bun` program that spawns a real bot against a local game server and asserts on
+observed state. They need `bun server/...` running plus Puppeteer, so CI does
+not run them; execute one at a time while working on the subsystem it covers:
+
+```bash
+HEADLESS=true bun sdk/test/mining.ts
+```
+
+The rest of this document covers the integration scripts.
+
 ## Speed
 - Tests should complete (or fail) as quickly as possible
 - Exit immediately when success criteria is met - don't keep running

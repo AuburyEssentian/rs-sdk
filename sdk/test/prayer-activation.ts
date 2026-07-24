@@ -7,7 +7,7 @@
  * proving the server recognized the activation (not just a client-side varp flip).
  */
 
-import { runTest, dismissDialog, sleep } from './utils/test-runner';
+import { runTest, sleep } from './utils/test-runner';
 import { Locations } from './utils/save-generator';
 
 runTest({

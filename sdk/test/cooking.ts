@@ -7,7 +7,7 @@
  * with raw shrimp ready.
  */
 
-import { runTest, dismissDialog, sleep } from './utils/test-runner';
+import { runTest, sleep } from './utils/test-runner';
 import { Items } from './utils/save-generator';
 
 const MAX_TURNS = 200;

@@ -129,50 +129,5 @@ export async function dismissDialog(sdk: BotSDK, optionIndex: number = 0): Promi
     return false;
 }
 
-/**
- * Poll a condition until it returns true or timeout is reached.
- * Unlike sdk.waitForCondition, this works with any async check function.
- *
- * @param check - Function that returns true when condition is met
- * @param timeoutMs - Maximum time to wait (default: 10000ms)
- * @param pollIntervalMs - Time between checks (default: 100ms)
- * @returns true if condition was met, false if timed out
- *
- * @example
- * ```ts
- * // Wait for inventory to have an item
- * const gotItem = await waitForCondition(
- *   () => sdk.getInventory().length > initialCount,
- *   5000
- * );
- *
- * // Wait with custom polling interval
- * const ready = await waitForCondition(
- *   async () => {
- *     const resp = await fetch('/status');
- *     return resp.ok;
- *   },
- *   30000,
- *   500
- * );
- * ```
- */
-export async function waitForCondition(
-    check: () => boolean | Promise<boolean>,
-    timeoutMs: number = 10000,
-    pollIntervalMs: number = 100
-): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-
-    while (Date.now() < deadline) {
-        if (await check()) {
-            return true;
-        }
-        await sleep(pollIntervalMs);
-    }
-
-    return false;
-}
-
 // Re-export sleep for convenience
 export { sleep } from './browser';

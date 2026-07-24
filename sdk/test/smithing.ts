@@ -7,7 +7,7 @@
  * This is an atomic test - mining is tested separately in mining.ts.
  */
 
-import { runTest, dismissDialog, sleep } from './utils/test-runner';
+import { runTest, sleep } from './utils/test-runner';
 import { Items } from './utils/save-generator';
 
 const MAX_TURNS = 200;
