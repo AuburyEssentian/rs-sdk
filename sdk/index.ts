@@ -1041,9 +1041,36 @@ export class BotSDK {
         return this.sendAction({ type: 'dropItem', slot, reason: 'SDK' });
     }
 
-    /** Use one inventory item on another. */
+    /**
+     * Use one inventory item on another.
+     *
+     * Rejected up front while a shop or bank modal is open: those replace the
+     * inventory tab, so the server drops the packet as "component not visible"
+     * and sends no message at all. Close the modal first — `bot.closeShop()`,
+     * `bot.closeInterface()`, or `sendCloseModal()`.
+     */
     async sendUseItemOnItem(sourceSlot: number, targetSlot: number): Promise<ActionResult> {
+        const blocker = this.describeInventoryBlocker();
+        if (blocker) {
+            return { success: false, message: blocker, reason: 'modal_open' };
+        }
         return this.sendAction({ type: 'useItemOnItem', sourceSlot, targetSlot, reason: 'SDK' });
+    }
+
+    /**
+     * Name the open modal that hides the inventory tab from the server, if any.
+     * Returns null when inventory packets can be expected to land.
+     */
+    private describeInventoryBlocker(): string | null {
+        const state = this.getState();
+        if (!state) return null;
+        if (state.shop.isOpen) {
+            return 'Shop interface is open, which replaces the inventory tab - the server will silently drop this. Close it first (bot.closeShop() / sdk.sendCloseShop()).';
+        }
+        if (state.bank.isOpen) {
+            return 'Bank interface is open, which replaces the inventory tab - the server will silently drop this. Close it first (bot.closeInterface() / sdk.sendCloseModal()).';
+        }
+        return null;
     }
 
     /** Use an inventory item on a location. */

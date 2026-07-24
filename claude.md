@@ -148,6 +148,8 @@ For the complete method reference, see **[sdk/API.md](sdk/API.md)** (auto-genera
 | `openBank()` | Open nearest bank |
 | `depositItem(target, amount?)` | Deposit item to bank |
 | `withdrawItem(slot, amount?)` | Withdraw item from bank |
+| `closeInterface()` | Close any open modal (shop, bank, book, quest scroll) |
+| `closeShop()` / `closeBank()` | Close the shop / bank interface |
 | `openShop(target?)` | Open shop via shopkeeper NPC |
 | `buyFromShop(target, amount?)` | Buy item from open shop |
 | `sellToShop(target, amount?)` | Sell item to open shop |
@@ -174,8 +176,10 @@ For the complete method reference, see **[sdk/API.md](sdk/API.md)** (auto-genera
 | `findNearbyNpc(pattern)` / `findNearbyLoc(pattern)` | Find nearby entities |
 | `findGroundItem(pattern)` | Find ground items |
 | `getDialog()` | Current dialog state |
-| `sendClickDialog(option)` | Click dialog option |
+| `sendClickDialog(option)` | Click dialog option by its published `index` |
+| `clickDialogByText(pattern)` | Click dialog option by label — prefer this |
 | `sendClickComponent(id)` | Click interface button |
+| `sendCloseModal()` / `sendCloseShop()` | Close the open modal / shop |
 | `sendDropItem(slot)` | Drop inventory item |
 | `sendUseItem(slot)` | Use inventory item (bury, etc.) |
 | `sendUseItemOnItem(src, dst)` | Combine two items |
@@ -201,6 +205,34 @@ monitoring, avoid overlapping action programs on the same bot, and inspect
 `sdk.getStateAge()` before acting after a disconnect or long pause.
 
 ---
+
+### Modals Hide the Inventory
+
+A shop or bank modal replaces the inventory tab, so the server rejects
+inventory packets sent underneath it as "component not visible" — with no game
+message. Close the modal before doing anything else:
+
+```typescript
+await bot.closeInterface();   // any modal
+await bot.closeShop();        // shop specifically
+await sdk.sendCloseModal();   // low-level
+```
+
+Don't click the interface's own "Close Window" component id. It's a
+client-side close button with no server trigger; the SDK now routes those to a
+close for you, but the named methods above are what to reach for.
+
+### Dialog Options Are Not In Product Order
+
+Skill dialogs (fletching, crafting) publish four buttons *per product* — Make
+X, Make 10, Make 5, then one labelled with the product name. Arrow shafts are
+option 4 of 12, not option 1. Never assume ordering:
+
+```typescript
+const dialog = sdk.getDialog();
+console.log(dialog?.options.map(o => `${o.index}: ${o.text}`));
+await sdk.clickDialogByText(/arrow shaft/i);   // or bot.fletchLogs('arrow shaft')
+```
 
 ### Dismiss Level-Up Dialogs
 

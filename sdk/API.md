@@ -105,7 +105,7 @@
 
 | Signature | Description |
 |---|---|
-| `async fletchLogs(product?: string): Promise<FletchResult>` | Fletch logs into bows or arrow shafts using a knife. |
+| `async fletchLogs(product?: string): Promise<FletchResult>` | Fletch logs into bows or arrow shafts using a knife. `product` is matched against the dialog's visible product labels ("15 Arrow Shafts", "Oak Short Bow", ...), so 'arrow shaft', 'shortbow' and 'oak long' all resolve. Omit it to take the first product offered. One call makes one batch — 15 shafts, or one bow. |
 | `async craftLeather(product?: string): Promise<CraftLeatherResult>` | Craft leather into armour using needle and thread. |
 | `async smithAtAnvil(product: string \| number = 'dagger', options: { barPattern?: RegExp; timeout?: number } = {}): Promise<SmithResult>` | Smith a bar into an item at an anvil. |
 | `async craftJewelry(options: { barPattern?: RegExp; product?: string; gem?: string; timeout?: number; } = {}): Promise<CraftJewelryResult>` | Craft jewelry at a furnace using a gold/silver bar and optional gem. Requires: bar + mould in inventory (ring mould, necklace mould, or amulet mould). Optionally a gem for gem-set jewelry. |
@@ -221,7 +221,7 @@
 | `async sendUseItem(slot: number, option: number = 1): Promise<ActionResult>` | Use an inventory item (eat, equip, etc). |
 | `async sendUseEquipmentItem(slot: number, option: number = 1): Promise<ActionResult>` | Use an equipped item (remove, operate, etc). |
 | `async sendDropItem(slot: number): Promise<ActionResult>` | Drop an inventory item. |
-| `async sendUseItemOnItem(sourceSlot: number, targetSlot: number): Promise<ActionResult>` | Use one inventory item on another. |
+| `async sendUseItemOnItem(sourceSlot: number, targetSlot: number): Promise<ActionResult>` | Use one inventory item on another. Rejected up front while a shop or bank modal is open: those replace the inventory tab, so the server drops the packet as "component not visible" and sends no message at all. Close the modal first — `bot.closeShop()`, `bot.closeInterface()`, or `sendCloseModal()`. |
 | `async sendUseItemOnLoc(itemSlot: number, x: number, z: number, locId: number): Promise<ActionResult>` | Use an inventory item on a location. |
 | `async sendUseItemOnNpc(itemSlot: number, npcIndex: number): Promise<ActionResult>` | Use an inventory item on an NPC. |
 | `async sendClickDialog(option: number = 0): Promise<ActionResult>` | Click a dialog option by its server-assigned index. IMPORTANT: `option` is the **server-assigned index** stored on each `DialogOption.index` field — NOT the array position in `dialog.options`. Server-assigned indices are 1-based: `dialog.options[0].index === 1`. Pass `0` only as the implicit "continue" click for dialogs with no selectable options (the common pattern: pass through narration pages). To click an option by its visible text, prefer `clickDialogByText()`, which avoids the index-vs-position footgun entirely. |
