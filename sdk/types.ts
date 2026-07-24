@@ -644,7 +644,8 @@ export interface PickpocketResult {
     success: boolean;
     message: string;
     xpGained?: number;
-    reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout';
+    /** 'dispatch_failed' = the interaction never reached the game (client stalled or dropped it). */
+    reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout' | 'dispatch_failed';
 }
 
 export interface CraftJewelryResult {
