@@ -3,7 +3,7 @@
 
 import { BotSDK, deriveGatewayUrl } from './index';
 import { BotActions } from './actions';
-import { formatWorldState } from './formatter';
+import { formatWorldStateSummary } from './formatter';
 import type { BotWorldState } from './types';
 import { readFileSync, existsSync } from 'fs';
 import { dirname, join, resolve } from 'path';
@@ -34,7 +34,11 @@ export interface RunOptions {
     autoConnect?: boolean;
     /** Disconnect when done (default: false) */
     disconnectAfter?: boolean;
-    /** Print world state after execution (default: true) */
+    /**
+     * Print a short state summary after execution (default: true) -
+     * position, XP gained, inventory, anything blocking, last few messages.
+     * Run `bun sdk/cli.ts {username}` for the full world state.
+     */
     printState?: boolean;
     /**
      * How to handle bot client disconnection during script execution:
@@ -261,6 +265,12 @@ export async function runScript(
         sdk,
     };
 
+    // Baseline XP so the summary can report what the script actually earned
+    const xpBefore: Record<string, number> = {};
+    for (const skill of sdk.getState()?.skills ?? []) {
+        xpBefore[skill.name] = skill.experience;
+    }
+
     // Clean exit on signals - prevents orphaned processes when parent shell is killed
     let signalReceived = false;
     const signalCleanup = (signal: string) => {
@@ -361,21 +371,22 @@ export async function runScript(
         console.log(typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result));
     }
 
-    // Print error if any
+    // Print error if any. Also fail the process so `bun script.ts` exits non-zero.
     if (error) {
         console.log('');
-        console.log('── Error ──');
-        console.log(error.message);
-        if (error.stack) {
-            console.log(error.stack);
+        console.log(`── Error ── ${error.name}: ${error.message}`);
+        // First few frames are enough to locate it
+        for (const frame of (error.stack ?? '').split('\n').slice(1, 5)) {
+            console.log(frame);
         }
+        if (managedConnection) process.exitCode = 1;
     }
 
     // Print state if requested
     if (printState && finalState) {
         console.log('');
-        console.log('── World State ──');
-        console.log(formatWorldState(finalState, sdk.getStateAge()));
+        console.log('── State ──');
+        console.log(formatWorldStateSummary(finalState, sdk.getStateAge(), { xpBefore }));
     }
 
     // Disconnect if requested (only for managed connections)

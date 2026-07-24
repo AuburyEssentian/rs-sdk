@@ -18,6 +18,125 @@ function formatAge(ms: number): string {
 }
 
 /**
+ * Format world state as a handful of lines: position, vitals, XP gained,
+ * inventory, anything blocking, and the last few messages.
+ * Used for the post-script snapshot, where a full dump buries script output.
+ * `options.xpBefore` maps skill name -> xp at script start; only skills that
+ * moved are listed.
+ */
+export function formatWorldStateSummary(
+    state: BotWorldState,
+    stateAgeMs?: number,
+    options?: { xpBefore?: Record<string, number> }
+): string {
+    const lines: string[] = [];
+    const stale = stateAgeMs !== undefined && stateAgeMs > 5000 ? ` | state ${formatAge(stateAgeMs)}` : '';
+
+    const p = state.player;
+    if (p) {
+        const hp = (state.skills || []).find(s => s.name === 'Hitpoints');
+        const hpStr = hp ? ` | HP ${hp.level}/${hp.baseLevel}` : '';
+        const dead = p.isDead ? ' | DEAD' : '';
+        let combat = '';
+        if (p.combat.inCombat) {
+            const target = state.nearbyNpcs.find(n => n.index === p.combat.targetIndex);
+            combat = ` | fighting ${target?.name ?? `idx ${p.combat.targetIndex}`}`;
+        }
+        lines.push(`Pos (${p.worldX}, ${p.worldZ})${p.level ? ` lvl ${p.level}` : ''}${hpStr}${dead}${combat}${stale}`);
+    } else {
+        lines.push(`Not in game (tick ${state.tick})${stale}`);
+    }
+
+    // XP gained during the script - the usual "did it work?" signal
+    if (options?.xpBefore) {
+        const gains: string[] = [];
+        for (const skill of state.skills || []) {
+            const before = options.xpBefore[skill.name];
+            if (before === undefined) continue;
+            const delta = skill.experience - before;
+            if (delta > 0) gains.push(`${skill.name} +${delta.toLocaleString()}`);
+        }
+        lines.push(gains.length > 0 ? `XP: ${gains.join(', ')}` : 'XP: none gained');
+    }
+
+    // Inventory as one line, most-of-the-time short enough to scan
+    const inv = state.inventory || [];
+    const counts = new Map<string, number>();
+    for (const item of inv) counts.set(item.name, (counts.get(item.name) ?? 0) + item.count);
+    const entries = [...counts].map(([name, count]) => (count > 1 ? `${name} x${count}` : name));
+    const shown = entries.slice(0, 8).join(', ');
+    const more = entries.length > 8 ? `, +${entries.length - 8} more` : '';
+    lines.push(`Inv ${inv.length}/28: ${entries.length > 0 ? shown + more : '(empty)'}`);
+
+    // Nearby entities, deduped by name (nearest distance wins) and capped -
+    // enough to see where you are, not the full scene graph
+    const nearbyLine = (
+        label: string,
+        entries: { name: string; distance: number }[],
+        limit = 5
+    ): string | null => {
+        if (entries.length === 0) return null;
+        const byName = new Map<string, { count: number; distance: number }>();
+        for (const e of entries) {
+            const existing = byName.get(e.name);
+            if (existing) {
+                existing.count++;
+                existing.distance = Math.min(existing.distance, e.distance);
+            } else {
+                byName.set(e.name, { count: 1, distance: e.distance });
+            }
+        }
+        const sorted = [...byName].sort((a, b) => a[1].distance - b[1].distance);
+        const shown = sorted.slice(0, limit)
+            .map(([name, d]) => `${name}${d.count > 1 ? ` x${d.count}` : ''} (${d.distance}t)`);
+        const more = sorted.length > limit ? ` +${sorted.length - limit} more` : '';
+        return `${label}: ${shown.join(', ')}${more}`;
+    };
+
+    const nearby = [
+        nearbyLine('NPCs', state.nearbyNpcs || []),
+        nearbyLine('Objs', state.nearbyLocs || []),
+        nearbyLine('Ground', (state.groundItems || []).map(g => ({
+            name: g.count > 1 ? `${g.name} x${g.count}` : g.name,
+            distance: g.distance
+        })), 4),
+        nearbyLine('Players', state.nearbyPlayers || [], 3)
+    ].filter((line): line is string => line !== null);
+    lines.push(...nearby);
+
+    // Anything that would block the next script
+    const blockers: string[] = [];
+    if (state.dialog?.isOpen) {
+        const opts = state.dialog.options.length;
+        blockers.push(`dialog open${opts > 0 ? ` (${opts} options)` : ''}`);
+    }
+    if (state.bank?.isOpen) blockers.push('bank open');
+    if (state.shop?.isOpen) blockers.push(`shop open (${state.shop.title})`);
+    if (state.interface?.isOpen && !state.bank?.isOpen && !state.shop?.isOpen) {
+        blockers.push(`interface ${state.interface.interfaceId} open`);
+    } else if (state.modalOpen && !state.dialog?.isOpen) {
+        blockers.push(`modal ${state.modalInterface} open`);
+    }
+    if (blockers.length > 0) lines.push(`[!] ${blockers.join(', ')}`);
+
+    // Last few messages - "I can't reach that" lives here
+    const stripCodes = (s: string) => s.replace(/@\w+@/g, '');
+    const recent = (state.gameMessages || []).slice(-40).filter(m => !m.fromSelf);
+    const collapsed: { text: string; count: number }[] = [];
+    for (const msg of recent) {
+        const text = (isPlayerChat(msg.type) && msg.sender ? `${msg.sender}: ` : '') + stripCodes(msg.text);
+        const last = collapsed[collapsed.length - 1];
+        if (last && last.text === text) last.count++;
+        else collapsed.push({ text, count: 1 });
+    }
+    for (const msg of collapsed.slice(-3)) {
+        lines.push(`> ${msg.text}${msg.count > 1 ? ` (x${msg.count})` : ''}`);
+    }
+
+    return lines.join('\n');
+}
+
+/**
  * Format world state as readable plaintext/markdown.
  * `options.sinceTick`: only render gameMessages with tick > sinceTick.
  * The MCP server passes this to suppress chat the bot has already been shown
