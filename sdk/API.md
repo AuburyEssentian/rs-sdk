@@ -442,23 +442,6 @@ interface ActionResult {
 }
 ```
 
-### SayResult
-
-Outcome of sending a chat message. RS silently caps public chat at 80 chars and runs a word filter, so `sendSay` surfaces both via the `data` field (shape below) and `say()` returns these per chunk.
-
-```typescript
-interface SayResult {
-  /** Whether the message was sent (false only if not in game). */
-  sent: boolean;
-  /** True if the message exceeded 80 chars and was clipped. */
-  truncated: boolean;
-  /** True if the word filter altered the text (likely censorship). */
-  filtered: boolean;
-  /** The text as actually broadcast (post-truncation, post-filter). */
-  finalText: string;
-}
-```
-
 ### ChopTreeResult
 
 ```typescript

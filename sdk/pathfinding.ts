@@ -20,7 +20,7 @@ export interface DoorInfo {
     blockrange: boolean;
 }
 
-export interface TemporaryDoorBlock {
+interface TemporaryDoorBlock {
     door: DoorInfo;
     expiresAt: number;
 }

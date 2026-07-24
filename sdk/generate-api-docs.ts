@@ -11,7 +11,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import ts from 'typescript';
 
-export interface MethodDoc {
+interface MethodDoc {
     name: string;
     signature: string;
     description: string;
@@ -76,7 +76,7 @@ function methodSignature(node: ts.MethodDeclaration, file: ts.SourceFile): strin
     return `${asyncPrefix}${methodName(node, file)}${typeParameters}(${parameters}): ${returnType}`;
 }
 
-export function extractPublicClassMethods(
+function extractPublicClassMethods(
     path: string,
     source: string,
     className: string
@@ -187,7 +187,7 @@ function renderMethodGroups(
     }
 }
 
-export function renderApiMarkdown(model: ApiModel): string {
+function renderApiMarkdown(model: ApiModel): string {
     const lines: string[] = [
         '# SDK API Reference',
         '',

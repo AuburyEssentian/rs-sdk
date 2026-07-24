@@ -395,17 +395,6 @@ export interface ActionResult {
  * and runs a word filter, so `sendSay` surfaces both via the `data` field
  * (shape below) and `say()` returns these per chunk.
  */
-export interface SayResult {
-    /** Whether the message was sent (false only if not in game). */
-    sent: boolean;
-    /** True if the message exceeded 80 chars and was clipped. */
-    truncated: boolean;
-    /** True if the word filter altered the text (likely censorship). */
-    filtered: boolean;
-    /** The text as actually broadcast (post-truncation, post-filter). */
-    finalText: string;
-}
-
 // ============ SDK Config ============
 
 /** Connection mode: 'control' can send actions, 'observe' is read-only */

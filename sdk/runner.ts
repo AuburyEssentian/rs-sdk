@@ -396,24 +396,3 @@ export async function runScript(
         finalState
     };
 }
-
-/**
- * Disconnect a bot by name
- */
-export async function disconnectBot(botName: string): Promise<void> {
-    const connection = connections.get(botName);
-    if (connection) {
-        await connection.sdk.disconnect();
-        connections.delete(botName);
-    }
-}
-
-/**
- * Get list of connected bots (managed by runner)
- */
-export function listConnectedBots(): string[] {
-    return Array.from(connections.keys()).filter(name => {
-        const conn = connections.get(name);
-        return conn && conn.sdk.isConnected();
-    });
-}
