@@ -50,6 +50,8 @@ import {
     countItems,
     nextShopStep,
     resolveInterfaceOption,
+    resolveSkillDialogProduct,
+    skillDialogProductLabels,
     validateActionQuantity,
     MAX_SHOP_ACTION_PACKETS,
     MAX_SHOP_ACTION_QUANTITY,
@@ -2026,9 +2028,29 @@ export class BotActions {
 
     // ============ Crafting & Fletching ============
 
-    /** Fletch logs into bows or arrow shafts using a knife. */
+    /**
+     * Fletch logs into bows or arrow shafts using a knife.
+     *
+     * `product` is matched against the dialog's visible product labels
+     * ("15 Arrow Shafts", "Oak Short Bow", ...), so 'arrow shaft', 'shortbow'
+     * and 'oak long' all resolve. Omit it to take the first product offered.
+     * One call makes one batch — 15 shafts, or one bow.
+     */
     async fletchLogs(product?: string): Promise<FletchResult> {
         await this.dismissBlockingUI();
+
+        // dismissBlockingUI deliberately leaves shop/bank modals alone, but the
+        // server hides the inventory component behind them: the use-item packet
+        // is dropped as "not visible" with no message at all, and the wait below
+        // would then match the modal that was already open. Fail loudly instead.
+        const preState = this.sdk.getState();
+        if (preState?.shop.isOpen || preState?.bank.isOpen) {
+            const blocker = preState.shop.isOpen ? 'shop' : 'bank';
+            return {
+                success: false,
+                message: `Cannot fletch with the ${blocker} interface open - close it first (bot.closeInterface()).`
+            };
+        }
 
         const knife = this.sdk.findInventoryItem(/knife/i);
         if (!knife) {
@@ -2040,11 +2062,7 @@ export class BotActions {
             return { success: false, message: 'No logs in inventory' };
         }
 
-        // Check if we're using oak or higher-tier logs (affects button order)
-        const isOakOrHigherLogs = /oak|willow|maple|yew|magic/i.test(logs.name);
-
         const fletchingBefore = this.sdk.getSkill('Fletching')?.experience || 0;
-        const startTick = this.sdk.getState()?.tick || 0;
         const msgBaseline = this.helpers.getMessageTick();
 
         // Use knife on logs to open fletching dialog
@@ -2066,6 +2084,7 @@ export class BotActions {
         // Handle product selection and crafting
         const MAX_ATTEMPTS = 30;
         let buttonClicked = false;
+        let chosenLabel: string | undefined;
 
         for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             const state = this.sdk.getState();
@@ -2076,12 +2095,11 @@ export class BotActions {
             // Check if XP was gained (success!)
             const currentXp = state.skills.find(s => s.name === 'Fletching')?.experience || 0;
             if (currentXp > fletchingBefore) {
-                const craftedProduct = this.sdk.findInventoryItem(/shortbow|longbow|arrow shaft|stock/i);
                 return {
                     success: true,
-                    message: 'Fletched logs successfully',
+                    message: chosenLabel ? `Fletched ${chosenLabel}` : 'Fletched logs successfully',
                     xpGained: currentXp - fletchingBefore,
-                    product: craftedProduct || undefined
+                    product: this.findFletchedProduct(chosenLabel) || undefined
                 };
             }
 
@@ -2106,105 +2124,35 @@ export class BotActions {
                 continue;
             }
 
-            // Handle dialog - use allComponents to find the right button
+            // Handle the skill dialog. Its buttons run Make X / Make 10 /
+            // Make 5 / <product> per product, so the product's own button is
+            // the only one carrying a name — match on that rather than guessing
+            // an index from the log tier.
             if (state.dialog.isOpen) {
-                if (!buttonClicked && product && state.dialog.allComponents) {
-                    // Find the button that matches our product by looking at allComponents text
-                    const productLower = product.toLowerCase();
-
-                    // Build a mapping of product text to button index
-                    // allComponents contains both text labels and "Ok" buttons
-                    // We need to find which "Ok" button corresponds to our product
-
-                    // Look for a component whose text matches the product
-                    const matchingComponents = state.dialog.allComponents.filter(c => {
-                        const text = c.text.toLowerCase();
-                        // Match patterns like "shortbow", "longbow", "arrow shaft"
-                        if (productLower.includes('short') && text.includes('shortbow')) return true;
-                        if (productLower.includes('long') && text.includes('longbow')) return true;
-                        if (productLower.includes('arrow') && text.includes('arrow')) return true;
-                        if (productLower.includes('shaft') && text.includes('shaft')) return true;
-                        if (productLower.includes('stock') && text.includes('stock')) return true;
-                        // Generic match
-                        return text.includes(productLower);
-                    });
-
-                    if (matchingComponents.length > 0) {
-                        // Found a matching text component - now find the associated Ok button
-                        // The Ok buttons in dialog.options should correspond to the products
-                        // Try to find the index by matching component IDs or order
-
-                        // Get all Ok buttons from options
-                        const okButtons = state.dialog.options.filter(o =>
-                            o.text.toLowerCase() === 'ok'
-                        );
-
-                        if (okButtons.length > 0) {
-                            // Try to determine which Ok button to click based on product type
-                            // Button order depends on log type:
-                            // - Regular logs: [Arrow shafts, Shortbow, Longbow] - 3 main products
-                            // - Oak/higher logs: [Shortbow, Longbow] - 2 main products (no arrow shafts option)
-                            let okIndex = 0; // Default to first
-
-                            if (productLower.includes('short')) {
-                                if (isOakOrHigherLogs) {
-                                    // Oak/higher logs: Shortbow is first (index 0)
-                                    okIndex = 0;
-                                } else {
-                                    // Regular logs: Shortbow is second (index 1, after arrow shafts)
-                                    okIndex = Math.min(1, okButtons.length - 1);
-                                }
-                            } else if (productLower.includes('long')) {
-                                if (isOakOrHigherLogs) {
-                                    // Oak/higher logs: Longbow is second (index 1)
-                                    okIndex = Math.min(1, okButtons.length - 1);
-                                } else {
-                                    // Regular logs: Longbow is third (index 2)
-                                    okIndex = Math.min(2, okButtons.length - 1);
-                                }
-                            } else if (productLower.includes('stock')) {
-                                okIndex = Math.min(3, okButtons.length - 1);
-                            }
-                            // arrow/shaft stays at 0
-
-                            const targetButton = okButtons[okIndex];
-                            if (targetButton) {
-                                await this.sdk.sendClickDialog(targetButton.index);
-                                buttonClicked = true;
-                                await this.sdk.waitForTicks(1);
-                                continue;
-                            }
-                        }
-                    }
-                }
-
-                // Fallback: use index-based approach if we couldn't match by text
                 if (!buttonClicked) {
-                    // Determine fallback index based on product keyword and log type
-                    let targetButtonIndex = 1; // Default: first option
-                    if (product) {
-                        const productLower = product.toLowerCase();
-                        if (productLower.includes('short')) {
-                            // Oak/higher: shortbow is button 1; Regular: button 2
-                            targetButtonIndex = isOakOrHigherLogs ? 1 : 2;
-                        } else if (productLower.includes('long')) {
-                            // Oak/higher: longbow is button 2; Regular: button 3
-                            targetButtonIndex = isOakOrHigherLogs ? 2 : 3;
-                        } else if (productLower.includes('stock')) {
-                            targetButtonIndex = 4;
-                        }
-                        // arrow/shaft stays at 1
-                    }
+                    const target = resolveSkillDialogProduct(state.dialog.options, product);
 
-                    if (state.dialog.options.length >= targetButtonIndex) {
-                        await this.sdk.sendClickDialog(targetButtonIndex);
+                    if (target) {
+                        await this.sdk.sendClickDialog(target.index);
+                        chosenLabel = target.text;
                         buttonClicked = true;
                         await this.sdk.waitForTicks(1);
                         continue;
                     }
+
+                    if (product) {
+                        const available = skillDialogProductLabels(state.dialog.options);
+                        if (available.length > 0) {
+                            return {
+                                success: false,
+                                message: `No fletching product matched "${product}". Available: ${available.map(l => `"${l}"`).join(', ')}`
+                            };
+                        }
+                    }
                 }
 
-                // If we already clicked or don't have enough options, click continue/first
+                // Already clicked, or this is a continue-style dialog with no
+                // product buttons (level-up, "you need level N").
                 if (state.dialog.options.length > 0 && state.dialog.options[0]) {
                     await this.sdk.sendClickDialog(state.dialog.options[0].index);
                 } else {
@@ -2230,16 +2178,36 @@ export class BotActions {
         // Final XP check
         const finalXp = this.sdk.getSkill('Fletching')?.experience || 0;
         if (finalXp > fletchingBefore) {
-            const craftedProduct = this.sdk.findInventoryItem(/shortbow|longbow|arrow shaft|stock/i);
             return {
                 success: true,
-                message: 'Fletched logs successfully',
+                message: chosenLabel ? `Fletched ${chosenLabel}` : 'Fletched logs successfully',
                 xpGained: finalXp - fletchingBefore,
-                product: craftedProduct || undefined
+                product: this.findFletchedProduct(chosenLabel) || undefined
             };
         }
 
         return { success: false, message: 'Fletching timed out' };
+    }
+
+    /**
+     * Locate the item just fletched. The dialog label ("15 Arrow Shafts",
+     * "Oak Short Bow") names the product but not as the item is named in the
+     * inventory, so match on its significant words before falling back to the
+     * generic fletching-output pattern.
+     */
+    private findFletchedProduct(label?: string): InventoryItem | null {
+        if (label) {
+            const words = label.toLowerCase().match(/[a-z]+/g) ?? [];
+            const significant = words.filter(w => w.length > 2);
+            if (significant.length > 0) {
+                const byLabel = this.sdk.getInventory().find(item => {
+                    const name = item.name.toLowerCase().replace(/\s+/g, '');
+                    return significant.every(word => name.includes(word.replace(/s$/, '')));
+                });
+                if (byLabel) return byLabel;
+            }
+        }
+        return this.sdk.findInventoryItem(/shortbow|longbow|arrow shaft|stock/i);
     }
 
     /** Craft leather into armour using needle and thread. */

@@ -93,6 +93,22 @@ const SCROLLBAR_GRIP_FOREGROUND = 0x4d4233;
 const SCROLLBAR_GRIP_HIGHLIGHT = 0x766654;
 const SCROLLBAR_GRIP_LOWLIGHT = 0x332d25;
 
+/**
+ * Flatten a component's display text into a single readable line.
+ *
+ * Skill dialogs position their product labels with embedded newlines
+ * (`if_settext(skill_multi3:make1_a, "\n\n\n\n15 Arrow Shafts")`) and sprinkle
+ * `@col@` codes through chat text. Both are layout, not content, and both
+ * defeat naive string matching against an option label.
+ */
+export function normaliseComponentText(raw: string | null | undefined): string {
+    if (!raw) return '';
+    return raw
+        .replace(/@\w{3}@/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 /** Result of {@link Client.say} — reports truncation/censorship the wire hides. */
 export interface SayOutcome {
     ok: boolean;
@@ -2303,7 +2319,10 @@ export class Client extends GameShell {
             if (!com) return;
 
             if ((com.buttonType === ButtonType.BUTTON_OK || com.buttonType === ButtonType.BUTTON_CONTINUE) && com.buttonText) {
-                const displayText = com.text || com.buttonText;
+                // com.text carries the product label on skill dialogs but is
+                // pure layout padding on the Make X/10/5 siblings, so fall back
+                // to buttonText once the whitespace is stripped.
+                const displayText = normaliseComponentText(com.text) || normaliseComponentText(com.buttonText);
                 options.push({
                     index: options.length + 1,
                     text: displayText,
@@ -2533,7 +2552,7 @@ export class Client extends GameShell {
             if (isClickable && (com.buttonText || com.text)) {
                 options.push({
                     index: options.length + 1,
-                    text: com.buttonText || com.text || `Option ${options.length + 1}`,
+                    text: normaliseComponentText(com.buttonText) || normaliseComponentText(com.text) || `Option ${options.length + 1}`,
                     componentId: comId
                 });
             }
@@ -2577,6 +2596,16 @@ export class Client extends GameShell {
     clickComponent(componentId: number): boolean {
         if (!this.ingame || !this.out) {
             return false;
+        }
+
+        // buttontype=close components (every "Close Window" X) are handled
+        // locally by the real client - the server registers no if_button
+        // trigger for them and answers IF_BUTTON with "No trigger for ...",
+        // leaving the modal open. Route them to closeModal() like a real click.
+        const com = IfType.list[componentId];
+        if (com && com.buttonType === ButtonType.BUTTON_CLOSE) {
+            this.closeModal();
+            return true;
         }
 
         this.writePacketOpcode(ClientProt.IF_BUTTON);

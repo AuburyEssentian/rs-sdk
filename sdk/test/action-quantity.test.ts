@@ -4,11 +4,13 @@ import {
     countItems,
     nextShopStep,
     resolveInterfaceOption,
+    resolveSkillDialogProduct,
+    skillDialogProductLabels,
     validateActionQuantity,
     MAX_ACTION_QUANTITY,
     MAX_SHOP_ACTION_QUANTITY,
 } from '../action-quantity';
-import type { InterfaceOption, InventoryItem } from '../types';
+import type { DialogOption, InterfaceOption, InventoryItem } from '../types';
 
 function option(index: number, text: string, componentId: number): InterfaceOption {
     return { index, text, componentId };
@@ -53,6 +55,77 @@ describe('resolveInterfaceOption', () => {
         const sticky = /leather/gi;
         expect(resolveInterfaceOption(options, sticky)?.text).toBe('Leather body');
         expect(resolveInterfaceOption(options, sticky)?.text).toBe('Leather body');
+    });
+});
+
+// skill_multi3 as the fletching dialog actually publishes it: four buttons per
+// product, and only the make-1 button carries the product's name. The labels
+// arrive whitespace-normalised (the raw text is "\n\n\n\n15 Arrow Shafts").
+const FLETCH_REGULAR_LOGS: DialogOption[] = [
+    { index: 1, text: 'Make X' },
+    { index: 2, text: 'Make 10' },
+    { index: 3, text: 'Make 5' },
+    { index: 4, text: '15 Arrow Shafts' },
+    { index: 5, text: 'Make X' },
+    { index: 6, text: 'Make 10' },
+    { index: 7, text: 'Make 5' },
+    { index: 8, text: 'Short Bow' },
+    { index: 9, text: 'Make X' },
+    { index: 10, text: 'Make 10' },
+    { index: 11, text: 'Make 5' },
+    { index: 12, text: 'Long Bow' },
+];
+
+// skill_multi2, used for oak and above: no arrow shafts, and the labels are
+// prefixed with the log tier.
+const FLETCH_OAK_LOGS: DialogOption[] = [
+    { index: 1, text: 'Make X' },
+    { index: 2, text: 'Make 10' },
+    { index: 3, text: 'Make 5' },
+    { index: 4, text: 'Oak Short Bow' },
+    { index: 5, text: 'Make X' },
+    { index: 6, text: 'Make 10' },
+    { index: 7, text: 'Make 5' },
+    { index: 8, text: 'Oak Long Bow' },
+];
+
+describe('resolveSkillDialogProduct', () => {
+    test('picks the product button, not the option at the product\'s ordinal', () => {
+        // Arrow shafts are the first product but the *fourth* button; clicking
+        // option 1 opens the Make X count prompt and the script hangs.
+        expect(resolveSkillDialogProduct(FLETCH_REGULAR_LOGS, 'arrow shaft')?.index).toBe(4);
+        expect(resolveSkillDialogProduct(FLETCH_REGULAR_LOGS, 'short')?.index).toBe(8);
+        expect(resolveSkillDialogProduct(FLETCH_REGULAR_LOGS, 'long')?.index).toBe(12);
+    });
+
+    test('matches run-together product names against spaced labels', () => {
+        expect(resolveSkillDialogProduct(FLETCH_REGULAR_LOGS, 'shortbow')?.index).toBe(8);
+        expect(resolveSkillDialogProduct(FLETCH_OAK_LOGS, 'longbow')?.index).toBe(8);
+    });
+
+    test('matches every word in any order', () => {
+        expect(resolveSkillDialogProduct(FLETCH_OAK_LOGS, 'oak short')?.text).toBe('Oak Short Bow');
+        expect(resolveSkillDialogProduct(FLETCH_OAK_LOGS, 'oak long')?.text).toBe('Oak Long Bow');
+    });
+
+    test('defaults to the first product rather than the first button', () => {
+        expect(resolveSkillDialogProduct(FLETCH_REGULAR_LOGS)?.index).toBe(4);
+        expect(resolveSkillDialogProduct(FLETCH_OAK_LOGS)?.index).toBe(4);
+    });
+
+    test('returns null instead of fletching the wrong product', () => {
+        // 'stock' only exists on crossbow dialogs; silently making a longbow
+        // here is worse than reporting no match.
+        expect(resolveSkillDialogProduct(FLETCH_REGULAR_LOGS, 'stock')).toBeNull();
+        expect(resolveSkillDialogProduct([], 'arrow shaft')).toBeNull();
+    });
+
+    test('lists the products it can offer, for the no-match message', () => {
+        expect(skillDialogProductLabels(FLETCH_REGULAR_LOGS)).toEqual([
+            '15 Arrow Shafts',
+            'Short Bow',
+            'Long Bow',
+        ]);
     });
 });
 

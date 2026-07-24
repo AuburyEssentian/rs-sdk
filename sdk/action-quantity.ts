@@ -1,4 +1,4 @@
-import type { InterfaceOption, InventoryItem } from './types';
+import type { DialogOption, InterfaceOption, InventoryItem } from './types';
 
 /**
  * Helpers for porcelain actions that take a quantity and expand it into
@@ -35,6 +35,49 @@ export function resolveInterfaceOption(
         return options.find(option => option.componentId === selector.componentId) ?? null;
     }
     return options.find(option => testPattern(selector, option.text)) ?? null;
+}
+
+/** "Make X", "Make 10", "Make 5", "Make 1" — quantity buttons, not products. */
+const QUANTITY_BUTTON = /^make\s+(x|\d+)$/i;
+
+/**
+ * Resolve a product in a skill dialog (`skill_multi2`..`skill_multi5`).
+ *
+ * These dialogs interleave four buttons per product — Make X, Make 10, Make 5,
+ * and a fourth whose label is the product name — so the product you want is
+ * never at the index its position in the menu suggests. Arrow shafts are
+ * option 4 of 12, not option 1. Only the make-1 button carries a name, so the
+ * named options *are* the products, in order.
+ *
+ * Matching is by visible label: every word of `product` must appear (so
+ * 'oak short' hits "Oak Short Bow"), falling back to a punctuation-insensitive
+ * contains (so 'shortbow' hits it too). Omit `product` for the first one.
+ */
+export function resolveSkillDialogProduct(
+    options: readonly DialogOption[],
+    product?: string,
+): DialogOption | null {
+    const named = options.filter(option => option.text && !QUANTITY_BUTTON.test(option.text.trim()));
+    if (named.length === 0) return null;
+    if (!product) return named[0] ?? null;
+
+    const wanted = product.toLowerCase().trim();
+    const words = wanted.split(/\s+/).filter(Boolean);
+    const byWords = named.find(option => {
+        const label = option.text.toLowerCase();
+        return words.every(word => label.includes(word));
+    });
+    if (byWords) return byWords;
+
+    const squash = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return named.find(option => squash(option.text).includes(squash(wanted))) ?? null;
+}
+
+/** The product labels a skill dialog is offering, for error messages. */
+export function skillDialogProductLabels(options: readonly DialogOption[]): string[] {
+    return options
+        .filter(option => option.text && !QUANTITY_BUTTON.test(option.text.trim()))
+        .map(option => option.text);
 }
 
 /** Total count of an item across every inventory slot holding it. */
