@@ -2040,11 +2040,7 @@ export class Client extends GameShell {
         if (!loc) {
             return { success: false, reason: 'target_not_found' };
         }
-        const routed = this.tryMove(
-            this.localPlayer.routeX[0], this.localPlayer.routeZ[0],
-            destSceneX, destSceneZ,
-            false, loc.width, loc.length, 0, 0, 0, 2
-        );
+        const routed = this.routeToLoc(destSceneX, destSceneZ, locId);
         if (!routed) {
             return { success: false, reason: 'cant_reach' };
         }
@@ -2216,6 +2212,85 @@ export class Client extends GameShell {
     }
 
     /**
+     * Find the scene shape/angle of a loc sitting at the given scene tile.
+     *
+     * The bot API only knows a loc's id and world position, but reachability
+     * depends on its shape: a wall (door, gate) is approached across the tile
+     * edge it occupies, not around a rectangular footprint. Mirrors how
+     * interactWithLoc() derives shape/angle from the typecode on a mouse click.
+     * Returns null when no loc with this id is on the tile (stale target).
+     */
+    private locSceneInfo(sceneX: number, sceneZ: number, locId: number): { shape: number; angle: number } | null {
+        if (!this.world) {
+            return null;
+        }
+        const level = this.minusedlevel;
+        const typecodes: number[] = [
+            this.world.wallType(level, sceneX, sceneZ),
+            this.world.decorType(level, sceneZ, sceneX), // decorType takes (level, z, x)
+            this.world.sceneType(level, sceneX, sceneZ),
+            this.world.gdType(level, sceneX, sceneZ)
+        ];
+
+        for (const typecode of typecodes) {
+            if (typecode === 0 || ((typecode >> 14) & 0x7fff) !== locId) {
+                continue;
+            }
+            const info: number = this.world.typeCode2(level, sceneX, sceneZ, typecode);
+            if (info === -1) {
+                continue;
+            }
+            return { shape: info & 0x1f, angle: (info >> 6) & 0x3 };
+        }
+        return null;
+    }
+
+    /**
+     * Route the player to a loc the way the mouse-click path does (interactWithLoc),
+     * picking the reach rule that matches the loc's shape.
+     *
+     * Walls and wall decorations get the wall reach test; everything else gets the
+     * rotated rectangle footprint plus forceapproach. Getting this wrong parks the
+     * player on a tile the server rejects, so the OPLOC that follows draws
+     * "I can't reach that!" — which is what happened to every door and gate while
+     * this always used the rectangle rule.
+     */
+    private routeToLoc(sceneX: number, sceneZ: number, locId: number): boolean {
+        if (!this.localPlayer) {
+            return false;
+        }
+
+        const srcX = this.localPlayer.routeX[0];
+        const srcZ = this.localPlayer.routeZ[0];
+        const info = this.locSceneInfo(sceneX, sceneZ, locId);
+        const shape = info?.shape ?? LocShape.CENTREPIECE_STRAIGHT;
+        const angle = info?.angle ?? LocAngle.WEST;
+
+        if (shape === LocShape.CENTREPIECE_STRAIGHT || shape === LocShape.CENTREPIECE_DIAGONAL || shape === LocShape.GROUND_DECOR) {
+            const loc: LocType = LocType.list(locId);
+
+            let width: number;
+            let height: number;
+            if (angle === LocAngle.WEST || angle === LocAngle.EAST) {
+                width = loc.width;
+                height = loc.length;
+            } else {
+                width = loc.length;
+                height = loc.width;
+            }
+
+            let forceapproach: number = loc.forceapproach;
+            if (angle !== 0) {
+                forceapproach = ((forceapproach << angle) & 0xf) + (forceapproach >> (4 - angle));
+            }
+
+            return this.tryMove(srcX, srcZ, sceneX, sceneZ, false, width, height, 0, 0, forceapproach, 2);
+        }
+
+        return this.tryMove(srcX, srcZ, sceneX, sceneZ, false, 0, 0, angle, shape + 1, 0, 2);
+    }
+
+    /**
      * Interact with a location/object in the world (doors, trees, etc.)
      */
     interactLoc(worldX: number, worldZ: number, locId: number, optionIndex: number): ClientActionResult {
@@ -2243,7 +2318,7 @@ export class Client extends GameShell {
         if (!loc) {
             return { success: false, reason: 'target_not_found' };
         }
-        const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], destSceneX, destSceneZ, false, loc.width, loc.length, 0, 0, 0, 2);
+        const routed = this.routeToLoc(destSceneX, destSceneZ, locId);
         if (!routed) {
             return { success: false, reason: 'cant_reach' };
         }

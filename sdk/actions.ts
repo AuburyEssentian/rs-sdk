@@ -4,7 +4,7 @@
 
 import { BotSDK } from './index';
 import { ActionHelpers } from './actions-helpers';
-import { findDoorsAlongPath } from './pathfinding';
+import { findDoorsAlongPath, isTileWalkable } from './pathfinding';
 import type {
     ActionResult,
     SkillState,
@@ -893,8 +893,15 @@ export class BotActions {
                 await this.sdk.waitForTicks(1);
                 path = await this.sdk.sendFindPath(x, z, 500);
                 if (!path.success || !path.waypoints?.length) {
-                    console.error(`[walkTo] PATHFINDING FAILED: ${path.error ?? 'no waypoints'} - from (${pos.x}, ${pos.z}) to (${x}, ${z})`);
-                    return { success: false, message: `No path to (${x}, ${z}) from (${pos.x}, ${pos.z}): ${path.error ?? 'no waypoints'}` };
+                    // "no waypoints" reads as broken collision data, but the usual
+                    // cause is a destination that is simply blocked — a wall, or a
+                    // tile a loc stands on. Say which, so callers pick a neighbour
+                    // tile instead of chasing a phantom pathfinder bug.
+                    const level = this.sdk.getState()?.player?.level ?? 0;
+                    const reason = path.error
+                        ?? (isTileWalkable(level, x, z) ? 'no waypoints' : 'destination tile is blocked');
+                    console.error(`[walkTo] PATHFINDING FAILED: ${reason} - from (${pos.x}, ${pos.z}) to (${x}, ${z})`);
+                    return { success: false, message: `No path to (${x}, ${z}) from (${pos.x}, ${pos.z}): ${reason}` };
                 }
             }
 

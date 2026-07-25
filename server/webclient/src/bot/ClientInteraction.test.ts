@@ -71,6 +71,7 @@ mock.module('#/client/MobileKeyboard.js', () => ({
 };
 
 const { Client } = await import('../client/Client.js');
+const { default: LocType } = await import('#/config/LocType.js');
 const { default: IfType } = await import('#/config/IfType.js');
 
 const BUTTON_OK = 1;
@@ -190,5 +191,117 @@ describe('getDialogOptions', () => {
         const options = Client.prototype.getDialogOptions.call({ chatModalId: 9100 });
 
         expect(options.map(o => o.text)).toEqual(['Make 5']);
+    });
+});
+
+describe('loc routing', () => {
+    type MoveArgs = {
+        destX: number; destZ: number;
+        locWidth: number; locLength: number;
+        locAngle: number; locShape: number;
+        forceapproach: number;
+    };
+
+    /** Back a stub with the real prototype so routeToLoc's private helpers resolve. */
+    function asClient(stub: Record<string, unknown>): { routeToLoc(x: number, z: number, locId: number): boolean } {
+        return Object.assign(Object.create(Client.prototype), stub);
+    }
+
+    /** Register a loc definition LocType.list() will hand back untouched. */
+    function defineLoc(id: number, props: Partial<{ width: number; length: number; forceapproach: number }>): void {
+        const loc = Object.assign(Object.create(LocType.prototype), {
+            id, width: 1, length: 1, forceapproach: 0, ...props
+        });
+        LocType.recent = [loc];
+        LocType.idx = new Int32Array(1) as never;
+        LocType.dat = {} as never;
+    }
+
+    /**
+     * Route to a loc sitting on one tile, reporting the args tryMove received.
+     * `typecode2` packs shape in the low 5 bits and angle at bit 6, as the scene does.
+     */
+    function route(locId: number, shape: number, angle: number): MoveArgs {
+        let args: MoveArgs | null = null;
+        const client = asClient({
+            localPlayer: { routeX: [10], routeZ: [10] },
+            minusedlevel: 0,
+            world: {
+                wallType: () => (shape <= 3 || shape === 9 ? (locId << 14) : 0),
+                decorType: () => (shape >= 4 && shape <= 8 ? (locId << 14) : 0),
+                sceneType: () => (shape >= 10 && shape <= 21 ? (locId << 14) : 0),
+                gdType: () => (shape === 22 ? (locId << 14) : 0),
+                typeCode2: () => shape | (angle << 6)
+            },
+            tryMove: (
+                _srcX: number, _srcZ: number, destX: number, destZ: number, _tryNearest: boolean,
+                locWidth: number, locLength: number, locAngle: number, locShape: number,
+                forceapproach: number
+            ) => {
+                args = { destX, destZ, locWidth, locLength, locAngle, locShape, forceapproach };
+                return true;
+            }
+        });
+
+        client.routeToLoc(20, 30, locId);
+        expect(args).not.toBeNull();
+        return args!;
+    }
+
+    test('routes to a gate with the wall reach rule, not the rectangle one', () => {
+        // Lumbridge chicken coop gate: shape 0 (WALL_STRAIGHT), angle 2 (EAST).
+        // The rectangle rule accepts the tile west of the gate, which the server
+        // rejects with "I can't reach that!" — the wall rule does not.
+        defineLoc(1553, { width: 1, length: 1 });
+
+        expect(route(1553, 0, 2)).toEqual({
+            destX: 20, destZ: 30,
+            locWidth: 0, locLength: 0,
+            locAngle: 2, locShape: 1, // shape + 1, as tryMove expects
+            forceapproach: 0
+        });
+    });
+
+    test('routes to a wall decoration with the decor reach rule', () => {
+        defineLoc(1234, { width: 1, length: 1 });
+
+        expect(route(1234, 6, 3)).toMatchObject({ locWidth: 0, locLength: 0, locAngle: 3, locShape: 7 });
+    });
+
+    test('keeps the rotated rectangle footprint for centrepieces', () => {
+        // A 3x1 loc rotated north swaps its footprint, and forceapproach rotates with it.
+        defineLoc(4321, { width: 3, length: 1, forceapproach: 1 });
+
+        expect(route(4321, 10, 1)).toEqual({
+            destX: 20, destZ: 30,
+            locWidth: 1, locLength: 3,
+            locAngle: 0, locShape: 0,
+            forceapproach: 2
+        });
+    });
+
+    test('falls back to the rectangle footprint when the tile holds no such loc', () => {
+        defineLoc(999, { width: 2, length: 2 });
+
+        let args: MoveArgs | null = null;
+        const client = asClient({
+            localPlayer: { routeX: [1], routeZ: [1] },
+            minusedlevel: 0,
+            world: {
+                wallType: () => 0, decorType: () => 0, sceneType: () => 0, gdType: () => 0,
+                typeCode2: () => -1
+            },
+            tryMove: (
+                _sx: number, _sz: number, destX: number, destZ: number, _tn: boolean,
+                locWidth: number, locLength: number, locAngle: number, locShape: number, forceapproach: number
+            ) => {
+                args = { destX, destZ, locWidth, locLength, locAngle, locShape, forceapproach };
+                return true;
+            }
+        });
+
+        client.routeToLoc(5, 6, 999);
+
+        expect(args).toMatchObject({ locWidth: 2, locLength: 2, locAngle: 0, locShape: 0 });
     });
 });
