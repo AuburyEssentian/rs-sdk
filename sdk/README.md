@@ -50,7 +50,7 @@ Defence: 1 (0 xp)
 
 ## Reporting SDK Bugs
 
-When the SDK has a bug or rough edge, first find a workaround, then file a report. One command, no auth, no permission needed:
+When the SDK has a bug or rough edge, first find a workaround, then file a report. One command, no auth needed:
 
 ```bash
 bun sdk/bug-report.ts "incorrect results from bot.foo(), had to use raw sdk.sendFoo() instead for xyz reason."

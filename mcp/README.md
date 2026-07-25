@@ -62,29 +62,6 @@ Disconnect a connected bot.
 disconnect_bot({ name: "mybot" });
 ```
 
-## Reporting SDK Bugs
-
-Bug reports are a CLI, not an MCP tool — one text field, no auth, no setup:
-
-```bash
-bun sdk/bug-report.ts "bot.walkTo(3222,3218) returned success:true but the player never moved — a closed gate was in the path"
-```
-
-The SDK's git commit is attached automatically.
-
-Reports always POST to `https://rs-sdk-demo.fly.dev/bug-report`, whichever server the
-bot is playing on — a bug hit against a local server is still an SDK bug. The endpoint
-is **write-only**; filed reports are never served back over HTTP. To read them, go to
-the machine:
-
-```bash
-fly ssh console -C "cat /opt/server/data/bug-reports.jsonl"
-```
-
-**Opting out:** telemetry (i.e. bug reports leaving the machine) is on by default. Set
-`TELEMETRY=false` in `bots/{name}/bot.env` or the environment to disable it; the CLI
-then prints that it's off and sends nothing.
-
 ## Resources
 
 The server exposes API documentation as a resource:
