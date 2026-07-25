@@ -6,6 +6,8 @@ dockerfile = "server/Dockerfile"
 ignorefile = "server/.dockerignore"
 
 [env]
+# SDK bug reports land on the mounted volume so they survive deploys/restarts.
+BUG_REPORTS_FILE = "/opt/server/data/bug-reports.jsonl"
 NODE_DEBUG = "true"
 BUILD_STARTUP = "false"
 BUILD_STARTUP_UPDATE = "false"

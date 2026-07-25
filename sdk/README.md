@@ -11,6 +11,7 @@ bun sdk/cli.ts <username> <password> [--server <host>]
 ```
 
 Examples:
+
 ```bash
 # Demo server (default)
 bun sdk/cli.ts mybot secret
@@ -23,6 +24,7 @@ USERNAME=mybot PASSWORD=secret SERVER=localhost bun sdk/cli.ts
 ```
 
 Output:
+
 ```
 # World State
 Tick: 15095 | In Game: true
@@ -46,25 +48,38 @@ Defence: 1 (0 xp)
 ...
 ```
 
+## Reporting SDK Bugs
+
+When the SDK has a bug or rough edge, first find a workaround, then file a report. One command, no auth, no permission needed:
+
+```bash
+bun sdk/bug-report.ts "incorrect results from bot.foo(), had to use raw sdk.sendFoo() instead for xyz reason."
+```
+
+Important note: The game itself is extremely well tested and complete, it's not buggy. If you can't figure out how to do something, don't blame the game, blame your assumptions and keep investigating. File a bug report _after_ you figure out
+what's going on, don't just assume the game is broken because you got confused, and give up. The SDK is a thin layer on top of the game, and the game is the source of truth.
+
+After filing the bug, keep working on your goal!
+
 ## Programmatic Usage
 
 Create a script file (e.g., `my-bot.ts`):
 
 ```typescript
-import { BotSDK } from './sdk';
-import { BotActions } from './sdk/actions';
+import { BotSDK } from "./sdk";
+import { BotActions } from "./sdk/actions";
 
 const sdk = new BotSDK({
-    botUsername: 'mybot',
-    password: 'secret',
-    gatewayUrl: 'wss://rs-sdk-demo.fly.dev/gateway'
+  botUsername: "mybot",
+  password: "secret",
+  gatewayUrl: "wss://rs-sdk-demo.fly.dev/gateway",
 });
 
 await sdk.connect();
-console.log('Connected!');
+console.log("Connected!");
 
 // Wait for game state
-await sdk.waitForCondition(s => s.inGame, 30000);
+await sdk.waitForCondition((s) => s.inGame, 30000);
 
 // Create high-level bot actions wrapper
 const bot = new BotActions(sdk);
@@ -74,9 +89,9 @@ const player = sdk.getState()!.player!;
 console.log(`Player: ${player.name} at (${player.worldX}, ${player.worldZ})`);
 
 // High-level actions (wait for effects to complete)
-await bot.chopTree();     // Waits for logs in inventory
-await bot.burnLogs();     // Waits for Firemaking XP
-await bot.walkTo(3200, 3200);  // Uses pathfinding, waits for arrival
+await bot.chopTree(); // Waits for logs in inventory
+await bot.burnLogs(); // Waits for Firemaking XP
+await bot.walkTo(3200, 3200); // Uses pathfinding, waits for arrival
 
 // Low-level actions (return on game acknowledgment)
 await sdk.sendWalk(3200, 3200, true);
@@ -84,6 +99,7 @@ await sdk.sendInteractNpc(npc.index, 1);
 ```
 
 Run with Bun:
+
 ```bash
 bun my-bot.ts
 ```
@@ -99,26 +115,24 @@ https://rs-sdk-demo.fly.dev/bot?bot=mybot123&password=test
 Or launch programmatically with Puppeteer:
 
 ```typescript
-import puppeteer from 'puppeteer';
+import puppeteer from "puppeteer";
 
 const browser = await puppeteer.launch({ headless: false });
 const page = await browser.newPage();
-await page.goto('https://rs-sdk-demo.fly.dev/bot?bot=mybot123&password=test');
+await page.goto("https://rs-sdk-demo.fly.dev/bot?bot=mybot123&password=test");
 ```
 
 ## Connection Configuration
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `botUsername` | required | Bot to control (max 12 chars) |
-| `password` | required | Gateway authentication |
-| `gatewayUrl` | - | Full WebSocket URL (e.g. `wss://server.com/gateway`) |
-| `host` | `'localhost'` | Gateway hostname (ignored if gatewayUrl set) |
-| `port` | `7780` | Gateway port (ignored if gatewayUrl set) |
-| `actionTimeout` | `30000` | Action timeout in ms |
-| `autoReconnect` | `true` | Auto-reconnect on disconnect |
-
-
+| Option          | Default       | Description                                          |
+| --------------- | ------------- | ---------------------------------------------------- |
+| `botUsername`   | required      | Bot to control (max 12 chars)                        |
+| `password`      | required      | Gateway authentication                               |
+| `gatewayUrl`    | -             | Full WebSocket URL (e.g. `wss://server.com/gateway`) |
+| `host`          | `'localhost'` | Gateway hostname (ignored if gatewayUrl set)         |
+| `port`          | `7780`        | Gateway port (ignored if gatewayUrl set)             |
+| `actionTimeout` | `30000`       | Action timeout in ms                                 |
+| `autoReconnect` | `true`        | Auto-reconnect on disconnect                         |
 
 ## Two-Layer API
 
@@ -138,10 +152,10 @@ await sdk.sendShopBuy(slot, amount);
 Domain-aware API. Actions resolve when the **effect** is complete.
 
 ```typescript
-await bot.chopTree();      // Waits for logs OR tree disappears
-await bot.burnLogs();      // Waits for Firemaking XP
-await bot.buyFromShop();   // Waits for item in inventory
-await bot.walkTo(x, z);    // Uses pathfinding, waits for arrival
+await bot.chopTree(); // Waits for logs OR tree disappears
+await bot.burnLogs(); // Waits for Firemaking XP
+await bot.buyFromShop(); // Waits for item in inventory
+await bot.walkTo(x, z); // Uses pathfinding, waits for arrival
 ```
 
 ## State Access
@@ -151,27 +165,27 @@ await bot.walkTo(x, z);    // Uses pathfinding, waits for arrival
 const state = sdk.getState();
 
 // Specific queries
-const skill = sdk.getSkill('Woodcutting');
+const skill = sdk.getSkill("Woodcutting");
 const item = sdk.findInventoryItem(/logs/i);
 const npc = sdk.findNearbyNpc(/chicken/i);
 const tree = sdk.findNearbyLoc(/^tree$/i);
 
 // Subscribe to updates
-sdk.onStateUpdate(state => {
-    console.log('Tick:', state.tick);
+sdk.onStateUpdate((state) => {
+  console.log("Tick:", state.tick);
 });
 
 // Wait for conditions
-await sdk.waitForCondition(s => s.inventory.length > 5);
+await sdk.waitForCondition((s) => s.inventory.length > 5);
 ```
 
 ## Connection Monitoring
 
 ```typescript
 sdk.onConnectionStateChange((state, attempt) => {
-    if (state === 'reconnecting') {
-        console.log(`Reconnecting (attempt ${attempt})...`);
-    }
+  if (state === "reconnecting") {
+    console.log(`Reconnecting (attempt ${attempt})...`);
+  }
 });
 
 // Wait for connection

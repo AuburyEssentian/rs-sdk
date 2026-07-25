@@ -7,11 +7,13 @@ MCP (Model Context Protocol) server for controlling RS-Agent bots. Supports mult
 Claude Code auto-discovers the MCP server via `.mcp.json`. Just:
 
 1. **Install dependencies (from the project root):**
+
    ```bash
    bun install
    ```
 
 2. **Create a bot (if you haven't):**
+
    ```bash
    bun bots/create-bot.ts mybot
    ```
@@ -26,6 +28,7 @@ Claude Code auto-discovers the MCP server via `.mcp.json`. Just:
 ## Tools
 
 ### `execute_code`
+
 Execute TypeScript code on a bot. Auto-connects on first use using credentials from `bots/{name}/bot.env`.
 
 ```typescript
@@ -38,24 +41,49 @@ execute_code({
       console.log('Chopped:', result);
     }
     return sdk.getInventory();
-  `
-})
+  `,
+});
 ```
 
 ### `list_bots`
+
 List all connected bots and their status.
 
 ```typescript
-list_bots()
+list_bots();
 // Returns: { bots: [{ name: "mybot", username: "mybot", connected: true }], count: 1 }
 ```
 
 ### `disconnect_bot`
+
 Disconnect a connected bot.
 
 ```typescript
-disconnect_bot({ name: "mybot" })
+disconnect_bot({ name: "mybot" });
 ```
+
+## Reporting SDK Bugs
+
+Bug reports are a CLI, not an MCP tool — one text field, no auth, no setup:
+
+```bash
+bun sdk/bug-report.ts "bot.walkTo(3222,3218) returned success:true but the player never moved — a closed gate was in the path"
+```
+
+The SDK's git commit is attached automatically.
+
+Reports always POST to `https://rs-sdk-demo.fly.dev/bug-report`, whichever server the
+bot is playing on — a bug hit against a local server is still an SDK bug. The endpoint
+is **write-only**; filed reports are never served back over HTTP. To read them, go to
+the machine:
+
+```bash
+fly ssh console -C "cat /opt/server/data/bug-reports.jsonl"
+```
+
+**Opting out:** telemetry (i.e. bug reports leaving the machine) is on by default. Set
+`TELEMETRY=false` in `bots/{name}/bot.env` or the environment to disable it; the CLI
+then prints that it's off and sends nothing.
 
 ## Resources
 
@@ -73,13 +101,13 @@ Control multiple bots simultaneously — each auto-connects on first use:
 // Execute on different bots (auto-connects each)
 execute_code({
   bot_name: "woodcutter",
-  code: "await bot.chopTree()"
-})
+  code: "await bot.chopTree()",
+});
 
 execute_code({
   bot_name: "miner",
-  code: "await bot.interactLoc(/^rocks$/i, 'mine')"
-})
+  code: "await bot.interactLoc(/^rocks$/i, 'mine')",
+});
 ```
 
 ## Manual Setup (without auto-discovery)
@@ -117,18 +145,22 @@ The `@modelcontextprotocol/sdk` dependency lives in the root `package.json`.
 ## Troubleshooting
 
 **"Bot not found"**
+
 - Create the bot first: `bun bots/create-bot.ts {name}`
 - Check `bots/{name}/bot.env` exists
 
 **"Bot is not connected"**
+
 - Bots auto-connect on the first `execute_code` call — check the error output for connection failures
 - Use `list_bots` to see connected bots
 
 **"Connection failed"**
+
 - Check the gateway is running
 - Verify credentials in `bots/{name}/bot.env`
 
 **MCP server not appearing in Claude Code**
+
 - Run `bun install` at the project root
 - Check `.mcp.json` exists at project root
 - Restart Claude Code
