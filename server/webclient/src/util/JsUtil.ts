@@ -1,4 +1,8 @@
-export const sleep = async (ms: number): Promise<void> => new Promise((resolve): NodeJS.Timeout => setTimeout(resolve, ms));
+import { delay } from '#/util/WorkerTimer.js';
+
+// Backed by a worker clock so the main loop keeps its rate in a background tab,
+// where Chrome would otherwise throttle setTimeout to one wake per second.
+export const sleep = async (ms: number): Promise<void> => delay(ms);
 
 export const downloadUrl = async (url: string): Promise<Uint8Array> => new Uint8Array(await (await fetch(url)).arrayBuffer());
 
