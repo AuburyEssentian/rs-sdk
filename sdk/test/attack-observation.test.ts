@@ -3,6 +3,7 @@ import { BotActions } from '../actions';
 import type { NearbyNpc } from '../types';
 
 const target: NearbyNpc = {
+    kind: 'npc',
     index: 42,
     name: 'Guard',
     combatLevel: 21,
@@ -30,7 +31,7 @@ function state(targetIndex: number, message?: string, attackXp: number = 0) {
             worldZ: 3200,
             lifeId: 1,
             isDead: false,
-            combat: { inCombat: targetIndex >= 0, targetIndex, lastDamageTick: -1 }
+            combat: { inCombat: targetIndex >= 0, targetIndex, targetType: targetIndex >= 0 ? 'npc' : 'none', lastDamageTick: -1 }
         },
         nearbyNpcs: [target],
         skills: [
@@ -72,22 +73,22 @@ function createBot(finalTargetIndex: number, finalAttackXp: number = 0, interrup
     return { bot: new BotActions(sdk as any), getDismissCount: () => dismissCount };
 }
 
-describe('BotActions.attackNpc observation', () => {
+describe('BotActions.attack observation (npc)', () => {
     test('treats a refusal race as success when the requested target is engaged', async () => {
-        const result = await createBot(target.index).bot.attackNpc(target);
-        expect(result).toEqual({ success: true, message: 'Already fighting Guard' });
+        const result = await createBot(target.index).bot.attack(target);
+        expect(result).toEqual({ success: true, message: 'Already fighting Guard', targetType: 'npc' });
     });
 
     test('does not use XP from an existing fight as proof the requested target was engaged', async () => {
         // The player is fighting NPC A (#7), gains XP from A, and receives a
         // refusal after trying NPC B (#42). B must not be reported as engaged.
-        const result = await createBot(7, 40).bot.attackNpc(target);
+        const result = await createBot(7, 40).bot.attack(target);
         expect(result).toMatchObject({ success: false, reason: 'already_in_combat' });
     });
 
     test('dismisses a safe modal before returning satisfied combat evidence', async () => {
         const harness = createBot(target.index, 0, true);
-        const result = await harness.bot.attackNpc(target);
+        const result = await harness.bot.attack(target);
 
         expect(result.success).toBeTrue();
         expect(harness.getDismissCount()).toBe(1);

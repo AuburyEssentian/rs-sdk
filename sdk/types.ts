@@ -7,8 +7,14 @@
 export interface PlayerCombatState {
     /** Currently engaged in combat (has a target) */
     inCombat: boolean;
-    /** Index of NPC/player we're targeting (-1 if none) */
+    /**
+     * Index of the NPC/player we're targeting (-1 if none), already decoded:
+     * the client packs player targets as index + 32768, this does not.
+     * Read alongside `targetType` - index 7 is a different entity in each space.
+     */
     targetIndex: number;
+    /** What `targetIndex` refers to. */
+    targetType: 'npc' | 'player' | 'none';
     /** Tick when we last took damage (-1 if never) */
     lastDamageTick: number;
 }
@@ -70,6 +76,8 @@ export interface NpcOption {
 }
 
 export interface NearbyNpc {
+    /** Discriminator so npc and player targets can share one API. */
+    kind: 'npc';
     index: number;
     name: string;
     combatLevel: number;
@@ -93,6 +101,9 @@ export interface NearbyNpc {
 }
 
 export interface NearbyPlayer {
+    /** Discriminator so npc and player targets can share one API. */
+    kind: 'player';
+    /** World slot of this player - what interact/spell packets address. */
     index: number;
     name: string;
     combatLevel: number;
@@ -100,6 +111,13 @@ export interface NearbyPlayer {
     z: number;
     distance: number;
 }
+
+/**
+ * Anything combat can be pointed at: a resolved entity, or a name/pattern to
+ * look one up by. `bot.attack` and `bot.castSpell` take this - see
+ * {@link BotActions.attack} for how a pattern is matched.
+ */
+export type CombatTarget = NearbyNpc | NearbyPlayer | string | RegExp;
 
 export interface GroundItem {
     id: number;
@@ -234,16 +252,26 @@ export interface BankState {
 }
 
 export interface CombatStyleOption {
+    /** Value com_mode takes for this style, and what sendSetCombatStyle expects. */
     index: number;
+    /** Label from the combat tab ("Chop", "Lunge", ...), or "Style N" if unrecognised. */
     name: string;
+    /** "Accurate", "Aggressive", "Controlled", "Defensive", "Rapid", "Longrange", "Unknown". */
     type: string;
-    trainedSkill: string;
+    /** Every skill this style trains, e.g. ["Attack","Strength","Defence"] for controlled. Hitpoints is always trained on top. Empty when the tab is unrecognised. */
+    trainsSkills: string[];
+    /** Damage type rolled against defence bonuses: "Stab", "Slash", "Crush", "Ranged", "Unknown". */
+    damageType: string;
 }
 
 export interface CombatStyleState {
     currentStyle: number;
     weaponName: string;
     styles: CombatStyleOption[];
+    /** Interface id of the combat tab the server installed - the weapon category, effectively. */
+    tabInterfaceId: number;
+    /** False when the combat tab is unrecognised and style metadata is unknown rather than guessed. */
+    known: boolean;
 }
 
 export interface CombatEvent {
@@ -369,6 +397,7 @@ export type BotAction =
     | { type: 'useItemOnNpc'; itemSlot: number; npcIndex: number; reason: string }
     | { type: 'say'; message: string; reason: string }
     | { type: 'spellOnNpc'; npcIndex: number; spellComponent: number; reason: string }
+    | { type: 'spellOnPlayer'; playerIndex: number; spellComponent: number; reason: string }
     | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
     | { type: 'spellOnGroundItem'; x: number; z: number; itemId: number; spellComponent: number; reason: string }
     | { type: 'setTab'; tabIndex: number; reason: string }
@@ -545,7 +574,10 @@ export interface EatResult {
 export interface AttackResult {
     success: boolean;
     message: string;
-    reason?: 'npc_not_found' | 'no_attack_option' | 'out_of_reach' | 'already_in_combat' | 'died' | 'timeout';
+    /** `npc_not_found` also covers players: no target matched. */
+    reason?: 'npc_not_found' | 'no_attack_option' | 'out_of_reach' | 'already_in_combat' | 'not_attackable' | 'died' | 'timeout';
+    /** What the resolved target was, when one was found. */
+    targetType?: 'npc' | 'player';
 }
 
 export interface CastSpellResult {
@@ -553,7 +585,10 @@ export interface CastSpellResult {
     message: string;
     hit?: boolean;
     xpGained?: number;
-    reason?: 'npc_not_found' | 'out_of_reach' | 'no_runes' | 'timeout';
+    /** `npc_not_found` also covers players: no target matched. */
+    reason?: 'npc_not_found' | 'out_of_reach' | 'no_runes' | 'not_attackable' | 'timeout';
+    /** What the resolved target was, when one was found. */
+    targetType?: 'npc' | 'player';
 }
 
 export interface OpenDoorResult {

@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 /**
  * Attack Out of Reach Test (SDK)
- * Tests the attackNpc failure mode when trying to attack from an enclosed area.
+ * Tests the attack failure mode when trying to attack from an enclosed area.
  *
  * Scenario:
  * - Position the player inside the Lumbridge chicken coop (enclosed by fence)
  * - Try to attack an NPC outside the coop (cow, goblin, etc.)
- * - Verify that attackNpc returns success: false with reason: 'out_of_reach'
+ * - Verify that attack returns success: false with reason: 'out_of_reach'
  *
- * This tests bot.attackNpc() which detects "I can't reach that!" messages from the server
+ * This tests bot.attack() which detects "I can't reach that!" messages from the server
  * when pathfinding cannot find a route to the target.
  */
 
@@ -24,7 +24,7 @@ const INSIDE_CHICKEN_COOP = { x: 3233, z: 3297, level: 0 };
 
 async function runTest(): Promise<boolean> {
     console.log('=== Attack Out of Reach Test (SDK) ===');
-    console.log('Goal: Verify attackNpc detects "can\'t reach" failure from enclosed area');
+    console.log('Goal: Verify attack detects "can\'t reach" failure from enclosed area');
 
     // Create save inside chicken coop
     console.log(`Creating save file for '${BOT_NAME}' inside chicken coop...`);
@@ -75,9 +75,9 @@ async function runTest(): Promise<boolean> {
         // Attempt to attack NPC outside the enclosed coop
         // This should fail with "can't reach" since we're fenced in
         console.log('\n--- Attempting to attack NPC from inside enclosed coop ---');
-        console.log(`Using: bot.attackNpc(${targetNpc.name})`);
+        console.log(`Using: bot.attack(${targetNpc.name})`);
 
-        const attackResult = await bot.attackNpc(targetNpc, 20000);  // 20s timeout
+        const attackResult = await bot.attack(targetNpc, 20000);  // 20s timeout
 
         console.log(`\nAttack result:`);
         console.log(`  success: ${attackResult.success}`);

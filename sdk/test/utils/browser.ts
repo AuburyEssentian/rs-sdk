@@ -13,6 +13,13 @@ import { tmpdir } from 'os';
 
 const BOT_URL = process.env.BOT_URL || 'http://localhost:8888/bot';
 
+/**
+ * Password the test bots log in (and auto-register) with. The SDK must send the
+ * same one: with LOGIN_SERVER=true the gateway authenticates the SDK connection
+ * separately from the browser page, and an empty password is rejected.
+ */
+const BOT_PASSWORD = process.env.BOT_PASSWORD || 'test';
+
 // Persistent browser endpoint file - allows cross-process browser sharing
 const BROWSER_ENDPOINT_FILE = join(tmpdir(), 'rs-agent-browser-endpoint.txt');
 
@@ -235,7 +242,7 @@ export async function launchBotBrowser(
 
     // Navigate to bot URL with all params - page handles auto-login, fps, etc.
     // tst=1 indicates running via test (hides agent panel by default)
-    await page.goto(`${BOT_URL}?bot=${name}&password=test&fps=15&tst=1`, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(`${BOT_URL}?bot=${name}&password=${encodeURIComponent(BOT_PASSWORD)}&fps=15&tst=1`, { waitUntil: 'networkidle2', timeout: 60000 });
 
     // Wait for in-game (page auto-logs in via URL params)
     let attempts = 0;
@@ -351,6 +358,7 @@ export async function launchBotWithSDK(
 
         const sdk = new BotSDK({
             botUsername: browser.botName,
+            password: BOT_PASSWORD,
             autoLaunchBrowser: false  // Puppeteer already launched
         });
         await sdk.connect();
@@ -386,7 +394,7 @@ export async function launchBotWithSDK(
 
     const sdk = new BotSDK({
         botUsername: name,
-        password: 'test',
+        password: BOT_PASSWORD,
         autoLaunchBrowser: true,
         browserLaunchUrl: BOT_URL,
     });

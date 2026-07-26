@@ -10,6 +10,7 @@ import type {
     SkillState,
     InventoryItem,
     NearbyNpc,
+    NearbyPlayer,
     NearbyLoc,
     GroundItem,
     DialogState,
@@ -845,6 +846,20 @@ export class BotSDK {
         return this.state?.nearbyNpcs || [];
     }
 
+    /** Find a nearby player by name pattern (nearest match first). */
+    findNearbyPlayer(pattern: string | RegExp): NearbyPlayer | null {
+        if (!this.state) return null;
+        const regex = typeof pattern === 'string'
+            ? new RegExp(pattern, 'i')
+            : pattern;
+        return this.state.nearbyPlayers.find(p => regex.test(p.name)) || null;
+    }
+
+    /** Get all nearby players, nearest first. */
+    getNearbyPlayers(): NearbyPlayer[] {
+        return this.state?.nearbyPlayers || [];
+    }
+
     /** Get location (object) by coordinates and ID. */
     getNearbyLoc(x: number, z: number, id: number): NearbyLoc | null {
         if (!this.state) return null;
@@ -1011,7 +1026,7 @@ export class BotSDK {
         return this.sendAction({ type: 'interactNpc', npcIndex, optionIndex: option, reason: 'SDK' });
     }
 
-    /** Interact with a player by index and option. Option 2 = Attack (wilderness), 3 = Follow, 4 = Trade. */
+    /** Interact with a player by index and option (1-5). Option 2 = Attack (wilderness), 3 = Follow, 4 = Trade. */
     async sendInteractPlayer(playerIndex: number, option: number = 2): Promise<ActionResult> {
         return this.sendAction({ type: 'interactPlayer', playerIndex, optionIndex: option, reason: 'SDK' });
     }
@@ -1275,9 +1290,30 @@ export class BotSDK {
             .filter((name): name is PrayerName => name !== null);
     }
 
-    /** Cast spell on NPC using spell component ID. */
+    /** Cast spell on NPC using spell component ID (OPNPCT). */
     async sendSpellOnNpc(npcIndex: number, spellComponent: number): Promise<ActionResult> {
         return this.sendAction({ type: 'spellOnNpc', npcIndex, spellComponent, reason: 'SDK' });
+    }
+
+    /**
+     * Cast spell on another player using spell component ID (OPPLAYERT).
+     *
+     * `playerIndex` is a world slot from `nearbyPlayers`, a different space from
+     * npc indices - use {@link sendSpellOnTarget} to avoid mixing them up.
+     */
+    async sendSpellOnPlayer(playerIndex: number, spellComponent: number): Promise<ActionResult> {
+        return this.sendAction({ type: 'spellOnPlayer', playerIndex, spellComponent, reason: 'SDK' });
+    }
+
+    /**
+     * Cast a spell on whatever the target is - npc or player - picking the right
+     * packet from `target.kind`. This is the one to reach for in code that fights
+     * both, e.g. `sdk.sendSpellOnTarget(sdk.findNearbyPlayer('Zezima'), Spells.WIND_STRIKE)`.
+     */
+    async sendSpellOnTarget(target: NearbyNpc | NearbyPlayer, spellComponent: number): Promise<ActionResult> {
+        return target.kind === 'player'
+            ? this.sendSpellOnPlayer(target.index, spellComponent)
+            : this.sendSpellOnNpc(target.index, spellComponent);
     }
 
     /** Cast spell on inventory item. */

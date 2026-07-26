@@ -90,8 +90,10 @@
 | `getEquipment(): InventoryItem[]` | Get all currently equipped items. |
 | `findEquippedItem(pattern: string \| RegExp): InventoryItem \| null` | Find an equipped item by name pattern. |
 | `async eatFood(target: InventoryItem \| string \| RegExp): Promise<EatResult>` | Eat food to restore hitpoints. |
-| `async attackNpc(target: NearbyNpc \| string \| RegExp, timeout: number = 5000): Promise<AttackResult>` | Attack an NPC, walking to it if needed. |
-| `async castSpellOnNpc(target: NearbyNpc \| string \| RegExp, spellComponent: number, timeout: number = 3000): Promise<CastSpellResult>` | Cast a combat spell on an NPC. |
+| `async attack(target: CombatTarget, timeout: number = 5000): Promise<AttackResult>` | Attack an NPC or another player, walking to the target if needed. Takes either an entity (from `sdk.findNearbyNpc`/`sdk.findNearbyPlayer`) or a name/pattern, matched against NPCs first and players second - so pass the entity when a player shares a name with a monster. ```ts await bot.attack(/^chicken$/i); await bot.attack(sdk.findNearbyPlayer('Zezima')!); ``` PvP attacks are refused outside the wilderness and across too big a level gap; those come back as `reason: 'not_attackable'` with the server's own wording in `message`. |
+| `async attackPlayer(target: NearbyPlayer \| string \| RegExp, timeout: number = 5000): Promise<AttackResult>` | Attack another player (OPPLAYER2). Prefer {@link attack}, which also takes NPCs. |
+| `async castSpell(target: CombatTarget, spellComponent: number, timeout: number = 3000): Promise<CastSpellResult>` | Cast a combat spell on an NPC or another player. The two are the same action to the server (OPNPCT vs OPPLAYERT), so this takes either: an entity from `sdk.findNearbyNpc`/`sdk.findNearbyPlayer`, or a name/pattern matched against NPCs first and players second. ```ts await bot.castSpell('goblin', Spells.WIND_STRIKE); await bot.castSpell(sdk.findNearbyPlayer('Zezima')!, Spells.FIRE_STRIKE); ``` Magic XP is the evidence of a cast landing, so a splash still counts as success with `hit: false`. |
+| `async castSpellOnPlayer(target: NearbyPlayer \| string \| RegExp, spellComponent: number, timeout: number = 3000): Promise<CastSpellResult>` | Cast a combat spell on another player (OPPLAYERT). Prefer {@link castSpell}. |
 
 ### Condition Waiting
 
@@ -165,6 +167,8 @@
 | `getNearbyNpc(index: number): NearbyNpc \| null` | Get NPC by index. |
 | `findNearbyNpc(pattern: string \| RegExp): NearbyNpc \| null` | Find NPC by name pattern. |
 | `getNearbyNpcs(): NearbyNpc[]` | Get all nearby NPCs. |
+| `findNearbyPlayer(pattern: string \| RegExp): NearbyPlayer \| null` | Find a nearby player by name pattern (nearest match first). |
+| `getNearbyPlayers(): NearbyPlayer[]` | Get all nearby players, nearest first. |
 | `getNearbyLoc(x: number, z: number, id: number): NearbyLoc \| null` | Get location (object) by coordinates and ID. |
 | `findNearbyLoc(pattern: string \| RegExp): NearbyLoc \| null` | Find location by name pattern. |
 | `getNearbyLocs(): NearbyLoc[]` | Get all nearby locations (trees, rocks, etc). |
@@ -215,7 +219,7 @@
 | `async sendWalk(x: number, z: number, running: boolean = true): Promise<ActionResult>` | Send walk command to coordinates. |
 | `async sendInteractLoc(x: number, z: number, locId: number, option: number = 1): Promise<ActionResult>` | Interact with a location (tree, rock, door, etc). |
 | `async sendInteractNpc(npcIndex: number, option: number = 1): Promise<ActionResult>` | Interact with an NPC by index and option. |
-| `async sendInteractPlayer(playerIndex: number, option: number = 2): Promise<ActionResult>` | Interact with a player by index and option. Option 2 = Attack (wilderness), 3 = Follow, 4 = Trade. |
+| `async sendInteractPlayer(playerIndex: number, option: number = 2): Promise<ActionResult>` | Interact with a player by index and option (1-5). Option 2 = Attack (wilderness), 3 = Follow, 4 = Trade. |
 | `async sendTalkToNpc(npcIndex: number): Promise<ActionResult>` | Talk to an NPC by index. |
 | `async sendPickup(x: number, z: number, itemId: number): Promise<ActionResult>` | Pick up a ground item. |
 | `async sendUseItem(slot: number, option: number = 1): Promise<ActionResult>` | Use an inventory item (eat, equip, etc). |
@@ -238,7 +242,9 @@
 | `async sendCountDialog(value: number): Promise<ActionResult>` | Submit a numeric value to an open p_countdialog (Enter Amount) prompt. |
 | `async sendSetCombatStyle(style: number): Promise<ActionResult>` | Set combat style (0-3). |
 | `async sendTogglePrayer(prayer: PrayerName \| number): Promise<ActionResult>` | Toggle a prayer on or off by name or index (0-14). |
-| `async sendSpellOnNpc(npcIndex: number, spellComponent: number): Promise<ActionResult>` | Cast spell on NPC using spell component ID. |
+| `async sendSpellOnNpc(npcIndex: number, spellComponent: number): Promise<ActionResult>` | Cast spell on NPC using spell component ID (OPNPCT). |
+| `async sendSpellOnPlayer(playerIndex: number, spellComponent: number): Promise<ActionResult>` | Cast spell on another player using spell component ID (OPPLAYERT). `playerIndex` is a world slot from `nearbyPlayers`, a different space from npc indices - use {@link sendSpellOnTarget} to avoid mixing them up. |
+| `async sendSpellOnTarget(target: NearbyNpc \| NearbyPlayer, spellComponent: number): Promise<ActionResult>` | Cast a spell on whatever the target is - npc or player - picking the right packet from `target.kind`. This is the one to reach for in code that fights both, e.g. `sdk.sendSpellOnTarget(sdk.findNearbyPlayer('Zezima'), Spells.WIND_STRIKE)`. |
 | `async sendSpellOnItem(slot: number, spellComponent: number): Promise<ActionResult>` | Cast spell on inventory item. |
 | `async sendSpellOnGroundItem(x: number, z: number, itemId: number, spellComponent: number): Promise<ActionResult>` | Cast spell on ground item (e.g., Telekinetic Grab). |
 | `async sendSetTab(tabIndex: number): Promise<ActionResult>` | Switch to a UI tab by index. |
@@ -268,8 +274,10 @@ Combat state tracking for player
 interface PlayerCombatState {
   /** Currently engaged in combat (has a target) */
   inCombat: boolean;
-  /** Index of NPC/player we're targeting (-1 if none) */
+  /** Index of the NPC/player we're targeting (-1 if none), already decoded: the client packs player targets as index + 32768, this does not. Read alongside `targetType` - index 7 is a different entity in each space. */
   targetIndex: number;
+  /** What `targetIndex` refers to. */
+  targetType: 'npc' | 'player' | 'none';
   /** Tick when we last took damage (-1 if never) */
   lastDamageTick: number;
 }
@@ -371,6 +379,10 @@ interface CombatStyleState {
   currentStyle: number;
   weaponName: string;
   styles: CombatStyleOption[];
+  /** Interface id of the combat tab the server installed - the weapon category, effectively. */
+  tabInterfaceId: number;
+  /** False when the combat tab is unrecognised and style metadata is unknown rather than guessed. */
+  known: boolean;
 }
 ```
 
@@ -550,7 +562,10 @@ interface EatResult {
 interface AttackResult {
   success: boolean;
   message: string;
-  reason?: 'npc_not_found' | 'no_attack_option' | 'out_of_reach' | 'already_in_combat' | 'died' | 'timeout';
+  /** `npc_not_found` also covers players: no target matched. */
+  reason?: 'npc_not_found' | 'no_attack_option' | 'out_of_reach' | 'already_in_combat' | 'not_attackable' | 'died' | 'timeout';
+  /** What the resolved target was, when one was found. */
+  targetType?: 'npc' | 'player';
 }
 ```
 
@@ -562,7 +577,10 @@ interface CastSpellResult {
   message: string;
   hit?: boolean;
   xpGained?: number;
-  reason?: 'npc_not_found' | 'out_of_reach' | 'no_runes' | 'timeout';
+  /** `npc_not_found` also covers players: no target matched. */
+  reason?: 'npc_not_found' | 'out_of_reach' | 'no_runes' | 'not_attackable' | 'timeout';
+  /** What the resolved target was, when one was found. */
+  targetType?: 'npc' | 'player';
 }
 ```
 

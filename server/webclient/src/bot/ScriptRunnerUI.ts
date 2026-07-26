@@ -25,7 +25,7 @@ return sdk.getInventory();
 const CONTEXT_PREAMBLE = `You are writing a script for an MMO game bot.
 
 The script body runs in an async function with two globals already in scope:
-- \`bot\`  - high-level actions that wait for effects (chopTree, walkTo, attackNpc, ...)
+- \`bot\`  - high-level actions that wait for effects (chopTree, walkTo, attack, ...)
 - \`sdk\`  - low-level state/queries (getState, getInventory, findNearbyNpc, ...)
 
 Write plain JavaScript (no imports, no TypeScript annotations). \`await\` is allowed

@@ -57,9 +57,13 @@ export async function runCombatTrainingBot(
     const getStyleForSkill = (skill: string): number | null => {
         const styleState = sdk.getState()?.combatStyle;
         if (!styleState) return null;
-        const match = styleState.styles.find(s =>
-            s.trainedSkill.toLowerCase() === skill.toLowerCase()
-        );
+        // A controlled style trains three skills at once, so prefer a style
+        // dedicated to the one we want and fall back to a shared style (a spear
+        // only has those).
+        const trains = (s: { trainsSkills: string[] }) =>
+            s.trainsSkills.some(trained => trained.toLowerCase() === skill.toLowerCase());
+        const match = styleState.styles.find(s => trains(s) && s.trainsSkills.length === 1)
+            ?? styleState.styles.find(trains);
         return match?.index ?? null;
     };
 
@@ -67,7 +71,7 @@ export async function runCombatTrainingBot(
     await sleep(300);  // Wait for weapon equip to update styles
     const styleState = sdk.getState()?.combatStyle;
     if (styleState) {
-        log(`Combat styles: ${styleState.styles.map(s => `${s.index}:${s.name}(${s.trainedSkill})`).join(', ')}`);
+        log(`Combat styles: ${styleState.styles.map(s => `${s.index}:${s.name}(${s.trainsSkills.join('+') || 'unknown'})`).join(', ')}`);
     }
 
     let currentTrainingSkill = 'Strength';

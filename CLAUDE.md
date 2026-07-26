@@ -142,7 +142,7 @@ For the complete method reference, see **[sdk/API.md](sdk/API.md)** (auto-genera
 
 **Quick overview:**
 
-- `bot.*` - High-level actions that attempt to observe method-specific evidence (chopTree, walkTo, attackNpc, etc.). Check a result when the method returns one.
+- `bot.*` - High-level actions that attempt to observe method-specific evidence (chopTree, walkTo, attack, etc.). Check a result when the method returns one.
 - `sdk.*` - State queries and low-level browser-client dispatches. A successful `send*` result does not prove the game server applied the effect.
 
 ### bot.\* Quick Reference
@@ -153,9 +153,9 @@ For the complete method reference, see **[sdk/API.md](sdk/API.md)** (auto-genera
 | `talkTo(target)`                | Walk to NPC, start dialog                                        |
 | `interactNpc(target, option?)`  | Walk to NPC, interact with any option (e.g. `'trade'`, `'fish'`) |
 | `interactLoc(target, option?)`  | Walk to loc, interact with any option (e.g. `'mine'`, `'smelt'`) |
-| `attackNpc(target)`             | Walk to NPC, start combat                                        |
+| `attack(target)`                | Walk to an NPC or player and start combat                    |
+| `castSpell(target, spell)`      | Cast a combat spell on an NPC or player                         |
 | `pickpocketNpc(target)`         | Pickpocket NPC, detects XP gain vs stun                          |
-| `castSpellOnNpc(target, spell)` | Cast combat spell on NPC                                         |
 | `chopTree(target?)`             | Chop tree, wait for logs                                         |
 | `pickupItem(target)`            | Pick up ground item                                              |
 | `openDoor(target?)`             | Open a door or gate                                              |
@@ -188,6 +188,7 @@ For the complete method reference, see **[sdk/API.md](sdk/API.md)** (auto-genera
 | `getSkill(name)` / `getSkillXp(name)`               | Skill info                                          |
 | `getInventory()` / `findInventoryItem(pattern)`     | Inventory queries                                   |
 | `findNearbyNpc(pattern)` / `findNearbyLoc(pattern)` | Find nearby entities                                |
+| `findNearbyPlayer(pattern)` / `getNearbyPlayers()`  | Find other players                                  |
 | `findGroundItem(pattern)`                           | Find ground items                                   |
 | `getDialog()`                                       | Current dialog state                                |
 | `sendClickDialog(option)`                           | Click dialog option by its published `index`        |

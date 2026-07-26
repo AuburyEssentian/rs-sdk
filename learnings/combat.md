@@ -4,11 +4,11 @@ Successful patterns for combat training.
 
 ## Attacking NPCs
 
-Use `bot.attackNpc()` for cleaner code, or raw SDK for more control:
+Use `bot.attack()` for cleaner code, or raw SDK for more control:
 
 ```typescript
 // Porcelain method (recommended)
-const attack = await bot.attackNpc(/cow/i);
+const attack = await bot.attack(/cow/i);
 if (!attack.success) console.warn(attack.reason, attack.message);
 
 // Raw SDK dispatch (observe combat state afterwards)
@@ -23,13 +23,14 @@ if (npc && attackOpt) {
 
 ## Combat Style Cycling
 
-Combat-style indices depend on the equipped weapon. Resolve them from the
-current state instead of hard-coding `0..3`:
+Combat-style indices depend on the equipped weapon the SDK reads
+the table from the combat tab the server installed, so resolve indices from state
 
 ```typescript
 const targetSkill = 'Defence';
+// A controlled style lists every skill it trains, so match against trainsSkills.
 const style = sdk.getState()?.combatStyle?.styles.find(
-    candidate => candidate.trainedSkill === targetSkill,
+    candidate => candidate.trainsSkills.includes(targetSkill),
 );
 if (!style) {
     throw new Error(`No ${targetSkill} style is available for the equipped weapon`);
@@ -143,7 +144,7 @@ Timeouts and errors are frequent in crowded areas. Wrap attacks in try/catch:
 ```typescript
 // This pattern enabled consistent 10-minute runs
 try {
-    await bot.attackNpc(/cow/i);
+    await bot.attack(/cow/i);
 } catch (err) {
     console.log(`Attack timed out, trying next cow`);
     continue;  // Don't crash - just find another target
@@ -196,7 +197,7 @@ function getLowestCombatStat(state) {
 const state = sdk.getState();
 if (!state) throw new Error('No world state');
 const stat = getLowestCombatStat(state);
-const style = state.combatStyle?.styles.find(option => option.trainedSkill === stat);
+const style = state.combatStyle?.styles.find(option => option.trainsSkills.includes(stat));
 if (!style) throw new Error(`No style trains ${stat} with the equipped weapon`);
 await sdk.sendSetCombatStyle(style.index);
 console.log(`Training ${stat} with ${style.name}`);

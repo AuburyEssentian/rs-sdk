@@ -51,6 +51,8 @@ export interface NpcOption {
 }
 
 export interface NearbyNpc {
+    /** Discriminator so npc and player targets can share one API. */
+    kind: 'npc';
     index: number;
     name: string;
     combatLevel: number;
@@ -79,6 +81,9 @@ export interface NearbyNpc {
 }
 
 export interface NearbyPlayer {
+    /** Discriminator so npc and player targets can share one API. */
+    kind: 'player';
+    /** World slot of this player - what OPPLAYER1-5 and OPPLAYERT address. */
     index: number;
     name: string;
     combatLevel: number;
@@ -178,8 +183,14 @@ export interface BankState {
 export interface PlayerCombatState {
     /** Currently engaged in combat (has a target) */
     inCombat: boolean;
-    /** Index of NPC/player we're targeting (-1 if none) */
+    /**
+     * Index of the NPC/player we're targeting (-1 if none), already decoded:
+     * the client packs player targets as index + 32768, this does not.
+     * Read alongside `targetType` - index 7 is a different entity in each space.
+     */
     targetIndex: number;
+    /** What `targetIndex` refers to. */
+    targetType: 'npc' | 'player' | 'none';
     /** Tick when we last took damage (-1 if never) */
     lastDamageTick: number;
 }
@@ -216,16 +227,23 @@ export interface PlayerState {
 
 // Combat style state
 export interface CombatStyleOption {
-    index: number;      // 0-3
-    name: string;       // "Punch", "Kick", "Block", etc.
-    type: string;       // "Accurate", "Aggressive", "Defensive", "Controlled"
-    trainedSkill: string; // "Attack", "Strength", "Defence", "Shared"
+    index: number;      // 0-3, the value com_mode takes for this style
+    name: string;       // "Punch", "Kick", "Block", etc. ("Style 2" if the tab is unrecognised)
+    type: string;       // "Accurate", "Aggressive", "Defensive", "Controlled", "Rapid", "Longrange", "Unknown"
+    /** Every skill this style trains, e.g. ["Attack","Strength","Defence"] for controlled. Empty when the tab is unrecognised. */
+    trainsSkills: string[];
+    /** Damage type rolled against defence bonuses: "Stab", "Slash", "Crush", "Ranged", "Unknown". */
+    damageType: string;
 }
 
 export interface CombatStyleState {
     currentStyle: number;           // 0-3, the selected style
     weaponName: string;             // Name of equipped weapon or "Unarmed"
     styles: CombatStyleOption[];    // Available combat styles for this weapon
+    /** Interface id of the combat tab the server installed - the weapon category, effectively. */
+    tabInterfaceId: number;
+    /** False when the combat tab is unrecognised and style metadata is a best guess. */
+    known: boolean;
 }
 
 /** Combat event for tracking damage, kills, etc. */
@@ -353,6 +371,7 @@ export type BotAction =
     | { type: 'closeModal'; reason: string }
     | { type: 'setCombatStyle'; style: number; reason: string }
     | { type: 'spellOnNpc'; npcIndex: number; spellComponent: number; reason: string }
+    | { type: 'spellOnPlayer'; playerIndex: number; spellComponent: number; reason: string }
     | { type: 'spellOnItem'; slot: number; spellComponent: number; reason: string }
     | { type: 'spellOnGroundItem'; x: number; z: number; itemId: number; spellComponent: number; reason: string }
     | { type: 'setTab'; tabIndex: number; reason: string }

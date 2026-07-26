@@ -43,7 +43,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
       {
         uri: 'file://../sdk/API.md',
         name: 'SDK API Reference',
-        description: 'Auto-generated reference for bot.* (high-level actions: chopTree, walkTo, attackNpc, openBank, ...) and sdk.* (low-level: getState, sendWalk, findNearbyNpc, ...).',
+        description: 'Auto-generated reference for bot.* (high-level actions: chopTree, walkTo, attack, openBank, ...) and sdk.* (low-level: getState, sendWalk, findNearbyNpc, ...).',
         mimeType: 'text/markdown'
       }
     ]

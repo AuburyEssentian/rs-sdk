@@ -5,13 +5,75 @@ import { BotSDK } from './index';
 import type {
     NearbyLoc,
     NearbyNpc,
+    NearbyPlayer,
+    CombatTarget,
     InventoryItem,
     GroundItem,
     ShopItem,
 } from './types';
 
+/**
+ * Server refusals that stop a PvP attack or spell before it happens, lowercased.
+ * From `~pvp_is_attackable` and friends in
+ * server/content/scripts/skill_combat/scripts/pvp/pvp_combat.rs2.
+ */
+export const PVP_REFUSALS = [
+    "you can't attack players who aren't in the wilderness",
+    'your level difference is too great',
+    "i'm already under attack",
+    'someone else is already fighting your opponent',
+    'kolodion allows only magical combat'
+] as const;
+
+/**
+ * Refusals that clear on their own: single-way combat locks a fight to two
+ * participants for 8 ticks after the last hit, so retrying later can work. The
+ * other {@link PVP_REFUSALS} need you to move or pick a different opponent.
+ *
+ * Both entity spaces are here - the npc wording comes from player_combat.rs2
+ * ("I'm already under attack!", "Someone else is fighting that.") and the pvp
+ * wording from pvp_combat.rs2.
+ */
+export const ALREADY_FIGHTING_REFUSALS = [
+    'already under attack',
+    'someone else is fighting',
+    'someone else is already fighting your opponent'
+] as const;
+
+/** "You do not have enough..." / "You don't have enough...", the missing-rune refusal. */
+export const NO_RUNES_REFUSALS = [
+    'do not have enough',
+    "don't have enough"
+] as const;
+
 export class ActionHelpers {
     constructor(private sdk: BotSDK) {}
+
+    /**
+     * The first message published since a getMessageTick() cursor that contains
+     * one of `phrases` (lowercase), or null. Refusals are the reason a combat
+     * action silently does nothing: the packet lands, the server checks its
+     * rules, and answers with a game message instead of an effect.
+     */
+    findRefusal(sinceMessageTick: number, phrases: readonly string[]): string | null {
+        const state = this.sdk.getState();
+        if (!state) return null;
+
+        for (const msg of state.gameMessages) {
+            if (this.isMessageAfter(msg, sinceMessageTick)) {
+                const text = msg.text.toLowerCase();
+                if (phrases.some(phrase => text.includes(phrase))) {
+                    return msg.text;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The first PvP refusal since a getMessageTick() cursor, or null. */
+    findPvpRefusal(sinceMessageTick: number): string | null {
+        return this.findRefusal(sinceMessageTick, PVP_REFUSALS);
+    }
 
     // ============ Door Retry Wrapper ============
 
@@ -446,6 +508,21 @@ export class ActionHelpers {
             return target;
         }
         return this.sdk.findNearbyNpc(target);
+    }
+
+    /**
+     * Resolve a combat target that may be an npc or another player.
+     *
+     * A passed-in entity is used as-is (its `kind` says which it is). A name or
+     * pattern is matched against nearby NPCs first and players second, so a
+     * player called "Goblin" standing next to a goblin does not steal the fight;
+     * pass the entity from `sdk.findNearbyPlayer(...)` when you mean the player.
+     */
+    resolveCombatTarget(target: CombatTarget): NearbyNpc | NearbyPlayer | null {
+        if (typeof target === 'object' && 'index' in target) {
+            return target;
+        }
+        return this.sdk.findNearbyNpc(target) ?? this.sdk.findNearbyPlayer(target);
     }
 
     resolveShopItem(

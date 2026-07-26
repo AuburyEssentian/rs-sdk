@@ -77,6 +77,7 @@ export class BotStateCollector implements ScanProvider {
     private lastPlayerDamageTick: number = -1;
     private lastNpcDamageCycles: Map<number, Int32Array> = new Map();
     private lastNpcCombatTicks: Map<number, number> = new Map();
+    private lastOtherPlayerDamageCycles: Map<number, Int32Array> = new Map();
     private static readonly MAX_EVENTS = 50;
     private static readonly EVENT_EXPIRY_TICKS = 50;
     private lastDeadState: boolean | null = null;
@@ -286,6 +287,20 @@ export class BotStateCollector implements ScanProvider {
         return { isOpen, interfaceId, options };
     }
 
+    /**
+     * Decode the client's faceEntity field, which packs both entity spaces into
+     * one number: npc indices sit below 32768, player slots above it.
+     */
+    private static decodeFaceEntity(faceEntity: number): { type: 'npc' | 'player' | 'none'; index: number } {
+        if (faceEntity === undefined || faceEntity === null || faceEntity < 0) {
+            return { type: 'none', index: -1 };
+        }
+        if (faceEntity >= 32768) {
+            return { type: 'player', index: faceEntity - 32768 };
+        }
+        return { type: 'npc', index: faceEntity };
+    }
+
     private collectCombatEvents(currentTick: number): void {
         const c = this.client as any;
         const player = c.localPlayer;
@@ -302,15 +317,17 @@ export class BotStateCollector implements ScanProvider {
                 const lastCycle = this.lastPlayerDamageCycles[i] || 0;
 
                 if (cycle > lastCycle && cycle > 0) {
-                    // New damage detected
+                    // New damage detected. The splat carries no attacker, so the
+                    // entity we face is the best available guess at the source.
                     const damage = player.damageValues[i] || 0;
+                    const facing = BotStateCollector.decodeFaceEntity(player.faceEntity ?? -1);
                     this.lastPlayerDamageTick = currentTick;
                     this.combatEvents.push({
                         tick: currentTick,
                         type: 'damage_taken',
                         damage,
-                        sourceType: 'npc', // Assume NPC source for now
-                        sourceIndex: player.faceEntity ?? -1,
+                        sourceType: facing.type === 'player' ? 'other_player' : 'npc',
+                        sourceIndex: facing.index,
                         targetType: 'player',
                         targetIndex: -1 // Self
                     });
@@ -344,8 +361,8 @@ export class BotStateCollector implements ScanProvider {
                     const damage = npc.damageValues[j] || 0;
                     this.lastNpcCombatTicks.set(npcIndex, currentTick);
                     // Check if player is targeting this NPC (likely we dealt the damage)
-                    const playerTarget = player?.faceEntity ?? -1;
-                    const isPlayerSource = playerTarget === npcIndex;
+                    const facing = BotStateCollector.decodeFaceEntity(player?.faceEntity ?? -1);
+                    const isPlayerSource = facing.type === 'npc' && facing.index === npcIndex;
 
                     this.combatEvents.push({
                         tick: currentTick,
@@ -355,6 +372,46 @@ export class BotStateCollector implements ScanProvider {
                         sourceIndex: isPlayerSource ? -1 : -1,
                         targetType: 'npc',
                         targetIndex: npcIndex
+                    });
+                }
+                lastCycles[j] = cycle;
+            }
+        }
+
+        // Detect damage on other players. Only splats on the player we are
+        // fighting are attributed to us - a splat on a bystander says nothing
+        // about who hit them, so it is not published as an event at all.
+        const playerArray = c.players || [];
+        const playerIds = c.playerIds || [];
+        const playerCount = c.playerCount || 0;
+        const facingPlayer = BotStateCollector.decodeFaceEntity(player?.faceEntity ?? -1);
+
+        for (let i = 0; i < playerCount; i++) {
+            const otherIndex = playerIds[i];
+            const other = playerArray[otherIndex];
+            if (!other || other === player || !other.damageCycles || !other.damageValues) continue;
+
+            let lastCycles = this.lastOtherPlayerDamageCycles.get(otherIndex);
+            if (!lastCycles) {
+                lastCycles = new Int32Array(4);
+                this.lastOtherPlayerDamageCycles.set(otherIndex, lastCycles);
+            }
+
+            const isOurTarget = facingPlayer.type === 'player' && facingPlayer.index === otherIndex;
+
+            for (let j = 0; j < 4; j++) {
+                const cycle = other.damageCycles[j] || 0;
+                const lastCycle = lastCycles[j] || 0;
+
+                if (cycle > lastCycle && cycle > 0 && isOurTarget) {
+                    this.combatEvents.push({
+                        tick: currentTick,
+                        type: 'damage_dealt',
+                        damage: other.damageValues[j] || 0,
+                        sourceType: 'player',
+                        sourceIndex: -1,
+                        targetType: 'other_player',
+                        targetIndex: otherIndex
                     });
                 }
                 lastCycles[j] = cycle;
@@ -373,6 +430,17 @@ export class BotStateCollector implements ScanProvider {
             }
         }
 
+        // ...and for players who left the scene
+        const activePlayerIndices = new Set<number>();
+        for (let i = 0; i < playerCount; i++) {
+            activePlayerIndices.add(playerIds[i]);
+        }
+        for (const otherIndex of this.lastOtherPlayerDamageCycles.keys()) {
+            if (!activePlayerIndices.has(otherIndex)) {
+                this.lastOtherPlayerDamageCycles.delete(otherIndex);
+            }
+        }
+
         // Limit event buffer size
         if (this.combatEvents.length > BotStateCollector.MAX_EVENTS) {
             this.combatEvents = this.combatEvents.slice(-BotStateCollector.MAX_EVENTS);
@@ -386,11 +454,11 @@ export class BotStateCollector implements ScanProvider {
         if (!player) return null;
 
         // Get player's combat state
-        const targetId = player.faceEntity ?? -1;
+        const target = BotStateCollector.decodeFaceEntity(player.faceEntity ?? -1);
         // combatCycle is set to loopCycle + 400 when damage is taken/dealt
         // So if combatCycle > loopCycle, we're in combat (within 400 ticks of last hit)
         const combatCycle = player.combatCycle ?? -1000;
-        const inCombat = targetId !== -1 || combatCycle > clientCycle;
+        const inCombat = target.type !== 'none' || combatCycle > clientCycle;
 
         // Hitpoints is skill index 3
         const skillLevel = c.statEffectiveLevel || [];
@@ -428,7 +496,8 @@ export class BotStateCollector implements ScanProvider {
             spotanimId: player.spotanimId ?? -1,
             combat: {
                 inCombat,
-                targetIndex: targetId,
+                targetIndex: target.index,
+                targetType: target.type,
                 lastDamageTick: this.lastPlayerDamageTick
             },
             isDead,
@@ -458,114 +527,189 @@ export class BotStateCollector implements ScanProvider {
         return skills;
     }
 
-    // Combat style varp ID (com_mode) - this is determined by the server's varp pack order
-    // In most RS2 servers, com_mode is at a low index. We'll try common indices.
-    private static readonly VARP_COM_MODE = 43; // Standard RS2 attack style varp
+    /** com_mode, the varp holding the selected attack style (server/content/pack/varp.pack: `43=com_mode`). */
+    private static readonly VARP_COM_MODE = 43;
+
+    /**
+     * What each damagestyle from combat.dbrow means for the player.
+     * Bonuses are from `combat_get_damagestyle_bonuses` and the trained skills
+     * from `give_combat_experience`, both in skill_combat/scripts/combat.rs2.
+     * Every style additionally trains Hitpoints.
+     */
+    private static readonly DAMAGE_STYLES: Record<string, { type: string; trainsSkills: string[] }> = {
+        accurate: { type: 'Accurate', trainsSkills: ['Attack'] },
+        aggressive: { type: 'Aggressive', trainsSkills: ['Strength'] },
+        controlled: { type: 'Controlled', trainsSkills: ['Attack', 'Strength', 'Defence'] },
+        defensive: { type: 'Defensive', trainsSkills: ['Defence'] },
+        ranged_accurate: { type: 'Accurate', trainsSkills: ['Ranged'] },
+        ranged_rapid: { type: 'Rapid', trainsSkills: ['Ranged'] },
+        ranged_longrange: { type: 'Longrange', trainsSkills: ['Ranged', 'Defence'] }
+    };
+
+    /**
+     * Combat style tables keyed by the interface the server installs in the
+     * combat tab, which *is* the weapon category: `update_weapon_category`
+     * (skill_combat/scripts/player/player_attackstyles.rs2) switches on
+     * `oc_category(weapon)` to choose the tab, and `combat_get_weapon_style_data`
+     * (skill_combat/scripts/combat.rs2) switches on the same category to choose
+     * the matching row of skill_combat/configs/combat.dbrow.
+     *
+     * Entries are `[name, damagestyle, damagetype]` in com_mode order: names from
+     * the tab's own labels, the rest transcribed from combat.dbrow.
+     *
+     * Never infer these from the weapon's name. A bronze sword (weapon_stab) and
+     * a scimitar (weapon_slash) are both "swords" and have different tables -
+     * index 2 is aggressive/Slash on one and controlled/Stab on the other.
+     */
+    private static readonly COMBAT_STYLE_TABLES: Record<number, Array<[string, string, string]>> = {
+        5855: [ // combat_unarmed -> weapon_unarmed_table
+            ['Punch', 'accurate', 'Crush'], ['Kick', 'aggressive', 'Crush'], ['Block', 'defensive', 'Crush']
+        ],
+        2276: [ // combat_stabsword -> weapon_stab_table (daggers, short/longswords)
+            ['Stab', 'accurate', 'Stab'], ['Lunge', 'aggressive', 'Stab'],
+            ['Slash', 'aggressive', 'Slash'], ['Block', 'defensive', 'Stab']
+        ],
+        2423: [ // combat_hacksword -> weapon_slash_table (scimitars)
+            ['Chop', 'accurate', 'Slash'], ['Slash', 'aggressive', 'Slash'],
+            ['Lunge', 'controlled', 'Stab'], ['Block', 'defensive', 'Slash']
+        ],
+        4705: [ // combat_heavysword -> weapon_2h_sword_table
+            ['Chop', 'accurate', 'Slash'], ['Slash', 'aggressive', 'Slash'],
+            ['Smash', 'aggressive', 'Crush'], ['Block', 'defensive', 'Slash']
+        ],
+        1698: [ // combat_axe -> weapon_axe_table
+            ['Chop', 'accurate', 'Slash'], ['Hack', 'aggressive', 'Slash'],
+            ['Smash', 'aggressive', 'Crush'], ['Block', 'defensive', 'Slash']
+        ],
+        425: [ // combat_blunt -> weapon_blunt_table (maces, hammers)
+            ['Pound', 'accurate', 'Crush'], ['Pummel', 'aggressive', 'Crush'], ['Block', 'defensive', 'Crush']
+        ],
+        5570: [ // combat_pickaxe -> weapon_pickaxe_table
+            ['Spike', 'accurate', 'Stab'], ['Impale', 'aggressive', 'Stab'],
+            ['Smash', 'aggressive', 'Crush'], ['Block', 'defensive', 'Stab']
+        ],
+        776: [ // combat_scythe -> weapon_scythe_table
+            ['Reap', 'accurate', 'Slash'], ['Chop', 'aggressive', 'Stab'],
+            ['Jab', 'aggressive', 'Crush'], ['Block', 'defensive', 'Slash']
+        ],
+        4679: [ // combat_spear -> weapon_spear_table (controlled on every attacking style)
+            ['Lunge', 'controlled', 'Stab'], ['Swipe', 'controlled', 'Slash'],
+            ['Pound', 'controlled', 'Crush'], ['Block', 'defensive', 'Stab']
+        ],
+        3796: [ // combat_spiked -> weapon_spiked_table
+            ['Pound', 'accurate', 'Crush'], ['Pummel', 'aggressive', 'Crush'],
+            ['Spike', 'controlled', 'Stab'], ['Block', 'defensive', 'Crush']
+        ],
+        7762: [ // combat_claw -> weapon_claws_table
+            ['Chop', 'accurate', 'Slash'], ['Slash', 'aggressive', 'Slash'],
+            ['Lunge', 'controlled', 'Stab'], ['Block', 'defensive', 'Slash']
+        ],
+        8460: [ // combat_polearm -> weapon_polearm_table (3 styles, no accurate)
+            ['Jab', 'controlled', 'Stab'], ['Swipe', 'aggressive', 'Slash'], ['Fend', 'defensive', 'Stab']
+        ],
+        328: [ // combat_staff_2 -> weapon_staff_table
+            ['Jab', 'accurate', 'Crush'], ['Pound', 'aggressive', 'Crush'], ['Focus', 'defensive', 'Crush']
+        ],
+        1764: [ // combat_bow -> weapon_bow_table
+            ['Accurate', 'ranged_accurate', 'Ranged'], ['Rapid', 'ranged_rapid', 'Ranged'],
+            ['Longrange', 'ranged_longrange', 'Ranged']
+        ],
+        1749: [ // combat_crossbow -> weapon_crossbow_table
+            ['Accurate', 'ranged_accurate', 'Ranged'], ['Rapid', 'ranged_rapid', 'Ranged'],
+            ['Longrange', 'ranged_longrange', 'Ranged']
+        ],
+        4446: [ // combat_thrown -> weapon_thrown_table (also javelins)
+            ['Accurate', 'ranged_accurate', 'Ranged'], ['Rapid', 'ranged_rapid', 'Ranged'],
+            ['Longrange', 'ranged_longrange', 'Ranged']
+        ]
+    };
+
+    /**
+     * The com_mode values an unrecognised combat tab offers, read from its
+     * select-buttons the same way Client.setCombatStyle does: each carries the
+     * style it selects in scriptOperand[0].
+     */
+    private findCombatStyleIndices(interfaceId: number): number[] {
+        const styles = new Set<number>();
+        const root = IfType.list[interfaceId] as any;
+        if (!root) return [];
+
+        const visit = (comId: number, depth: number): void => {
+            const com = IfType.list[comId] as any;
+            if (!com || depth > 3) return;
+            if (com.buttonType === 5 && com.scriptOperand && typeof com.scriptOperand[0] === 'number') {
+                styles.add(com.scriptOperand[0]);
+            }
+            if (com.children) {
+                for (const childId of com.children) visit(childId, depth + 1);
+            }
+        };
+
+        if (root.children) {
+            for (const childId of root.children) visit(childId, 1);
+        }
+        return [...styles].sort((a, b) => a - b);
+    }
 
     private collectCombatStyle(): CombatStyleState {
         const c = this.client as any;
 
-        // Default state
         const defaultState: CombatStyleState = {
             currentStyle: 0,
             weaponName: 'Unarmed',
-            styles: []
+            styles: [],
+            tabInterfaceId: -1,
+            known: false
         };
 
         try {
-            // Get current combat style from varp
-            // Try to find the varp by checking what's a reasonable value (0-3)
-            let currentStyle = 0;
-            const varps = c.var || [];
+            // The combat tab (sideIcon[0]) is set by the server from the weapon's
+            // category, so it - not the weapon's name - identifies the style table.
+            const tabInterfaceId = c.sideIcon?.[0] ?? -1;
+            const table = BotStateCollector.COMBAT_STYLE_TABLES[tabInterfaceId];
 
-            // Try common varp indices for com_mode
-            // Check indices that could contain 0-3 values
-            for (const tryIndex of [43, 11, 12, 13, 42, 44]) {
-                const val = varps[tryIndex];
-                if (val !== undefined && val >= 0 && val <= 3) {
-                    currentStyle = val;
-                    break;
-                }
-            }
-
-            // Get equipped weapon
             const equipment = this.collectInventory(EQUIPMENT_INTERFACE_ID);
             const weapon = equipment.find(item => item.slot === 3); // Slot 3 is right hand (weapon)
             const weaponName = weapon?.name || 'Unarmed';
 
-            // Determine combat styles based on weapon type
-            // For simplicity, we'll use the standard melee styles
-            // More sophisticated logic would check weapon category
-            let styles: CombatStyleOption[] = [];
-
-            if (!weapon || weaponName === 'Unarmed') {
-                // Unarmed combat
-                styles = [
-                    { index: 0, name: 'Punch', type: 'Accurate', trainedSkill: 'Attack' },
-                    { index: 1, name: 'Kick', type: 'Aggressive', trainedSkill: 'Strength' },
-                    { index: 2, name: 'Block', type: 'Defensive', trainedSkill: 'Defence' }
-                ];
+            let styles: CombatStyleOption[];
+            if (table) {
+                styles = table.map(([name, damageStyle, damageType], index) => {
+                    const meta = BotStateCollector.DAMAGE_STYLES[damageStyle];
+                    return {
+                        index,
+                        name,
+                        type: meta.type,
+                        trainsSkills: [...meta.trainsSkills],
+                        damageType
+                    };
+                });
             } else {
-                // Check weapon name to determine style types
-                const wn = weaponName.toLowerCase();
-
-                if (wn.includes('bow') || wn.includes('crossbow')) {
-                    // Ranged weapons
-                    styles = [
-                        { index: 0, name: 'Accurate', type: 'Accurate', trainedSkill: 'Ranged' },
-                        { index: 1, name: 'Rapid', type: 'Rapid', trainedSkill: 'Ranged' },
-                        { index: 2, name: 'Longrange', type: 'Longrange', trainedSkill: 'Defence' }
-                    ];
-                } else if (wn.includes('staff') || wn.includes('wand')) {
-                    // Magic weapons
-                    styles = [
-                        { index: 0, name: 'Bash', type: 'Accurate', trainedSkill: 'Attack' },
-                        { index: 1, name: 'Pound', type: 'Aggressive', trainedSkill: 'Strength' },
-                        { index: 2, name: 'Focus', type: 'Defensive', trainedSkill: 'Defence' }
-                    ];
-                } else if (wn.includes('scimitar') || wn.includes('sword') || wn.includes('dagger') || wn.includes('longsword')) {
-                    // Slashing/stabbing weapons (4 styles)
-                    styles = [
-                        { index: 0, name: 'Chop', type: 'Accurate', trainedSkill: 'Attack' },
-                        { index: 1, name: 'Slash', type: 'Aggressive', trainedSkill: 'Strength' },
-                        { index: 2, name: 'Lunge', type: 'Controlled', trainedSkill: 'Shared' },
-                        { index: 3, name: 'Block', type: 'Defensive', trainedSkill: 'Defence' }
-                    ];
-                } else if (wn.includes('mace') || wn.includes('hammer') || wn.includes('maul')) {
-                    // Crush weapons (3 styles)
-                    styles = [
-                        { index: 0, name: 'Pound', type: 'Accurate', trainedSkill: 'Attack' },
-                        { index: 1, name: 'Pummel', type: 'Aggressive', trainedSkill: 'Strength' },
-                        { index: 2, name: 'Block', type: 'Defensive', trainedSkill: 'Defence' }
-                    ];
-                } else if (wn.includes('2h') || wn.includes('godsword') || wn.includes('battleaxe')) {
-                    // 2-handed weapons (4 styles)
-                    styles = [
-                        { index: 0, name: 'Chop', type: 'Accurate', trainedSkill: 'Attack' },
-                        { index: 1, name: 'Slash', type: 'Aggressive', trainedSkill: 'Strength' },
-                        { index: 2, name: 'Smash', type: 'Aggressive', trainedSkill: 'Strength' },
-                        { index: 3, name: 'Block', type: 'Defensive', trainedSkill: 'Defence' }
-                    ];
-                } else {
-                    // Default melee (4 styles - sword-like)
-                    styles = [
-                        { index: 0, name: 'Stab', type: 'Accurate', trainedSkill: 'Attack' },
-                        { index: 1, name: 'Lunge', type: 'Aggressive', trainedSkill: 'Strength' },
-                        { index: 2, name: 'Slash', type: 'Controlled', trainedSkill: 'Shared' },
-                        { index: 3, name: 'Block', type: 'Defensive', trainedSkill: 'Defence' }
-                    ];
-                }
+                // Unrecognised tab: report the buttons that are actually there
+                // rather than inventing a table that may train the wrong skill.
+                styles = this.findCombatStyleIndices(tabInterfaceId).map(index => ({
+                    index,
+                    name: `Style ${index}`,
+                    type: 'Unknown',
+                    trainsSkills: [],
+                    damageType: 'Unknown'
+                }));
             }
 
-            // Ensure currentStyle is within valid range
-            if (currentStyle >= styles.length) {
-                currentStyle = 0;
+            // com_mode, clamped the way player_combat_stat.rs2 clamps it.
+            const varps = c.var ?? [];
+            const rawStyle = varps[BotStateCollector.VARP_COM_MODE];
+            let currentStyle = typeof rawStyle === 'number' && rawStyle >= 0 ? rawStyle : 0;
+            if (styles.length > 0 && currentStyle >= styles.length) {
+                currentStyle = styles.length - 1;
             }
 
             return {
                 currentStyle,
                 weaponName,
-                styles
+                styles,
+                tabInterfaceId,
+                known: Boolean(table)
             };
         } catch {
             return defaultState;
@@ -680,6 +824,7 @@ export class BotStateCollector implements ScanProvider {
             const npcWorldZ = baseZ + (npcZ >> 7);
 
             npcs.push({
+                kind: 'npc',
                 index: npcIndex,
                 name: npcType.name || 'Unknown',
                 combatLevel: npcType.vislevel || 0,
@@ -733,6 +878,7 @@ export class BotStateCollector implements ScanProvider {
             const playerWorldZ = baseZ + ((player.z || 0) >> 7);
 
             players.push({
+                kind: 'player',
                 index: playerIndex,
                 name: player.name,
                 combatLevel: player.combatLevel || 0,

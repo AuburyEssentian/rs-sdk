@@ -312,7 +312,8 @@ export function formatWorldState(
         lines.push(`Weapon: ${state.combatStyle.weaponName}`);
         const current = state.combatStyle.styles[state.combatStyle.currentStyle];
         if (current) {
-            lines.push(`Style: ${current.name} (${current.type}) - trains ${current.trainedSkill}`);
+            const trains = current.trainsSkills.length > 0 ? current.trainsSkills.join('/') : 'unknown';
+            lines.push(`Style: ${current.name} (${current.type}, ${current.damageType}) - trains ${trains}`);
         }
     }
 

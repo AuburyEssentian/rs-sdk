@@ -1103,7 +1103,7 @@ export class Client extends GameShell {
     }
 
     /**
-     * Interact with a player using a specific option (1-4)
+     * Interact with a player using a specific option (1-5)
      * Option 2 is Attack (wilderness only), Option 3 is Follow, Option 4 is Trade
      */
     interactPlayer(playerIndex: number, optionIndex: number): ClientActionResult {
@@ -1113,7 +1113,7 @@ export class Client extends GameShell {
         if (playerIndex < 0) {
             return { success: false, reason: 'invalid_target' };
         }
-        if (optionIndex < 1 || optionIndex > 4) {
+        if (optionIndex < 1 || optionIndex > 5) {
             return { success: false, reason: 'invalid_option' };
         }
 
@@ -1134,7 +1134,8 @@ export class Client extends GameShell {
             ClientProt.OPPLAYER1,
             ClientProt.OPPLAYER2,
             ClientProt.OPPLAYER3,
-            ClientProt.OPPLAYER4
+            ClientProt.OPPLAYER4,
+            ClientProt.OPPLAYER5
         ];
         this.writePacketOpcode(opcodes[optionIndex - 1]);
         this.out.p2(playerIndex);
@@ -1177,6 +1178,48 @@ export class Client extends GameShell {
         // Send OPNPCT packet
         this.writePacketOpcode(ClientProt.OPNPCT);
         this.out.p2(npcIndex);
+        this.out.p2(spellComponent);
+
+        return { success: true, routed };
+    }
+
+    /**
+     * Cast a spell on another player (sends OPPLAYERT)
+     * The PvP counterpart of spellOnNpc - the server routes it to [applayert,...]
+     *
+     * playerIndex: the world slot of the target player (NearbyPlayer.index)
+     * spellComponent: the interface component ID of the spell (e.g., 1152 for Wind Strike)
+     */
+    spellOnPlayer(playerIndex: number, spellComponent: number): ClientActionResult {
+        if (!this.ingame || !this.out || !this.localPlayer) {
+            return { success: false, reason: 'not_in_game' };
+        }
+        if (playerIndex < 0) {
+            return { success: false, reason: 'invalid_target' };
+        }
+
+        const p = this.players[playerIndex];
+        if (!p) {
+            return { success: false, reason: 'target_not_found' };
+        }
+
+        // Try to move towards the player. As with spellOnNpc the packet still goes
+        // out when routing fails: spells have reach, so the server may well allow
+        // the cast from where we stand.
+        const routed = this.tryMove(
+            this.localPlayer.routeX[0],
+            this.localPlayer.routeZ[0],
+            p.routeX[0],
+            p.routeZ[0],
+            false,  // tryNearest
+            1, 1,   // player size
+            0, 0,   // angle, shape
+            0,      // forceapproach
+            2       // type = MOVE_OPCLICK
+        );
+        // Send OPPLAYERT packet
+        this.writePacketOpcode(ClientProt.OPPLAYERT);
+        this.out.p2(playerIndex);
         this.out.p2(spellComponent);
 
         return { success: true, routed };
@@ -1857,15 +1900,14 @@ export class Client extends GameShell {
 
     /**
      * Get current combat style (0-3)
+     *
+     * Reads com_mode (varp 43, see server/content/pack/varp.pack) and nothing else:
+     * scanning neighbouring varps for a plausible 0-3 value happily returns some
+     * other setting's value when com_mode has not been sent yet.
      */
     getCombatStyle(): number {
-        for (const tryIndex of [43, 11, 12, 13, 42, 44]) {
-            const val = this.var[tryIndex];
-            if (val !== undefined && val >= 0 && val <= 3) {
-                return val;
-            }
-        }
-        return 0;
+        const val = this.var[43];
+        return typeof val === 'number' && val >= 0 ? val : 0;
     }
 
     /**

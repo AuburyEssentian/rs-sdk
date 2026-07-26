@@ -150,7 +150,7 @@ See [`sdk/API.md`](../sdk/API.md) for the full auto-generated API documentation.
 
 - Movement: `walkTo(x, z)`
 - Skills: `chopTree()`, `burnLogs()`, `fletchLogs()`, `smithAtAnvil()`, `craftLeather()`
-- Combat: `attackNpc(target)`, `eatFood(target)`, `castSpellOnNpc(target, spell)`
+- Combat: `attack(target)`, `eatFood(target)`, `castSpell(target, spell)`
 - Interaction: `interactLoc(target, option)`, `interactNpc(target, option)`, `talkTo(target)`
 - Banking: `openBank()`, `depositItem()`, `withdrawItem()`
 - Shopping: `openShop()`, `buyFromShop()`, `sellToShop()`

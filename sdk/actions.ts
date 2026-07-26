@@ -3,7 +3,7 @@
 // Actions resolve when the EFFECT is complete (not just acknowledged)
 
 import { BotSDK } from './index';
-import { ActionHelpers } from './actions-helpers';
+import { ActionHelpers, ALREADY_FIGHTING_REFUSALS, NO_RUNES_REFUSALS } from './actions-helpers';
 import { findDoorsAlongPath, isTileWalkable } from './pathfinding';
 import type {
     ActionResult,
@@ -11,6 +11,8 @@ import type {
     InventoryItem,
     BankItem,
     NearbyNpc,
+    NearbyPlayer,
+    CombatTarget,
     NearbyLoc,
     GroundItem,
     ShopItem,
@@ -1759,14 +1761,49 @@ export class BotActions {
         }
     }
 
-    /** Attack an NPC, walking to it if needed. */
-    async attackNpc(target: NearbyNpc | string | RegExp, timeout: number = 5000): Promise<AttackResult> {
+    /**
+     * Attack an NPC or another player, walking to the target if needed.
+     *
+     * Takes either an entity (from `sdk.findNearbyNpc`/`sdk.findNearbyPlayer`) or
+     * a name/pattern, matched against NPCs first and players second - so pass the
+     * entity when a player shares a name with a monster.
+     *
+     * ```ts
+     * await bot.attack(/^chicken$/i);
+     * await bot.attack(sdk.findNearbyPlayer('Zezima')!);
+     * ```
+     *
+     * PvP attacks are refused outside the wilderness and across too big a level
+     * gap; those come back as `reason: 'not_attackable'` with the server's own
+     * wording in `message`.
+     */
+    async attack(target: CombatTarget, timeout: number = 5000): Promise<AttackResult> {
         await this.dismissBlockingUI();
 
-        const npc = this.helpers.resolveNpc(target);
-        if (!npc) {
-            return { success: false, message: `NPC not found: ${target}`, reason: 'npc_not_found' };
+        const entity = this.helpers.resolveCombatTarget(target);
+        if (!entity) {
+            return { success: false, message: `Target not found: ${target}`, reason: 'npc_not_found' };
         }
+        return entity.kind === 'player'
+            ? this.attackPlayerEntity(entity, timeout)
+            : this.attackNpcEntity(entity, timeout);
+    }
+
+    /** Attack another player (OPPLAYER2). Prefer {@link attack}, which also takes NPCs. */
+    async attackPlayer(target: NearbyPlayer | string | RegExp, timeout: number = 5000): Promise<AttackResult> {
+        await this.dismissBlockingUI();
+
+        const player = typeof target === 'object' && 'index' in target
+            ? target
+            : this.sdk.findNearbyPlayer(target);
+        if (!player) {
+            return { success: false, message: `Player not found: ${target}`, reason: 'npc_not_found' };
+        }
+        return this.attackPlayerEntity(player, timeout);
+    }
+
+    private async attackNpcEntity(npc: NearbyNpc, timeout: number): Promise<AttackResult> {
+        const targetType = 'npc' as const;
 
         // Sanity check: NPC coordinates should be within reasonable distance of player
         // If coords are wildly off, the NPC data is corrupted
@@ -1778,20 +1815,20 @@ export class BotActions {
             // If calculated coord distance is way more than reported distance, coords are bad
             // Allow tolerance of 5 tiles for small distances (handles distance=0 edge case)
             if (coordDist > 200 || (npc.distance > 0 && npc.distance < 50 && coordDist > Math.max(5, npc.distance * 3))) {
-                return { success: false, message: `NPC "${npc.name}" has invalid coordinates`, reason: 'npc_not_found' };
+                return { success: false, message: `NPC "${npc.name}" has invalid coordinates`, reason: 'npc_not_found', targetType };
             }
         }
 
         const attackOpt = npc.optionsWithIndex.find(o => /attack/i.test(o.text));
         if (!attackOpt) {
-            return { success: false, message: `No attack option on ${npc.name}`, reason: 'no_attack_option' };
+            return { success: false, message: `No attack option on ${npc.name}`, reason: 'no_attack_option', targetType };
         }
 
         // Walk near NPC first - this handles doors
         if (npc.distance > 2) {
             const walkResult = await this.walkTo(npc.x, npc.z, 2);
             if (!walkResult.success) {
-                return { success: false, message: `Cannot reach ${npc.name}: ${walkResult.message}`, reason: 'out_of_reach' };
+                return { success: false, message: `Cannot reach ${npc.name}: ${walkResult.message}`, reason: 'out_of_reach', targetType };
             }
         }
 
@@ -1807,21 +1844,16 @@ export class BotActions {
             return {
                 success: false,
                 message: result.message,
-                reason: result.reason === 'cant_reach' ? 'out_of_reach' : 'timeout'
+                reason: result.reason === 'cant_reach' ? 'out_of_reach' : 'timeout',
+                targetType
             };
         }
 
         try {
             const finalState = await this.waitForActionCondition(state => {
-                for (const msg of state.gameMessages) {
-                    if (this.helpers.isMessageAfter(msg, msgBaseline)) {
-                        const text = msg.text.toLowerCase();
-                        if (text.includes("someone else is fighting") ||
-                            text.includes("already under attack") ||
-                            text.includes("can't reach")) {
-                            return true;
-                        }
-                    }
+                if (this.helpers.findRefusal(msgBaseline, ALREADY_FIGHTING_REFUSALS) ||
+                    this.helpers.checkCantReachMessage(msgBaseline)) {
+                    return true;
                 }
 
                 const targetNpc = state.nearbyNpcs.find(n => n.index === npc.index);
@@ -1833,7 +1865,9 @@ export class BotActions {
                     return true;
                 }
 
-                if (state.player?.combat.inCombat && state.player.combat.targetIndex === npc.index) {
+                if (state.player?.combat.inCombat &&
+                    state.player.combat.targetType === 'npc' &&
+                    state.player.combat.targetIndex === npc.index) {
                     return true;
                 }
 
@@ -1847,11 +1881,12 @@ export class BotActions {
 
             if (finalState.player?.isDead ||
                 (startLifeId !== undefined && finalState.player?.lifeId !== startLifeId)) {
-                return { success: false, message: `Died while attacking ${npc.name}`, reason: 'died' };
+                return { success: false, message: `Died while attacking ${npc.name}`, reason: 'died', targetType };
             }
 
             const engagedRequestedTarget =
                 (finalState.player?.combat.inCombat &&
+                    finalState.player.combat.targetType === 'npc' &&
                     finalState.player.combat.targetIndex === npc.index) ||
                 finalState.combatEvents.some(event =>
                     eventAfterStart(event) &&
@@ -1860,71 +1895,207 @@ export class BotActions {
                     event.targetIndex === npc.index
                 );
 
-            for (const msg of finalState.gameMessages) {
-                if (this.helpers.isMessageAfter(msg, msgBaseline)) {
-                    const text = msg.text.toLowerCase();
-                    if (text.includes("can't reach")) {
-                        return { success: false, message: `Cannot reach ${npc.name}`, reason: 'out_of_reach' };
-                    }
-                    if (text.includes("someone else is fighting") || text.includes("already under attack")) {
-                        // "I'm already under attack!" can race with a successful
-                        // engagement. Only requested-target evidence can turn
-                        // this refusal into success.
-                        if (engagedRequestedTarget) {
-                            return { success: true, message: `Already fighting ${npc.name}` };
-                        }
-                        return { success: false, message: `${npc.name} is already in combat`, reason: 'already_in_combat' };
-                    }
+            if (this.helpers.checkCantReachMessage(msgBaseline)) {
+                return { success: false, message: `Cannot reach ${npc.name}`, reason: 'out_of_reach', targetType };
+            }
+
+            if (this.helpers.findRefusal(msgBaseline, ALREADY_FIGHTING_REFUSALS)) {
+                // "I'm already under attack!" can race with a successful
+                // engagement. Only requested-target evidence can turn this
+                // refusal into success.
+                if (engagedRequestedTarget) {
+                    return { success: true, message: `Already fighting ${npc.name}`, targetType };
                 }
+                return { success: false, message: `${npc.name} is already in combat`, reason: 'already_in_combat', targetType };
             }
 
             if (engagedRequestedTarget) {
-                return { success: true, message: `Attacking ${npc.name}` };
+                return { success: true, message: `Attacking ${npc.name}`, targetType };
             }
 
             const targetStillVisible = finalState.nearbyNpcs.some(candidate => candidate.index === npc.index);
             return targetStillVisible
-                ? { success: false, message: `No combat effect observed for ${npc.name}`, reason: 'timeout' }
-                : { success: false, message: `${npc.name} disappeared before combat was observed`, reason: 'npc_not_found' };
+                ? { success: false, message: `No combat effect observed for ${npc.name}`, reason: 'timeout', targetType }
+                : { success: false, message: `${npc.name} disappeared before combat was observed`, reason: 'npc_not_found', targetType };
         } catch {
-            return { success: false, message: `Timeout waiting to attack ${npc.name}`, reason: 'timeout' };
+            return { success: false, message: `Timeout waiting to attack ${npc.name}`, reason: 'timeout', targetType };
         }
     }
 
-    /** Cast a combat spell on an NPC. */
-    async castSpellOnNpc(target: NearbyNpc | string | RegExp, spellComponent: number, timeout: number = 3000): Promise<CastSpellResult> {
-        await this.dismissBlockingUI();
+    /**
+     * Attack a resolved player with OPPLAYER2, the option `[opplayer2,_]` in
+     * pvp_combat.rs2 handles. Evidence is the same shape as for NPCs - engagement
+     * or a damage splat on the requested target - plus the PvP refusals, which
+     * arrive as ordinary game messages and otherwise look like a silent no-op.
+     */
+    private async attackPlayerEntity(player: NearbyPlayer, timeout: number): Promise<AttackResult> {
+        const targetType = 'player' as const;
 
-        const npc = this.helpers.resolveNpc(target);
-        if (!npc) {
-            return { success: false, message: `NPC not found: ${target}`, reason: 'npc_not_found' };
+        // Walk near the target first - this handles doors. Players move, so this
+        // only closes the gap; the server routes the last step from the packet.
+        if (player.distance > 2) {
+            const walkResult = await this.walkTo(player.x, player.z, 2);
+            if (!walkResult.success) {
+                return { success: false, message: `Cannot reach ${player.name}: ${walkResult.message}`, reason: 'out_of_reach', targetType };
+            }
         }
 
         const startState = this.sdk.getState();
-        if (!startState) {
-            return { success: false, message: 'No game state available' };
+        const startTick = startState?.tick || 0;
+        const startRevision = startState?.revision ?? startTick;
+        const startLifeId = startState?.player?.lifeId;
+        const eventAfterStart = (event: { tick: number; observationId?: number }) =>
+            (event.observationId ?? event.tick) > startRevision;
+        const msgBaseline = this.helpers.getMessageTick();
+
+        const engaged = (state: NonNullable<ReturnType<BotSDK['getState']>>) =>
+            (state.player?.combat.inCombat === true &&
+                state.player.combat.targetType === 'player' &&
+                state.player.combat.targetIndex === player.index) ||
+            state.combatEvents.some(event =>
+                eventAfterStart(event) &&
+                event.type === 'damage_dealt' &&
+                event.targetType === 'other_player' &&
+                event.targetIndex === player.index
+            );
+
+        const result = await this.sdk.sendInteractPlayer(player.index, 2);
+        if (!result.success) {
+            return {
+                success: false,
+                message: result.message,
+                reason: result.reason === 'cant_reach' ? 'out_of_reach' : 'timeout',
+                targetType
+            };
         }
-        const startTick = startState.tick;
+
+        try {
+            const finalState = await this.waitForActionCondition(state => {
+                if (this.helpers.findPvpRefusal(msgBaseline)) return true;
+
+                for (const msg of state.gameMessages) {
+                    if (this.helpers.isMessageAfter(msg, msgBaseline) &&
+                        msg.text.toLowerCase().includes("can't reach")) {
+                        return true;
+                    }
+                }
+
+                if (state.player?.isDead || (startLifeId !== undefined && state.player?.lifeId !== startLifeId)) {
+                    return true;
+                }
+
+                // Target logged out or ran out of view
+                if (!state.nearbyPlayers.some(candidate => candidate.index === player.index)) {
+                    return true;
+                }
+
+                return engaged(state);
+            }, timeout);
+
+            if (finalState.player?.isDead ||
+                (startLifeId !== undefined && finalState.player?.lifeId !== startLifeId)) {
+                return { success: false, message: `Died while attacking ${player.name}`, reason: 'died', targetType };
+            }
+
+            const engagedRequestedTarget = engaged(finalState);
+
+            const refusal = this.helpers.findPvpRefusal(msgBaseline);
+            if (refusal) {
+                // Auto-retaliate can land a hit in the same tick the server
+                // refuses the manual attack; only requested-target evidence
+                // turns the refusal into success.
+                if (engagedRequestedTarget) {
+                    return { success: true, message: `Already fighting ${player.name}`, targetType };
+                }
+                const alreadyFighting = ALREADY_FIGHTING_REFUSALS.some(text => refusal.toLowerCase().includes(text));
+                return {
+                    success: false,
+                    message: `Cannot attack ${player.name}: ${refusal}`,
+                    reason: alreadyFighting ? 'already_in_combat' : 'not_attackable',
+                    targetType
+                };
+            }
+
+            if (this.helpers.checkCantReachMessage(msgBaseline)) {
+                return { success: false, message: `Cannot reach ${player.name}`, reason: 'out_of_reach', targetType };
+            }
+
+            if (engagedRequestedTarget) {
+                return { success: true, message: `Attacking ${player.name}`, targetType };
+            }
+
+            const targetStillVisible = finalState.nearbyPlayers.some(candidate => candidate.index === player.index);
+            return targetStillVisible
+                ? { success: false, message: `No combat effect observed for ${player.name}`, reason: 'timeout', targetType }
+                : { success: false, message: `${player.name} left before combat was observed`, reason: 'npc_not_found', targetType };
+        } catch {
+            return { success: false, message: `Timeout waiting to attack ${player.name}`, reason: 'timeout', targetType };
+        }
+    }
+
+    /**
+     * Cast a combat spell on an NPC or another player.
+     *
+     * The two are the same action to the server (OPNPCT vs OPPLAYERT), so this
+     * takes either: an entity from `sdk.findNearbyNpc`/`sdk.findNearbyPlayer`, or
+     * a name/pattern matched against NPCs first and players second.
+     *
+     * ```ts
+     * await bot.castSpell('goblin', Spells.WIND_STRIKE);
+     * await bot.castSpell(sdk.findNearbyPlayer('Zezima')!, Spells.FIRE_STRIKE);
+     * ```
+     *
+     * Magic XP is the evidence of a cast landing, so a splash still counts as
+     * success with `hit: false`.
+     */
+    async castSpell(target: CombatTarget, spellComponent: number, timeout: number = 3000): Promise<CastSpellResult> {
+        await this.dismissBlockingUI();
+
+        const entity = this.helpers.resolveCombatTarget(target);
+        if (!entity) {
+            return { success: false, message: `Target not found: ${target}`, reason: 'npc_not_found' };
+        }
+        return this.castSpellOnEntity(entity, spellComponent, timeout);
+    }
+
+    /** Cast a combat spell on another player (OPPLAYERT). Prefer {@link castSpell}. */
+    async castSpellOnPlayer(target: NearbyPlayer | string | RegExp, spellComponent: number, timeout: number = 3000): Promise<CastSpellResult> {
+        await this.dismissBlockingUI();
+
+        const player = typeof target === 'object' && 'index' in target
+            ? target
+            : this.sdk.findNearbyPlayer(target);
+        if (!player) {
+            return { success: false, message: `Player not found: ${target}`, reason: 'npc_not_found' };
+        }
+        return this.castSpellOnEntity(player, spellComponent, timeout);
+    }
+
+    private async castSpellOnEntity(
+        entity: NearbyNpc | NearbyPlayer,
+        spellComponent: number,
+        timeout: number
+    ): Promise<CastSpellResult> {
+        const targetType = entity.kind === 'player' ? 'player' : 'npc';
+
+        const startState = this.sdk.getState();
+        if (!startState) {
+            return { success: false, message: 'No game state available', targetType };
+        }
         const msgBaseline = this.helpers.getMessageTick();
         const startMagicXp = startState.skills.find(s => s.name === 'Magic')?.experience ?? 0;
 
-        const result = await this.sdk.sendSpellOnNpc(npc.index, spellComponent);
+        const result = await this.sdk.sendSpellOnTarget(entity, spellComponent);
         if (!result.success) {
-            return { success: false, message: result.message };
+            return { success: false, message: result.message, targetType };
         }
 
         try {
             const finalState = await this.sdk.waitForCondition(state => {
-                for (const msg of state.gameMessages) {
-                    if (this.helpers.isMessageAfter(msg, msgBaseline)) {
-                        const text = msg.text.toLowerCase();
-                        if (text.includes("can't reach") || text.includes("cannot reach")) {
-                            return true;
-                        }
-                        if (text.includes("do not have enough") || text.includes("don't have enough")) {
-                            return true;
-                        }
-                    }
+                if (this.helpers.checkCantReachMessage(msgBaseline) ||
+                    this.helpers.findRefusal(msgBaseline, NO_RUNES_REFUSALS) ||
+                    this.helpers.findPvpRefusal(msgBaseline)) {
+                    return true;
                 }
 
                 const currentMagicXp = state.skills.find(s => s.name === 'Magic')?.experience ?? 0;
@@ -1936,28 +2107,28 @@ export class BotActions {
             }, timeout);
 
             // Check for "not enough runes" first
-            for (const msg of finalState.gameMessages) {
-                if (this.helpers.isMessageAfter(msg, msgBaseline)) {
-                    const text = msg.text.toLowerCase();
-                    if (text.includes("do not have enough") || text.includes("don't have enough")) {
-                        return { success: false, message: `Not enough runes to cast spell`, reason: 'no_runes' };
-                    }
-                }
+            if (this.helpers.findRefusal(msgBaseline, NO_RUNES_REFUSALS)) {
+                return { success: false, message: `Not enough runes to cast spell`, reason: 'no_runes', targetType };
+            }
+
+            const refusal = this.helpers.findPvpRefusal(msgBaseline);
+            if (refusal) {
+                return { success: false, message: `Cannot cast on ${entity.name}: ${refusal}`, reason: 'not_attackable', targetType };
             }
 
             if (this.helpers.checkCantReachMessage(msgBaseline)) {
-                return { success: false, message: `Cannot reach ${npc.name} - obstacle in the way`, reason: 'out_of_reach' };
+                return { success: false, message: `Cannot reach ${entity.name} - obstacle in the way`, reason: 'out_of_reach', targetType };
             }
 
             const finalMagicXp = finalState.skills.find(s => s.name === 'Magic')?.experience ?? 0;
             const xpGained = finalMagicXp - startMagicXp;
             if (xpGained > 0) {
-                return { success: true, message: `Hit ${npc.name} for ${xpGained} Magic XP`, hit: true, xpGained };
+                return { success: true, message: `Hit ${entity.name} for ${xpGained} Magic XP`, hit: true, xpGained, targetType };
             }
 
-            return { success: true, message: `Splashed on ${npc.name}`, hit: false, xpGained: 0 };
+            return { success: true, message: `Splashed on ${entity.name}`, hit: false, xpGained: 0, targetType };
         } catch {
-            return { success: true, message: `Splashed on ${npc.name} (timeout)`, hit: false, xpGained: 0 };
+            return { success: true, message: `Splashed on ${entity.name} (timeout)`, hit: false, xpGained: 0, targetType };
         }
     }
 

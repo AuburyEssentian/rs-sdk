@@ -102,6 +102,40 @@ describe('ranged spell dispatch', () => {
         expect(payload).toEqual([42, 1152]);
     });
 
+    test('dispatches a combat spell at another player (OPPLAYERT)', () => {
+        // Without this the only PvP magic was autocast, which needs a staff.
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+        const client = {
+            ingame: true,
+            out: { p2: (value: number) => payload.push(value) },
+            localPlayer: { routeX: [1], routeZ: [1] },
+            players: { 3: { routeX: [4], routeZ: [4] } },
+            tryMove: () => true,
+            writePacketOpcode: (opcode: number) => opcodes.push(opcode)
+        };
+
+        const result = Client.prototype.spellOnPlayer.call(client, 3, 1152);
+
+        expect(result).toEqual({ success: true, routed: true });
+        expect(opcodes).toEqual([240]); // ClientProt.OPPLAYERT
+        expect(payload).toEqual([3, 1152]);
+    });
+
+    test('refuses to cast at a player the client cannot see', () => {
+        const client = {
+            ingame: true,
+            out: { p2: () => { throw new Error('should not send'); } },
+            localPlayer: { routeX: [1], routeZ: [1] },
+            players: {},
+            tryMove: () => true,
+            writePacketOpcode: () => { throw new Error('should not send'); }
+        };
+
+        expect(Client.prototype.spellOnPlayer.call(client, 9, 1152))
+            .toEqual({ success: false, reason: 'target_not_found' });
+    });
+
     test('dispatches Telekinetic Grab even when adjacency routing fails', () => {
         const opcodes: number[] = [];
         const payload: number[] = [];
@@ -126,6 +160,38 @@ describe('ranged spell dispatch', () => {
         expect(result).toEqual({ success: true, routed: false });
         expect(opcodes).toEqual([91]); // ClientProt.OPOBJT
         expect(payload).toEqual([3205, 3206, 995, 1151]);
+    });
+});
+
+describe('interactPlayer', () => {
+    function playerClient(opcodes: number[], payload: number[]) {
+        return {
+            ingame: true,
+            out: { p2: (value: number) => payload.push(value) },
+            localPlayer: { routeX: [1], routeZ: [1] },
+            players: { 5: { routeX: [2], routeZ: [2] } },
+            tryMove: () => true,
+            writePacketOpcode: (opcode: number) => opcodes.push(opcode)
+        };
+    }
+
+    test('sends OPPLAYER2 for the attack option', () => {
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+
+        expect(Client.prototype.interactPlayer.call(playerClient(opcodes, payload), 5, 2))
+            .toEqual({ success: true });
+        expect(opcodes).toEqual([166]); // ClientProt.OPPLAYER2
+        expect(payload).toEqual([5]);
+    });
+
+    test('sends OPPLAYER5, which the engine binds but the client used to reject', () => {
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+
+        expect(Client.prototype.interactPlayer.call(playerClient(opcodes, payload), 5, 5))
+            .toEqual({ success: true });
+        expect(opcodes).toEqual([174]); // ClientProt.OPPLAYER5
     });
 });
 

@@ -221,6 +221,16 @@ export class ActionExecutor {
                     return result;
                 }
 
+                case 'spellOnPlayer': {
+                    const result = this.wrapClientAction(
+                        this.client.spellOnPlayer(action.playerIndex, action.spellComponent),
+                        `Casting spell on player #${action.playerIndex}`,
+                        'Failed to cast spell on player'
+                    );
+                    if (result.success) this.showPlayerClickVisual(action.playerIndex);
+                    return result;
+                }
+
                 case 'spellOnItem':
                     return this.wrapBool(
                         this.client.spellOnItem(action.slot, action.spellComponent),
@@ -434,6 +444,8 @@ export function formatAction(action: BotAction): string {
         case 'clickComponentWithOption': return `Click component ${action.componentId} option ${action.optionIndex}`;
         case 'useItemOnItem': return `Use slot ${action.sourceSlot} on ${action.targetSlot}`;
         case 'useItemOnNpc': return `Use slot ${action.itemSlot} on NPC #${action.npcIndex}`;
+        case 'spellOnNpc': return `Cast ${action.spellComponent} on NPC #${action.npcIndex}`;
+        case 'spellOnPlayer': return `Cast ${action.spellComponent} on player #${action.playerIndex}`;
         case 'shopBuy': return `Buy slot ${action.slot} x${action.amount}`;
         case 'shopSell': return `Sell slot ${action.slot} x${action.amount}`;
         case 'wait': return `Wait ${action.ticks || 1} ticks`;

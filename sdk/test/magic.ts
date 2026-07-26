@@ -92,7 +92,7 @@ runTest({
             }
 
             // Cast Wind Strike on the NPC
-            const castResult = await bot.castSpellOnNpc(target, Spells.WIND_STRIKE);
+            const castResult = await bot.castSpell(target, Spells.WIND_STRIKE);
             casts++;
             lastCastTurn = turn;
 
