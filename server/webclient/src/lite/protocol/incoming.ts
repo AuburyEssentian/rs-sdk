@@ -513,6 +513,8 @@ export function dispatch(c: LiteClient, opcode: number, buf: Packet, psize: numb
             return;
         }
         case ServerProt.UPDATE_ZONE_FULL_FOLLOWS: {
+            // The packet carries the zone origin in build-area tiles (0..103);
+            // the browser indexes groundObj/locChanges with it directly.
             c.zoneUpdateX = buf.g1();
             c.zoneUpdateZ = buf.g1();
             for (let x = c.zoneUpdateX; x < c.zoneUpdateX + 8; x++) {
@@ -522,6 +524,10 @@ export function dispatch(c: LiteClient, opcode: number, buf: Packet, psize: numb
                     }
                 }
             }
+            // Revert pending loc changes in the zone too - the overlay keys are
+            // absolute world tiles, so translate by the build-area base. This is
+            // the lite equivalent of the browser's locChanges endTime=0 sweep.
+            c.world.clearZoneOverlay(c.minusedlevel, c.mapBuildBaseX + c.zoneUpdateX, c.mapBuildBaseZ + c.zoneUpdateZ);
             return;
         }
         case ServerProt.UPDATE_ZONE_PARTIAL_ENCLOSED: {

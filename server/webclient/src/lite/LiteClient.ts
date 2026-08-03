@@ -16,10 +16,12 @@ import LocType from '#/config/LocType.js';
 import NpcType from '#/config/NpcType.js';
 import ObjType from '#/config/ObjType.js';
 import SeqType from '#/config/SeqType.js';
+import SpotType from '#/config/SpotType.js';
 
 import JString from '#/datastruct/JString.js';
 import LinkList from '#/datastruct/LinkList.js';
 
+import type ClientEntity from '#/dash3d/ClientEntity.js';
 import ClientNpc from '#/dash3d/ClientNpc.js';
 import ClientObj from '#/dash3d/ClientObj.js';
 import ClientPlayer from '#/dash3d/ClientPlayer.js';
@@ -169,6 +171,16 @@ export class LiteClient {
     private dispatchErrorBurst = 0;
     private dispatchErrorCycle = 0;
 
+    /**
+     * Adaptive animation speed, mirroring the browser's PLAYER_INFO branch
+     * (Client.ts ~8775): anims are authored for the vanilla 600ms tick, so a
+     * server ticking faster replays them proportionally faster. Updated once per
+     * server tick in notifyGameTick; ageEntityAnim consumes it.
+     */
+    tickSpeedMultiplier = 1;
+    private measuredTickInterval = 420;
+    private lastTickTime = 0;
+
     readonly conn: GameConnection;
     readonly locIndex: LocIndex;
     readonly loginUser: string;
@@ -281,6 +293,118 @@ export class LiteClient {
     /** Advance the frame counter the entity/hitmark code times against. */
     tickCycle(): void {
         this.cycle.value++;
+        this.ageAnims();
+    }
+
+    /**
+     * Retire animations whose sequences have run out, so `animId`/`spotanimId`
+     * read -1 again once a swing/chop/cast finishes - without this, the first
+     * animation of a session sticks forever and every SDK "did my action start /
+     * am I idle" check that gates on animId is poisoned.
+     *
+     * This is Client.entityAnim (Client.ts ~6126) minus rendering, run over the
+     * same entities snapEntities touches.
+     *
+     * Units. The browser advances an anim inside updateGame, once per client
+     * tick of its 50Hz shell loop - i.e. one step per ~20ms, with
+     * `Client.loopCycle` advancing at the same cadence. SeqType per-frame delays
+     * (and the ANIM mask's start delay) are denominated in those 20ms client
+     * ticks. Our session loop runs every LOOP_MS=20ms and calls tickCycle() once,
+     * so `c.cycle.value` advances at the same ~20ms cadence - one ageAnims() call
+     * per cycle steps exactly like the browser. Server game ticks (600ms vanilla,
+     * 300ms on prod) are 30/15 of these cycles and only enter via
+     * tickSpeedMultiplier, which both clients derive from the measured
+     * PLAYER_INFO interval (max(1, 420/interval) - 1 at 600ms, 2 after ceil at
+     * 300ms) so faster servers replay anims proportionally faster.
+     *
+     * Deliberately omitted from the port: the PreanimMove.DELAYANIM hold
+     * (Client.ts ~6167), which pins primaryAnimDelay at 1 while
+     * preanimRouteLength > 0. The browser decrements preanimRouteLength in its
+     * route-easing code (moveEntity), which lite does not run - snapEntities
+     * replaces it - so the hold would never release and would re-create exactly
+     * the sticky-anim bug this method exists to fix. Cost: an anim that starts
+     * mid-move may end a few cycles earlier here than in the browser.
+     */
+    private ageAnims(): void {
+        if (this.localPlayer) {
+            this.ageEntityAnim(this.localPlayer);
+        }
+        for (let i = 0; i < this.playerCount; i++) {
+            const p = this.players[this.playerIds[i]];
+            if (p) {
+                this.ageEntityAnim(p);
+            }
+        }
+        for (let i = 0; i < this.npcCount; i++) {
+            const n = this.npc[this.npcIds[i]];
+            if (n) {
+                this.ageEntityAnim(n);
+            }
+        }
+    }
+
+    private ageEntityAnim(e: ClientEntity): void {
+        const animSpeed = Math.ceil(this.tickSpeedMultiplier);
+
+        if (e.spotanimId !== -1 && this.cycle.value >= e.spotanimLastCycle) {
+            if (e.spotanimFrame < 0) {
+                e.spotanimFrame = 0;
+            }
+
+            const seq = SpotType.list[e.spotanimId]?.seq;
+            if (!seq) {
+                // No sequence to age against (spotanim with no seq, or cache
+                // skew). The browser leaves these on-screen indefinitely; for a
+                // bot a spotanimId that can never expire is the staleness bug,
+                // so retire it as soon as its flight delay has elapsed.
+                e.spotanimId = -1;
+            } else {
+                e.spotanimCycle += animSpeed;
+                while (e.spotanimFrame < seq.numFrames && e.spotanimCycle > seq.getDelay(e.spotanimFrame)) {
+                    e.spotanimCycle -= seq.getDelay(e.spotanimFrame);
+                    e.spotanimFrame++;
+                }
+                if (e.spotanimFrame >= seq.numFrames) {
+                    e.spotanimId = -1;
+                }
+            }
+        }
+
+        if (e.primaryAnim !== -1 && e.primaryAnimDelay === 0) {
+            const seq: SeqType | undefined = SeqType.list[e.primaryAnim];
+            if (!seq) {
+                e.primaryAnim = -1; // unknown seq id - cannot be aged, must not stick
+            } else {
+                e.primaryAnimCycle += animSpeed;
+                while (e.primaryAnimFrame < seq.numFrames && e.primaryAnimCycle > seq.getDelay(e.primaryAnimFrame)) {
+                    e.primaryAnimCycle -= seq.getDelay(e.primaryAnimFrame);
+                    e.primaryAnimFrame++;
+                }
+
+                if (e.primaryAnimFrame >= seq.numFrames) {
+                    // seq.loops is the replay offset ("replayoff"): -1 when the
+                    // seq plays once, so the frame overruns and the anim retires;
+                    // positive for looping seqs, which rewind and replay until
+                    // primaryAnimLoop reaches maxloops (default 99).
+                    e.primaryAnimFrame -= seq.loops;
+                    e.primaryAnimLoop++;
+
+                    if (e.primaryAnimLoop >= seq.maxloops) {
+                        e.primaryAnim = -1;
+                    }
+                    if (e.primaryAnimFrame < 0 || e.primaryAnimFrame >= seq.numFrames) {
+                        e.primaryAnim = -1;
+                    }
+                }
+            }
+        }
+
+        if (e.primaryAnimDelay > 0) {
+            e.primaryAnimDelay -= animSpeed;
+            if (e.primaryAnimDelay < 0) {
+                e.primaryAnimDelay = 0;
+            }
+        }
     }
 
     get loopCycle(): number {
@@ -292,6 +416,17 @@ export class LiteClient {
     }
 
     notifyGameTick(): void {
+        // Measure the real server tick interval off PLAYER_INFO (which arrives
+        // exactly once per tick), same EMA and clamp as Client.ts ~8775, so
+        // ageEntityAnim replays anims at the speed the browser client would.
+        const now = performance.now();
+        if (this.lastTickTime > 0) {
+            const interval = now - this.lastTickTime;
+            this.measuredTickInterval = this.measuredTickInterval * 0.8 + interval * 0.2;
+            this.tickSpeedMultiplier = Math.max(1, 420 / this.measuredTickInterval);
+        }
+        this.lastTickTime = now;
+
         this.onGameTickCallback?.();
     }
 

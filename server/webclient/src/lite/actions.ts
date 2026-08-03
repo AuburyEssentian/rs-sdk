@@ -19,7 +19,9 @@ import VarBitType from '#/config/VarBitType.js';
 import { ClientCode } from '#/client/ClientCode.js';
 import Skill from '#/client/Skill.js';
 
+import JString from '#/datastruct/JString.js';
 import { ClientProt } from '#/io/ClientProt.js';
+import WordFilter from '#/wordfilter/WordFilter.js';
 import WordPack from '#/wordfilter/WordPack.js';
 
 import type { ClientActionResult, LiteClient } from './LiteClient.js';
@@ -29,6 +31,7 @@ const INVENTORY_INTERFACE_ID = 3214;
 const EQUIPMENT_INTERFACE_ID = 1688;
 const BANK_MAIN_ID = 5292;
 const BANK_INV_ID = 5382;
+const BANK_SIDE_INV_ID = 2006; // bank_side:inv on this 274 build
 const SHOP_MAIN_ID = 3824;
 
 const READBIT = (() => {
@@ -238,12 +241,13 @@ export function useItemOnItem(c: LiteClient, sourceSlot: number, targetSlot: num
         return false;
     }
 
+    // OpHeldUDecoder reads: obj, slot, com, useObj, useSlot, useCom.
     c.writeOpcode(ClientProt.OPHELDU);
-    c.out.p2(targetSlot);
     c.out.p2(targetId);
-    c.out.p2(sourceSlot);
-    c.out.p2(sourceId);
+    c.out.p2(targetSlot);
     c.out.p2(interfaceId);
+    c.out.p2(sourceId);
+    c.out.p2(sourceSlot);
     c.out.p2(interfaceId);
     return true;
 }
@@ -344,9 +348,10 @@ export function spellOnItem(c: LiteClient, slot: number, spellComponent: number,
         return false;
     }
 
+    // OpHeldTDecoder reads: obj, slot, com, spellCom.
     c.writeOpcode(ClientProt.OPHELDT);
-    c.out.p2(slot);
     c.out.p2(itemId);
+    c.out.p2(slot);
     c.out.p2(interfaceId);
     c.out.p2(spellComponent);
     return true;
@@ -367,8 +372,13 @@ export function clickInterfaceIop(c: LiteClient, componentId: number, optionInde
     if (!c.isInGame() || optionIndex < 1 || optionIndex > 5) {
         return false;
     }
+    // The engine's InvButtonHandler validates inv.hasAt(slot, obj) exactly, so
+    // the real item id must go on the wire (0 only for genuinely empty slots,
+    // matching the browser's clickInterfaceIop).
+    const itemId = slotItemId(componentId, slot);
+
     c.writeOpcode([ClientProt.INV_BUTTON1, ClientProt.INV_BUTTON2, ClientProt.INV_BUTTON3, ClientProt.INV_BUTTON4, ClientProt.INV_BUTTON5][optionIndex - 1]);
-    c.out.p2(0);
+    c.out.p2(itemId);
     c.out.p2(slot);
     c.out.p2(componentId);
     return true;
@@ -659,7 +669,7 @@ export function isBankOpen(c: LiteClient): boolean {
 }
 
 export function bankDeposit(c: LiteClient, slot: number, amount = 1): boolean {
-    return bankMove(c, slot, amount, 5064);
+    return bankMove(c, slot, amount, BANK_SIDE_INV_ID);
 }
 
 export function bankWithdraw(c: LiteClient, slot: number, amount = 1): boolean {
@@ -675,10 +685,13 @@ function bankMove(c: LiteClient, slot: number, amount: number, componentId: numb
         return false;
     }
 
+    // Per interface_bank/scripts/bank.rs2 and the browser client: options 1/2/3
+    // are 1/5/10, option 4 is All, option 5 is X (opens the count dialog).
     let optionIndex = 1;
     if (amount === 5) optionIndex = 2;
     else if (amount === 10) optionIndex = 3;
-    else if (amount < 0) optionIndex = 5; // "All"
+    else if (amount === -1 || amount >= 2147483647) optionIndex = 4; // "All"
+    else if (amount !== 1) optionIndex = 5; // "X"
 
     c.writeOpcode([ClientProt.INV_BUTTON1, ClientProt.INV_BUTTON2, ClientProt.INV_BUTTON3, ClientProt.INV_BUTTON4, ClientProt.INV_BUTTON5][optionIndex - 1]);
     c.out.p2(itemId);
@@ -722,14 +735,32 @@ export function say(c: LiteClient, message: string): SayOutcome {
     const truncated = message.length > cap;
     const text = truncated ? message.substring(0, cap) : message;
 
+    // MessagePublicDecoder reads: colour byte, effect byte, then packed text -
+    // the size byte covers all three.
     c.writeOpcode(ClientProt.MESSAGE_PUBLIC);
     const lengthPos = c.out.pos;
     c.out.p1(0);
     const start = c.out.pos;
+    c.out.p1(0); // colour
+    c.out.p1(0); // effect
     WordPack.pack(c.out, text);
     c.out.data[lengthPos] = c.out.pos - start;
 
-    return { ok: true, truncated, filtered: false, finalText: text };
+    // Local self-echo, mirroring Client.say: the server does not echo your own
+    // public chat back, so put it in the ring buffer StateCollector reads (the
+    // same addChat(2, ...) path incoming public chat uses) and overhead it on
+    // the local player.
+    const cased = JString.toSentenceCase(text);
+    const echoed = WordFilter.filter(cased);
+    const filtered = echoed !== cased;
+
+    c.localPlayer.chatMessage = echoed;
+    c.localPlayer.chatColour = 0;
+    c.localPlayer.chatEffect = 0;
+    c.localPlayer.chatTimer = 150;
+    c.addChat(2, echoed, c.localPlayer.name ?? '');
+
+    return { ok: true, truncated, filtered, finalText: echoed };
 }
 
 // ================================================================ combat

@@ -12,6 +12,7 @@ import NpcType from '#/config/NpcType.js';
 
 import JString from '#/datastruct/JString.js';
 
+import type ClientEntity from '#/dash3d/ClientEntity.js';
 import ClientNpc, { NpcUpdate } from '#/dash3d/ClientNpc.js';
 import ClientPlayer, { PlayerUpdate } from '#/dash3d/ClientPlayer.js';
 
@@ -20,6 +21,39 @@ import WordPack from '#/wordfilter/WordPack.js';
 import WordFilter from '#/wordfilter/WordFilter.js';
 
 import { LOCAL_PLAYER_INDEX, type LiteClient } from '../LiteClient.js';
+
+/**
+ * Apply an ANIM update-mask to an entity: priority arbitration, and the
+ * RESET/RESETLOOP duplicate behaviours that make a re-triggered animation (a
+ * combat swing landing every attack) start its clock over. Client.ts has this
+ * block verbatim twice - once for players, once for npcs - so it is extracted
+ * here and shared. Exported so tests can start an animation through exactly the
+ * rules the packet path uses. Expiry lives in LiteClient.ageEntityAnim.
+ */
+export function applyAnimMask(e: ClientEntity, seqId: number, delay: number): void {
+    if (seqId === e.primaryAnim) {
+        e.primaryAnimLoop = 0;
+    }
+
+    if (e.primaryAnim === seqId && seqId !== -1) {
+        const restartMode = SeqType.list[seqId].duplicatebehaviour;
+        if (restartMode === RestartMode.RESET) {
+            e.primaryAnimFrame = 0;
+            e.primaryAnimCycle = 0;
+            e.primaryAnimDelay = delay;
+            e.primaryAnimLoop = 0;
+        } else if (restartMode === RestartMode.RESETLOOP) {
+            e.primaryAnimLoop = 0;
+        }
+    } else if (seqId === -1 || e.primaryAnim === -1 || SeqType.list[seqId].priority >= SeqType.list[e.primaryAnim].priority) {
+        e.primaryAnim = seqId;
+        e.primaryAnimFrame = 0;
+        e.primaryAnimCycle = 0;
+        e.primaryAnimDelay = delay;
+        e.primaryAnimLoop = 0;
+        e.preanimRouteLength = e.routeLength;
+    }
+}
 
 // ============================================================== players
 
@@ -211,29 +245,8 @@ function decodePlayerExtended(c: LiteClient, player: ClientPlayer, index: number
         if (seqId === 65535) {
             seqId = -1;
         }
-        if (seqId === player.primaryAnim) {
-            player.primaryAnimLoop = 0;
-        }
-
         const delay = buf.g1();
-        if (player.primaryAnim === seqId && seqId !== -1) {
-            const restartMode = SeqType.list[seqId].duplicatebehaviour;
-            if (restartMode === RestartMode.RESET) {
-                player.primaryAnimFrame = 0;
-                player.primaryAnimCycle = 0;
-                player.primaryAnimDelay = delay;
-                player.primaryAnimLoop = 0;
-            } else if (restartMode === RestartMode.RESETLOOP) {
-                player.primaryAnimLoop = 0;
-            }
-        } else if (seqId === -1 || player.primaryAnim === -1 || SeqType.list[seqId].priority >= SeqType.list[player.primaryAnim].priority) {
-            player.primaryAnim = seqId;
-            player.primaryAnimFrame = 0;
-            player.primaryAnimCycle = 0;
-            player.primaryAnimDelay = delay;
-            player.primaryAnimLoop = 0;
-            player.preanimRouteLength = player.routeLength;
-        }
+        applyAnimMask(player, seqId, delay);
     }
 
     if ((mask & PlayerUpdate.FACEENTITY) !== 0) {
@@ -489,29 +502,8 @@ function getNpcPosExtended(c: LiteClient, buf: Packet): void {
             if (anim === 65535) {
                 anim = -1;
             }
-            if (anim === npc.primaryAnim) {
-                npc.primaryAnimLoop = 0;
-            }
-
             const delay = buf.g1();
-            if (npc.primaryAnim === anim && anim !== -1) {
-                const restartMode = SeqType.list[anim].duplicatebehaviour;
-                if (restartMode === RestartMode.RESET) {
-                    npc.primaryAnimFrame = 0;
-                    npc.primaryAnimCycle = 0;
-                    npc.primaryAnimDelay = delay;
-                    npc.primaryAnimLoop = 0;
-                } else if (restartMode === RestartMode.RESETLOOP) {
-                    npc.primaryAnimLoop = 0;
-                }
-            } else if (anim === -1 || npc.primaryAnim === -1 || SeqType.list[anim].priority >= SeqType.list[npc.primaryAnim].priority) {
-                npc.primaryAnim = anim;
-                npc.primaryAnimFrame = 0;
-                npc.primaryAnimCycle = 0;
-                npc.primaryAnimDelay = delay;
-                npc.primaryAnimLoop = 0;
-                npc.preanimRouteLength = npc.routeLength;
-            }
+            applyAnimMask(npc, anim, delay);
         }
 
         if ((mask & NpcUpdate.FACEENTITY) !== 0) {

@@ -109,9 +109,41 @@ export class SceneLite {
         return value ? valueLocId(value) : 0;
     }
 
-    clearOverlay(): void {
-        this.overlay.clear();
-        this.collisionDirty = true;
+    /**
+     * UPDATE_ZONE_FULL_FOLLOWS: the server reset this 8x8 zone to its static
+     * map state, so every pending loc change in it must be reverted - the
+     * browser does the same by zeroing the endTime of every locChange in the
+     * zone (Client.ts ~9500), and like the browser it only touches the current
+     * level, because the packet carries no level byte and the engine sends it
+     * for the player's own level. Without this, a door deleted via LOC_DEL and
+     * later reverted server-side while the zone was untracked stays "deleted"
+     * in the overlay forever, and ensureCollision keeps routing through it.
+     *
+     * `worldX`/`worldZ` are the zone origin in world tiles. Removing the
+     * overlay entries is the whole fix for `nearbyLocs`, since valueAt falls
+     * straight back to the static index; collision is a derived cache, so it is
+     * marked dirty (only when something was actually removed - zone resets are
+     * routine and a rebuild costs ~15ms) and rebuilt on the next routing call.
+     */
+    clearZoneOverlay(level: number, worldX: number, worldZ: number): void {
+        if (this.overlay.size === 0) {
+            return;
+        }
+
+        let removed = false;
+        for (const layer of [LocLayer.WALL, LocLayer.WALL_DECOR, LocLayer.GROUND, LocLayer.GROUND_DECOR]) {
+            for (let x = worldX; x < worldX + 8; x++) {
+                for (let z = worldZ; z < worldZ + 8; z++) {
+                    if (this.overlay.delete(overlayKey(layer, level, x, z))) {
+                        removed = true;
+                    }
+                }
+            }
+        }
+
+        if (removed) {
+            this.collisionDirty = true;
+        }
     }
 
     /** Read-only view for CollisionBuilder, which must see the same overrides. */
