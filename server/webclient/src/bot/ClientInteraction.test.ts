@@ -72,6 +72,7 @@ mock.module('#/client/MobileKeyboard.js', () => ({
 
 const { Client } = await import('../client/Client.js');
 const { default: LocType } = await import('#/config/LocType.js');
+const { default: ObjType } = await import('#/config/ObjType.js');
 const { default: IfType } = await import('#/config/IfType.js');
 
 const BUTTON_OK = 1;
@@ -369,5 +370,61 @@ describe('loc routing', () => {
         client.routeToLoc(5, 6, 999);
 
         expect(args).toMatchObject({ locWidth: 2, locLength: 2, locAngle: 0, locShape: 0 });
+    });
+
+    /** Register an item definition ObjType.list() will hand back untouched. */
+    function defineObj(id: number, name: string): void {
+        const obj = Object.assign(Object.create(ObjType.prototype), { id, name });
+        ObjType.recent = [obj];
+        ObjType.idx = new Int32Array(1) as never;
+        ObjType.dat = {} as never;
+    }
+
+    test('interactLoc dispatches OPLOC even when routing fails', () => {
+        // Waterfall's "Swim to" rock is an aploc op: the trigger tile is never
+        // routable, so aborting on a failed route strands the bot with no packet
+        // sent and no game message. The server owns the reach check.
+        defineLoc(1996, {});
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+        const client = {
+            ingame: true,
+            out: { p2: (value: number) => payload.push(value) },
+            localPlayer: { routeX: [12], routeZ: [8] },
+            mapBuildBaseX: 2500,
+            mapBuildBaseZ: 3400,
+            routeToLoc: () => false,
+            writePacketOpcode: (opcode: number) => opcodes.push(opcode)
+        };
+
+        const result = Client.prototype.interactLoc.call(client as never, 2512, 3468, 1996, 1);
+
+        expect(result).toEqual({ success: true, routed: false });
+        expect(opcodes).toEqual([215]); // ClientProt.OPLOC1
+        expect(payload).toEqual([2512, 3468, 1996]);
+    });
+
+    test('useItemOnLoc dispatches OPLOCU even when routing fails', () => {
+        // Rope-on-rock, same aplocu shape as above.
+        defineLoc(1996, {});
+        defineObj(954, 'Rope');
+        defineComponent(3214, { linkObjType: [955] });
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+        const client = {
+            ingame: true,
+            out: { p2: (value: number) => payload.push(value) },
+            localPlayer: { routeX: [12], routeZ: [8] },
+            mapBuildBaseX: 2500,
+            mapBuildBaseZ: 3400,
+            routeToLoc: () => false,
+            writePacketOpcode: (opcode: number) => opcodes.push(opcode)
+        };
+
+        const result = Client.prototype.useItemOnLoc.call(client as never, 0, 2512, 3468, 1996, 3214);
+
+        expect(result).toEqual({ success: true, routed: false });
+        expect(opcodes).toEqual([60]); // ClientProt.OPLOCU
+        expect(payload).toEqual([2512, 3468, 1996, 954, 0, 3214]);
     });
 });

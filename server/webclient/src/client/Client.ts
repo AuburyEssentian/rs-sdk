@@ -2082,12 +2082,13 @@ export class Client extends GameShell {
         if (!loc) {
             return { success: false, reason: 'target_not_found' };
         }
+        // Attempt a route, but always dispatch. Approach ops (aplocu scripts like
+        // Waterfall's rope-on-rock) trigger at tiles the routefinder can never
+        // reach, and the server owns the reach check anyway — worst case it answers
+        // "I can't reach that!" instead of us aborting silently.
         const routed = this.routeToLoc(destSceneX, destSceneZ, locId);
-        if (!routed) {
-            return { success: false, reason: 'cant_reach' };
-        }
 
-        console.log(`[Client] Using item ${itemObj.name} (id:${itemId}, slot ${itemSlot}) on loc ${loc?.name || locId} at (${worldX}, ${worldZ})`);
+        console.log(`[Client] Using item ${itemObj.name} (id:${itemId}, slot ${itemSlot}) on loc ${loc?.name || locId} at (${worldX}, ${worldZ})${routed ? '' : ' (unrouted)'}`);
 
         this.writePacketOpcode(ClientProt.OPLOCU);
         this.out.p2(worldX);
@@ -2097,7 +2098,7 @@ export class Client extends GameShell {
         this.out.p2(itemSlot);
         this.out.p2(interfaceId);
 
-        return { success: true };
+        return { success: true, routed };
     }
 
     /**
@@ -2360,10 +2361,12 @@ export class Client extends GameShell {
         if (!loc) {
             return { success: false, reason: 'target_not_found' };
         }
+        // Attempt a route, but always dispatch. Approach ops (aploc scripts like
+        // Waterfall's "Swim to" rock or the Wizard Tower stairs) trigger at tiles
+        // the routefinder can never reach, and the server owns the reach check
+        // anyway — worst case it answers "I can't reach that!" instead of us
+        // aborting silently.
         const routed = this.routeToLoc(destSceneX, destSceneZ, locId);
-        if (!routed) {
-            return { success: false, reason: 'cant_reach' };
-        }
 
         const opcodes = [
             ClientProt.OPLOC1,
@@ -2377,7 +2380,7 @@ export class Client extends GameShell {
         this.out.p2(worldZ);
         this.out.p2(locId);
 
-        return { success: true };
+        return { success: true, routed };
     }
 
     /**
