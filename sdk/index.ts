@@ -1737,16 +1737,18 @@ export class BotSDK {
         }
 
         if (message.type === 'sdk_screenshot_response' && message.dataUrl) {
-            // Try to find by screenshotId first, then fall back to any pending
+            // The gateway broadcasts frames to every SDK session on the bot, so a
+            // frame carrying an id we did not issue belongs to another session (an
+            // observer polling at 1-2fps, say). Resolving "the first pending" for
+            // those handed controllers frames they never requested — drop them.
+            // The id-less fallback stays for responses that carry no id at all.
             let pending: PendingScreenshot | undefined;
             if (message.screenshotId) {
                 pending = this.pendingScreenshots.get(message.screenshotId);
                 if (pending) {
                     this.pendingScreenshots.delete(message.screenshotId);
                 }
-            }
-            // If no screenshotId or not found, resolve the first pending screenshot
-            if (!pending && this.pendingScreenshots.size > 0) {
+            } else if (this.pendingScreenshots.size > 0) {
                 const entry = this.pendingScreenshots.entries().next().value;
                 if (entry) {
                     const [firstId, firstPending] = entry;

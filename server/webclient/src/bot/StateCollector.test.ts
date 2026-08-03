@@ -138,6 +138,44 @@ describe('BotStateCollector combat state', () => {
         expect(npc.healthPercent).toBeNull();
     });
 
+    test('reports health only inside the hitbar window, so respawns are not stuck at 0', () => {
+        const client = createClient();
+        client.npc[7].health = 0;
+        client.npc[7].totalHealth = 22;
+        const collector = new BotStateCollector(client);
+
+        // Freshly hit (combatCycle runs 400 cycles past the hit): health is known.
+        client.npc[7].combatCycle = 150;
+        const [fighting] = (collector as any).collectNearbyNpcs(100);
+        expect(fighting).toMatchObject({ hp: 0, maxHp: 22, healthPercent: 0, inCombat: true });
+
+        // The window has passed — the entity keeps the dead value through respawn,
+        // but the collector must go back to "unknown", not advertise a corpse.
+        client.npc[7].combatCycle = 90;
+        const [respawned] = (collector as any).collectNearbyNpcs(100);
+        expect(respawned).toMatchObject({ hp: null, maxHp: null, healthPercent: null, inCombat: false });
+    });
+
+    test('drops a stale pinned target once nothing corroborates the fight', () => {
+        const client = createClient();
+        client.localPlayer.combatCycle = 90; // last hit long over
+        const collector = new BotStateCollector(client);
+
+        // Facing just began: walk-up grace keeps the target live.
+        const approaching = (collector as any).collectPlayerState(1, 100);
+        expect(approaching.combat).toMatchObject({ inCombat: true, targetIndex: 7 });
+
+        // Ten+ seconds later with no hits on either side, the facing is just
+        // the character staring at its old target (e.g. after a reconnect).
+        const stale = (collector as any).collectPlayerState(2, 700);
+        expect(stale.combat).toMatchObject({ inCombat: false, targetIndex: -1, targetType: 'none' });
+
+        // But a fresh hit on the target (one-sided fight) keeps it real.
+        client.npc[7].combatCycle = 800;
+        const fighting = (collector as any).collectPlayerState(3, 700);
+        expect(fighting.combat).toMatchObject({ inCombat: true, targetIndex: 7 });
+    });
+
     test('decodes player targets, which the client packs above the npc index space', () => {
         const client = createClient();
         client.localPlayer.faceEntity = 32768 + 3; // player slot 3, not npc 32771

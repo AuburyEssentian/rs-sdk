@@ -84,6 +84,11 @@ export class BotStateCollector implements ScanProvider {
     private lifeId: number = 0;
     private respawnCount: number = 0;
     private lastDeathTick: number | null = null;
+
+    private lastFaceEntity: number | null = null;
+    private faceEntitySetCycle: number = Number.NEGATIVE_INFINITY;
+    /** How long a bare facing (no hits yet) still counts as combat: ~10s of walk-up. */
+    private static readonly FACING_GRACE_CYCLES = 500;
     private publicationRevision = 0;
     private messageObservations = new Map<string, { tick: number; observationId: number }>();
     private dialogObservations = new Map<string, { tick: number; observationId: number }>();
@@ -454,10 +459,30 @@ export class BotStateCollector implements ScanProvider {
         if (!player) return null;
 
         // Get player's combat state
-        const target = BotStateCollector.decodeFaceEntity(player.faceEntity ?? -1);
+        const rawFaceEntity = player.faceEntity ?? -1;
+        if (rawFaceEntity !== this.lastFaceEntity) {
+            this.lastFaceEntity = rawFaceEntity;
+            this.faceEntitySetCycle = clientCycle;
+        }
+        let target = BotStateCollector.decodeFaceEntity(rawFaceEntity);
         // combatCycle is set to loopCycle + 400 when damage is taken/dealt
         // So if combatCycle > loopCycle, we're in combat (within 400 ticks of last hit)
         const combatCycle = player.combatCycle ?? -1000;
+
+        // faceEntity is facing, not fighting: the client pins it on the last
+        // target indefinitely, so a finished fight (or one inherited across a
+        // reconnect) kept publishing inCombat/targetIndex forever and froze any
+        // loop that waits for targetIndex to clear. Only trust the facing while
+        // something corroborates it: a recent hit on us, a recent hit on the
+        // target, or the grace window covering the walk-up before the first blow.
+        if (target.type !== 'none' && combatCycle <= clientCycle
+            && clientCycle - this.faceEntitySetCycle >= BotStateCollector.FACING_GRACE_CYCLES) {
+            const entity = target.type === 'npc' ? c.npc?.[target.index] : c.players?.[target.index];
+            if ((entity?.combatCycle ?? -1000) <= clientCycle) {
+                target = { type: 'none', index: -1 };
+            }
+        }
+
         const inCombat = target.type !== 'none' || combatCycle > clientCycle;
 
         // Hitpoints is skill index 3
@@ -806,18 +831,24 @@ export class BotStateCollector implements ScanProvider {
                 }
             }
 
-            const healthKnown = (npc.totalHealth ?? 0) > 0;
-            const hp = healthKnown ? (npc.health ?? 0) : null;
-            const maxHp = healthKnown ? npc.totalHealth : null;
-            // healthPercent is null until NPC takes damage (server only sends health on hit)
-            const healthPercent = hp !== null && maxHp !== null && maxHp > 0
-                ? Math.round((hp / maxHp) * 100)
-                : null;
             const targetId = npc.faceEntity ?? -1;
             // combatCycle is set to loopCycle + 400 when NPC takes damage
             const combatCycle = npc.combatCycle ?? -1000;
             // NPC is in combat if it was hit recently (within 400 ticks of last damage)
             const inCombat = targetId !== -1 || combatCycle > clientCycle;
+
+            // The server only reports NPC health on hits, and the client entity
+            // keeps the last value forever — including through death and respawn,
+            // which left respawned NPCs advertised at healthPercent 0 indefinitely.
+            // Health is only *known* inside the hitbar window (combatCycle), the
+            // same recency the game's own health bar uses; outside it, report null
+            // exactly like an NPC that was never hit.
+            const healthKnown = combatCycle > clientCycle && (npc.totalHealth ?? 0) > 0;
+            const hp = healthKnown ? (npc.health ?? 0) : null;
+            const maxHp = healthKnown ? npc.totalHealth : null;
+            const healthPercent = hp !== null && maxHp !== null && maxHp > 0
+                ? Math.round((hp / maxHp) * 100)
+                : null;
 
             // Convert fine-grained local coords (128 units/tile) to world coordinates
             const npcWorldX = baseX + (npcX >> 7);
