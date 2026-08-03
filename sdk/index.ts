@@ -26,7 +26,7 @@ import type {
 import { PRAYER_INDICES, PRAYER_NAMES, PLAYER_CHAT_TYPES, isPlayerChat } from './types';
 import { ChatHistory } from './chat-history';
 import * as pathfinding from './pathfinding';
-import { resolveInterfaceOption, type InterfaceOptionSelector } from './action-quantity';
+import { resolveInterfaceOption, shortestNameMatch, type InterfaceOptionSelector } from './action-quantity';
 
 function selectorLabel(selector: InterfaceOptionSelector): string {
     if (typeof selector === 'string') return `"${selector}"`;
@@ -750,13 +750,10 @@ export class BotSDK {
         return this.state.inventory.find(i => i.slot === slot) || null;
     }
 
-    /** Find inventory item by name pattern. */
+    /** Find inventory item by name pattern (shortest matching name wins). */
     findInventoryItem(pattern: string | RegExp): InventoryItem | null {
         if (!this.state) return null;
-        const regex = typeof pattern === 'string'
-            ? new RegExp(pattern, 'i')
-            : pattern;
-        return this.state.inventory.find(i => regex.test(i.name)) || null;
+        return shortestNameMatch(this.state.inventory, pattern);
     }
 
     /** Get all inventory items. */
@@ -787,13 +784,10 @@ export class BotSDK {
         return this.state.equipment.find(i => i.slot === slot) || null;
     }
 
-    /** Find equipment item by name pattern. */
+    /** Find equipment item by name pattern (shortest matching name wins). */
     findEquipmentItem(pattern: string | RegExp): InventoryItem | null {
         if (!this.state) return null;
-        const regex = typeof pattern === 'string'
-            ? new RegExp(pattern, 'i')
-            : pattern;
-        return this.state.equipment.find(i => regex.test(i.name)) || null;
+        return shortestNameMatch(this.state.equipment, pattern);
     }
 
     /** Get all equipped items. */
@@ -807,13 +801,10 @@ export class BotSDK {
         return this.state.bank.items.find(i => i.slot === slot) || null;
     }
 
-    /** Find bank item by name pattern (bank must be open). */
+    /** Find bank item by name pattern (bank must be open; shortest matching name wins). */
     findBankItem(pattern: string | RegExp): BankItem | null {
         if (!this.state?.bank.isOpen) return null;
-        const regex = typeof pattern === 'string'
-            ? new RegExp(pattern, 'i')
-            : pattern;
-        return this.state.bank.items.find(i => regex.test(i.name)) || null;
+        return shortestNameMatch(this.state.bank.items, pattern);
     }
 
     /** Get all bank items (bank must be open). */
@@ -832,13 +823,10 @@ export class BotSDK {
         return this.state.nearbyNpcs.find(n => n.index === index) || null;
     }
 
-    /** Find NPC by name pattern. */
+    /** Find NPC by name pattern (shortest matching name wins, then nearest). */
     findNearbyNpc(pattern: string | RegExp): NearbyNpc | null {
         if (!this.state) return null;
-        const regex = typeof pattern === 'string'
-            ? new RegExp(pattern, 'i')
-            : pattern;
-        return this.state.nearbyNpcs.find(n => regex.test(n.name)) || null;
+        return shortestNameMatch(this.state.nearbyNpcs, pattern);
     }
 
     /** Get all nearby NPCs. */
@@ -846,13 +834,10 @@ export class BotSDK {
         return this.state?.nearbyNpcs || [];
     }
 
-    /** Find a nearby player by name pattern (nearest match first). */
+    /** Find a nearby player by name pattern (shortest matching name wins, then nearest). */
     findNearbyPlayer(pattern: string | RegExp): NearbyPlayer | null {
         if (!this.state) return null;
-        const regex = typeof pattern === 'string'
-            ? new RegExp(pattern, 'i')
-            : pattern;
-        return this.state.nearbyPlayers.find(p => regex.test(p.name)) || null;
+        return shortestNameMatch(this.state.nearbyPlayers, pattern);
     }
 
     /** Get all nearby players, nearest first. */
@@ -868,13 +853,10 @@ export class BotSDK {
         ) || null;
     }
 
-    /** Find location by name pattern. */
+    /** Find location by name pattern (shortest matching name wins, then nearest). */
     findNearbyLoc(pattern: string | RegExp): NearbyLoc | null {
         if (!this.state) return null;
-        const regex = typeof pattern === 'string'
-            ? new RegExp(pattern, 'i')
-            : pattern;
-        return this.state.nearbyLocs.find(l => regex.test(l.name)) || null;
+        return shortestNameMatch(this.state.nearbyLocs, pattern);
     }
 
     /** Get all nearby locations (trees, rocks, etc). */
@@ -882,13 +864,10 @@ export class BotSDK {
         return this.state?.nearbyLocs || [];
     }
 
-    /** Find ground item by name pattern. */
+    /** Find ground item by name pattern (shortest matching name wins, then nearest). */
     findGroundItem(pattern: string | RegExp): GroundItem | null {
         if (!this.state) return null;
-        const regex = typeof pattern === 'string'
-            ? new RegExp(pattern, 'i')
-            : pattern;
-        return this.state.groundItems.find(i => regex.test(i.name)) || null;
+        return shortestNameMatch(this.state.groundItems, pattern);
     }
 
     /** Get all ground items. */

@@ -521,6 +521,15 @@ export interface PickupResult {
     reason?: 'item_not_found' | 'cant_reach' | 'inventory_full' | 'timeout';
 }
 
+export interface DropItemResult {
+    /** True only when every requested slot was observed leaving the inventory. */
+    success: boolean;
+    message: string;
+    /** Inventory slots emptied (a dropped stack counts as one). */
+    slotsDropped: number;
+    reason?: 'item_not_found' | 'invalid_amount' | 'timeout';
+}
+
 export interface TalkResult {
     success: boolean;
     dialog?: DialogState;

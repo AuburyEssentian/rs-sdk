@@ -33,6 +33,7 @@
 |---|---|
 | `async useItemOnLoc(item: InventoryItem \| string \| RegExp, loc: NearbyLoc \| string \| RegExp, options: { timeout?: number } = {}): Promise<UseItemOnLocResult>` | Use an inventory item on a nearby location (e.g., fish on range, ore on furnace). Walks to the location first (handling doors), then uses the item. |
 | `async useItemOnNpc(item: InventoryItem \| string \| RegExp, npc: NearbyNpc \| string \| RegExp, options: { timeout?: number } = {}): Promise<UseItemOnNpcResult>` | Use an inventory item on a nearby NPC (e.g., bones on altar keeper, item on NPC). Walks to the NPC first (handling doors), then uses the item. |
+| `async dropItem(target: InventoryItem \| string \| RegExp, amount: number \| 'all' = 'all'): Promise<DropItemResult>` | Drop inventory items by name, waiting for each drop to land before sending the next. `sendDropItem` on a slot the server has already emptied silently no-ops, so slot loops built on stale state lose most of their sends; this re-resolves the slot from fresh state every time. `amount` counts inventory slots (a whole stack drops as one). Pass `'all'` or `-1` to drop every matching slot. |
 | `async closeInterface(timeout: number = 5000): Promise<ActionResult>` | Close any open modal interface (bank, book, quest scroll, etc.). |
 
 ### Woodcutting & Firemaking
@@ -155,24 +156,24 @@
 | `getSkillXp(name: string): number \| null` | Get XP for a skill by name. |
 | `getSkills(): SkillState[]` | Get all skills. |
 | `getInventoryItem(slot: number): InventoryItem \| null` | Get inventory item by slot number. |
-| `findInventoryItem(pattern: string \| RegExp): InventoryItem \| null` | Find inventory item by name pattern. |
+| `findInventoryItem(pattern: string \| RegExp): InventoryItem \| null` | Find inventory item by name pattern (shortest matching name wins). |
 | `getInventory(): InventoryItem[]` | Get all inventory items. |
 | `getEquipmentItem(slot: number): InventoryItem \| null` | Get equipment item by slot number. |
-| `findEquipmentItem(pattern: string \| RegExp): InventoryItem \| null` | Find equipment item by name pattern. |
+| `findEquipmentItem(pattern: string \| RegExp): InventoryItem \| null` | Find equipment item by name pattern (shortest matching name wins). |
 | `getEquipment(): InventoryItem[]` | Get all equipped items. |
 | `getBankItem(slot: number): BankItem \| null` | Get bank item by slot number (bank must be open). |
-| `findBankItem(pattern: string \| RegExp): BankItem \| null` | Find bank item by name pattern (bank must be open). |
+| `findBankItem(pattern: string \| RegExp): BankItem \| null` | Find bank item by name pattern (bank must be open; shortest matching name wins). |
 | `getBankItems(): BankItem[]` | Get all bank items (bank must be open). |
 | `isBankOpen(): boolean` | Check if bank interface is open. |
 | `getNearbyNpc(index: number): NearbyNpc \| null` | Get NPC by index. |
-| `findNearbyNpc(pattern: string \| RegExp): NearbyNpc \| null` | Find NPC by name pattern. |
+| `findNearbyNpc(pattern: string \| RegExp): NearbyNpc \| null` | Find NPC by name pattern (shortest matching name wins, then nearest). |
 | `getNearbyNpcs(): NearbyNpc[]` | Get all nearby NPCs. |
-| `findNearbyPlayer(pattern: string \| RegExp): NearbyPlayer \| null` | Find a nearby player by name pattern (nearest match first). |
+| `findNearbyPlayer(pattern: string \| RegExp): NearbyPlayer \| null` | Find a nearby player by name pattern (shortest matching name wins, then nearest). |
 | `getNearbyPlayers(): NearbyPlayer[]` | Get all nearby players, nearest first. |
 | `getNearbyLoc(x: number, z: number, id: number): NearbyLoc \| null` | Get location (object) by coordinates and ID. |
-| `findNearbyLoc(pattern: string \| RegExp): NearbyLoc \| null` | Find location by name pattern. |
+| `findNearbyLoc(pattern: string \| RegExp): NearbyLoc \| null` | Find location by name pattern (shortest matching name wins, then nearest). |
 | `getNearbyLocs(): NearbyLoc[]` | Get all nearby locations (trees, rocks, etc). |
-| `findGroundItem(pattern: string \| RegExp): GroundItem \| null` | Find ground item by name pattern. |
+| `findGroundItem(pattern: string \| RegExp): GroundItem \| null` | Find ground item by name pattern (shortest matching name wins, then nearest). |
 | `getGroundItems(): GroundItem[]` | Get all ground items. |
 | `getDialog(): DialogState \| null` | Get current dialog state. |
 | `getPrayerState(): PrayerState \| null` | Get current prayer state from world state. |
@@ -482,6 +483,19 @@ interface PickupResult {
   item?: InventoryItem;
   message: string;
   reason?: 'item_not_found' | 'cant_reach' | 'inventory_full' | 'timeout';
+}
+```
+
+### DropItemResult
+
+```typescript
+interface DropItemResult {
+  /** True only when every requested slot was observed leaving the inventory. */
+  success: boolean;
+  message: string;
+  /** Inventory slots emptied (a dropped stack counts as one). */
+  slotsDropped: number;
+  reason?: 'item_not_found' | 'invalid_amount' | 'timeout';
 }
 ```
 

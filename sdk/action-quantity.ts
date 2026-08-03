@@ -37,8 +37,40 @@ export function resolveInterfaceOption(
     return options.find(option => testPattern(selector, option.text)) ?? null;
 }
 
+/**
+ * Pick the match with the shortest name, so `/hopper/i` resolves to "Hopper"
+ * rather than a nearer "Hopper controls". Ties keep the list's own order
+ * (nearest-first for world entities, slot order for inventories).
+ */
+export function shortestNameMatch<T extends { name: string }>(
+    items: readonly T[],
+    pattern: string | RegExp,
+): T | null {
+    const regex = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
+    let best: T | null = null;
+    for (const item of items) {
+        if (!testPattern(regex, item.name)) continue;
+        if (!best || item.name.length < best.name.length) best = item;
+    }
+    return best;
+}
+
+/** Anchored, escaped pattern matching exactly `name` (case-insensitive). */
+export function exactNamePattern(name: string): RegExp {
+    return new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+}
+
 /** "Make X", "Make 10", "Make 5", "Make 1" — quantity buttons, not products. */
 const QUANTITY_BUTTON = /^make\s+(x|\d+)$/i;
+
+/** A level-up chatbox's only button. Never a product, whatever dialog it's in. */
+const CONTINUE_BUTTON = /^click here to continue$/i;
+
+function isProductButton(text: string | undefined): boolean {
+    if (!text) return false;
+    const trimmed = text.trim();
+    return !QUANTITY_BUTTON.test(trimmed) && !CONTINUE_BUTTON.test(trimmed);
+}
 
 /**
  * Resolve a product in a skill dialog (`skill_multi2`..`skill_multi5`).
@@ -57,7 +89,7 @@ export function resolveSkillDialogProduct(
     options: readonly DialogOption[],
     product?: string,
 ): DialogOption | null {
-    const named = options.filter(option => option.text && !QUANTITY_BUTTON.test(option.text.trim()));
+    const named = options.filter(option => isProductButton(option.text));
     if (named.length === 0) return null;
     if (!product) return named[0] ?? null;
 
@@ -76,7 +108,7 @@ export function resolveSkillDialogProduct(
 /** The product labels a skill dialog is offering, for error messages. */
 export function skillDialogProductLabels(options: readonly DialogOption[]): string[] {
     return options
-        .filter(option => option.text && !QUANTITY_BUTTON.test(option.text.trim()))
+        .filter(option => isProductButton(option.text))
         .map(option => option.text);
 }
 

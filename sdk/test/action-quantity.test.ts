@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import {
     classifyQuantity,
     countItems,
+    exactNamePattern,
     nextShopStep,
     resolveInterfaceOption,
     resolveSkillDialogProduct,
+    shortestNameMatch,
     skillDialogProductLabels,
     validateActionQuantity,
     MAX_ACTION_QUANTITY,
@@ -126,6 +128,47 @@ describe('resolveSkillDialogProduct', () => {
             'Short Bow',
             'Long Bow',
         ]);
+    });
+
+    test('never mistakes a level-up chatbox for a product menu', () => {
+        // A level-up dialog mid-fletch used to surface as
+        // 'No fletching product matched "arrow shaft". Available: "Click here to continue"'.
+        const levelUp: DialogOption[] = [{ index: 0, text: 'Click here to continue' }];
+        expect(resolveSkillDialogProduct(levelUp)).toBeNull();
+        expect(resolveSkillDialogProduct(levelUp, 'arrow shaft')).toBeNull();
+        expect(skillDialogProductLabels(levelUp)).toEqual([]);
+    });
+});
+
+describe('shortestNameMatch', () => {
+    const locs = [
+        { name: 'Hopper controls' },
+        { name: 'Hopper' },
+        { name: 'Hopper controls' },
+    ];
+
+    test('prefers the shortest matching name over a nearer, longer one', () => {
+        expect(shortestNameMatch(locs, /hopper/i)).toBe(locs[1]!);
+        expect(shortestNameMatch(locs, 'hopper')).toBe(locs[1]!);
+    });
+
+    test('keeps list order (nearest first) among equal-length names', () => {
+        expect(shortestNameMatch(locs, /controls/i)).toBe(locs[0]!);
+    });
+
+    test('still honors anchors and reports no match', () => {
+        expect(shortestNameMatch(locs, /^hopper$/i)?.name).toBe('Hopper');
+        expect(shortestNameMatch(locs, /furnace/i)).toBeNull();
+    });
+});
+
+describe('exactNamePattern', () => {
+    test('matches the whole name only, with regex syntax escaped', () => {
+        const pattern = exactNamePattern('Hopper');
+        expect(pattern.test('Hopper')).toBe(true);
+        expect(pattern.test('hopper')).toBe(true);
+        expect(pattern.test('Hopper controls')).toBe(false);
+        expect(exactNamePattern('Rock (pile)').test('Rock (pile)')).toBe(true);
     });
 });
 

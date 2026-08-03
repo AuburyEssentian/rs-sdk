@@ -2,6 +2,7 @@
 // Private helper methods extracted from BotActions for reusability
 
 import { BotSDK } from './index';
+import { shortestNameMatch } from './action-quantity';
 import type {
     NearbyLoc,
     NearbyNpc,
@@ -532,7 +533,6 @@ export class ActionHelpers {
         if (typeof target === 'object' && 'id' in target && 'name' in target) {
             return items.find(i => i.id === target.id) ?? null;
         }
-        const regex = typeof target === 'string' ? new RegExp(target, 'i') : target;
-        return items.find(i => regex.test(i.name)) ?? null;
+        return shortestNameMatch(items, target);
     }
 }

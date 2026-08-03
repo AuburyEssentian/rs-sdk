@@ -19,6 +19,7 @@ import type {
     ChopTreeResult,
     BurnLogsResult,
     PickupResult,
+    DropItemResult,
     TalkResult,
     ShopResult,
     ShopSellResult,
@@ -50,6 +51,7 @@ import { PRAYER_INDICES, PRAYER_NAMES, PRAYER_LEVELS } from './types';
 import {
     classifyQuantity,
     countItems,
+    exactNamePattern,
     nextShopStep,
     resolveInterfaceOption,
     resolveSkillDialogProduct,
@@ -431,8 +433,12 @@ export class BotActions {
             }
         }
 
-        // Re-find the location after walking (it may have moved in view)
-        const locPattern = typeof loc === 'object' ? new RegExp(resolvedLoc.name, 'i') : loc;
+        // Re-find the location after walking (it may have moved in view). A RegExp
+        // target is kept as-is — rebuilding it from the matched name used to drop
+        // the caller's anchors, turning /^hopper$/i into one matching "Hopper controls".
+        const locPattern = loc instanceof RegExp || typeof loc === 'string'
+            ? loc
+            : exactNamePattern(resolvedLoc.name);
         const locNow = this.helpers.resolveLocation(locPattern, /./);
         if (!locNow) {
             return { success: false, message: `${resolvedLoc.name} no longer visible`, reason: 'loc_not_found' };
@@ -668,6 +674,78 @@ export class BotActions {
         } catch {
             return { success: false, xpGained: 0, message: 'Timed out waiting for fire' };
         }
+    }
+
+    /**
+     * Drop inventory items by name, waiting for each drop to land before
+     * sending the next. `sendDropItem` on a slot the server has already
+     * emptied silently no-ops, so slot loops built on stale state lose most
+     * of their sends; this re-resolves the slot from fresh state every time.
+     *
+     * `amount` counts inventory slots (a whole stack drops as one). Pass
+     * `'all'` or `-1` to drop every matching slot.
+     */
+    async dropItem(target: InventoryItem | string | RegExp, amount: number | 'all' = 'all'): Promise<DropItemResult> {
+        await this.dismissBlockingUI();
+
+        let wanted: number;
+        if (amount === 'all' || amount === -1) {
+            wanted = Number.POSITIVE_INFINITY;
+        } else {
+            const validated = validateActionQuantity(amount, { max: 28 });
+            if (!validated.valid) {
+                return { success: false, message: validated.message, slotsDropped: 0, reason: 'invalid_amount' };
+            }
+            wanted = validated.amount;
+        }
+
+        const resolved = this.helpers.resolveInventoryItem(target, /./);
+        if (!resolved) {
+            return { success: false, message: `Item not found in inventory: ${target}`, slotsDropped: 0, reason: 'item_not_found' };
+        }
+        // Pin the item id after the first resolution so later iterations can't
+        // drift onto a different item the pattern also happens to match.
+        const matches = (i: InventoryItem) => i.id === resolved.id;
+
+        let slotsDropped = 0;
+        while (slotsDropped < wanted) {
+            const current = this.sdk.getInventory().find(matches);
+            if (!current) break;
+            const slotsBefore = this.sdk.getInventory().filter(matches).length;
+
+            const result = await this.sdk.sendDropItem(current.slot);
+            if (!result.success) {
+                return {
+                    success: false,
+                    message: result.message,
+                    slotsDropped,
+                    reason: 'timeout'
+                };
+            }
+
+            try {
+                await this.sdk.waitForCondition(
+                    state => state.inventory.filter(matches).length < slotsBefore,
+                    5000
+                );
+            } catch {
+                return {
+                    success: false,
+                    message: `Drop of ${resolved.name} (slot ${current.slot}) was not observed`,
+                    slotsDropped,
+                    reason: 'timeout'
+                };
+            }
+            slotsDropped++;
+        }
+
+        const complete = wanted === Number.POSITIVE_INFINITY ? slotsDropped > 0 : slotsDropped === wanted;
+        return {
+            success: complete,
+            message: `Dropped ${resolved.name} x${slotsDropped} slot${slotsDropped === 1 ? '' : 's'}`,
+            slotsDropped,
+            reason: complete ? undefined : 'timeout'
+        };
     }
 
     /** Pick up an item from the ground. */
@@ -1160,6 +1238,8 @@ export class BotActions {
      * fill returns `success: false` with `partial: true` and `amountSold`.
      */
     async sellToShop(target: InventoryItem | ShopItem | string | RegExp, amount: SellAmount = 1): Promise<ShopSellResult> {
+        // Bank deposits spell "everything" as -1; accept it here for parity.
+        if (amount === -1) amount = 'all';
         const validated = amount === 'all'
             ? null
             : validateActionQuantity(amount, { max: MAX_SHOP_ACTION_QUANTITY });
@@ -2327,10 +2407,25 @@ export class BotActions {
                             };
                         }
                     }
+
+                    // A continuation-only dialog (level-up chatbox) opened instead
+                    // of the product menu: dismiss it and use the knife again.
+                    if (state.dialog.options.length > 0 && state.dialog.options[0]) {
+                        await this.sdk.sendClickDialog(state.dialog.options[0].index);
+                    } else {
+                        await this.sdk.sendClickDialog(0);
+                    }
+                    await this.sdk.waitForTicks(1);
+                    const knifeNow = this.sdk.findInventoryItem(/knife/i);
+                    const logsNow = this.sdk.findInventoryItem(/logs/i);
+                    if (knifeNow && logsNow) {
+                        await this.sdk.sendUseItemOnItem(knifeNow.slot, logsNow.slot);
+                    }
+                    continue;
                 }
 
-                // Already clicked, or this is a continue-style dialog with no
-                // product buttons (level-up, "you need level N").
+                // Already clicked — a continue-style dialog here (level-up,
+                // "you need level N") just needs advancing.
                 if (state.dialog.options.length > 0 && state.dialog.options[0]) {
                     await this.sdk.sendClickDialog(state.dialog.options[0].index);
                 } else {
@@ -2824,8 +2919,11 @@ export class BotActions {
             }
         }
 
-        // Re-find the location after walking (it may have changed)
-        const locPattern = typeof target === 'object' ? new RegExp(loc.name, 'i') : target;
+        // Re-find the location after walking (it may have changed). Keep a RegExp
+        // target as-is so its anchors survive; only rebuild for entity targets.
+        const locPattern = target instanceof RegExp || typeof target === 'string'
+            ? target
+            : exactNamePattern(loc.name);
         const locNow = this.helpers.resolveLocation(locPattern, /./);
         if (!locNow) {
             return { success: false, message: `${loc.name} no longer visible`, reason: 'loc_not_found' };
