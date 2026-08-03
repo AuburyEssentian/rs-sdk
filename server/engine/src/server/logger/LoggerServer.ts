@@ -21,8 +21,14 @@ const TELEMETRY_COMPACT_MIN_AGE_HOURS = Number(process.env.TELEMETRY_COMPACT_MIN
 // 10min: under swarm load (~1100 players) raw grows ~8k rows/min, and buildTraces
 // loads all uncompacted raw rows into memory - keep that window small
 const TELEMETRY_COMPACT_INTERVAL_MS = 10 * 60 * 1000;
-const TELEMETRY_COMPACT_STARTUP_DELAY_MS = 2 * 60 * 1000;
+// first run must land AFTER the post-restart reconnect storm: a deploy sends every
+// client back at once, and compaction writes contending with that login/session burst
+// took prod logins down for minutes on 2026-08-03
+const TELEMETRY_COMPACT_STARTUP_DELAY_MS = Number(process.env.TELEMETRY_COMPACT_STARTUP_DELAY_MS ?? 15 * 60 * 1000);
 const TELEMETRY_COMPACT_BATCH_ROWS = 120_000;
+// pause between per-group write transactions so other threads' queries (logins!) get
+// lock windows during a compaction pass
+const TELEMETRY_COMPACT_GROUP_PAUSE_MS = 10;
 
 function dbDateToEpoch(ts: string): number {
     return Math.floor(new Date(ts.replace(' ', 'T') + 'Z').getTime() / 1000);
@@ -110,6 +116,8 @@ async function compactTelemetry() {
 
             segments++;
             rowsCompacted += group.length;
+
+            await new Promise(res => setTimeout(res, TELEMETRY_COMPACT_GROUP_PAUSE_MS));
         }
 
         if (rows.length < TELEMETRY_COMPACT_BATCH_ROWS) {

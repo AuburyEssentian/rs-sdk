@@ -42,6 +42,14 @@ survival) is described in the project memory; this file is the human-readable ch
       in `src/db/query.ts` (`typeof Bun !== 'undefined'` → bun:sqlite, else upstream's
       `node:sqlite`). Upstream is node-primary; **Bun does not implement `node:sqlite`** —
       without this the engine won't boot under bun.
+- [ ] **SQLite WAL + busy_timeout** — `src/db/query.ts` runs
+      `journal_mode=WAL; synchronous=NORMAL; busy_timeout=10000` on every connection.
+      Each worker thread has its own connection; without WAL a logger write burst
+      (telemetry compaction) blocked login queries and took prod logins down after the
+      2026-08-03 deploy. Paired: LoggerServer first-compaction delay 15min
+      (past the reconnect storm) + 10ms pause between compaction groups, and the
+      gateway auth timeout is 15s (must outlast busy_timeout). WAL adds
+      `db.sqlite-wal/-shm`; file-copy backups must checkpoint first.
 
 ### Web layer (mostly rs-sdk-only files, but `src/web.ts` is a 3-line shim — on conflict keep the shim)
 - [ ] **`src/web/`** modular split: `websocket.ts` (`/gateway` WS proxy → gateway on :7780,

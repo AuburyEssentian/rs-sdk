@@ -78,10 +78,12 @@ async function authenticateSDK(username: string, password: string): Promise<{ su
     const replyTo = `auth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     return new Promise((resolve) => {
+        // must outlast the sqlite busy_timeout (10s in engine db/query.ts): under write
+        // contention the login server's auth query waits up to that long before answering
         const timeout = setTimeout(() => {
             pendingAuthRequests.delete(replyTo);
             resolve({ success: false, error: 'Authentication timeout' });
-        }, 10000);
+        }, 15000);
 
         pendingAuthRequests.set(replyTo, { resolve, timeout });
 
