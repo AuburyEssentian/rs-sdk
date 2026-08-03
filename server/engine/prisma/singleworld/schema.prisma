@@ -198,6 +198,21 @@ model player_skills_log {
     @@index([username, timestamp])
 }
 
+model koth_capture {
+    id Int @id @default(autoincrement())
+
+    timestamp DateTime
+    profile   String   @default("main")
+    username  String
+
+    combat_level Int
+    contenders   Int
+    loadout      String
+
+    @@index([username, timestamp])
+    @@index([timestamp])
+}
+
 model public_chat {
     id Int @id @default(autoincrement())
 

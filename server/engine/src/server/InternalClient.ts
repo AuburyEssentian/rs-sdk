@@ -34,7 +34,10 @@ export default class InternalClient {
                 res();
             }, 10000);
 
-            this.ws.once('close', () => {
+            // persistent handlers, not once(): a second 'close'/'error' on the same socket
+            // (e.g. an error after a successful open) would otherwise be an unhandled
+            // EventEmitter 'error' and kill the whole worker thread
+            this.ws.on('close', () => {
                 clearTimeout(timeout);
 
                 this.ws = null;
@@ -42,7 +45,7 @@ export default class InternalClient {
                 res();
             });
 
-            this.ws.once('error', () => {
+            this.ws.on('error', () => {
                 clearTimeout(timeout);
 
                 this.ws = null;

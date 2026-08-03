@@ -46,6 +46,7 @@ import { Int32Array2d, TypedArray1d, TypedArray3d, Int32Array3d, Uint8Array3d } 
 import { downloadUrl, sleep } from '#/util/JsUtil.js';
 
 import AnimFrame from '#/dash3d/AnimFrame.js';
+import LoopCycle from '#/dash3d/LoopCycle.js';
 import { canvas2d } from '#/graphics/Canvas.js';
 import { Colour } from '#/graphics/Colour.js';
 import Pix2D from '#/graphics/Pix2D.js';
@@ -166,7 +167,14 @@ export class Client extends GameShell {
     static oplogic9: number = 0;
     static oplogic10: number = 0;
 
-    static loopCycle: number = 0;
+    // backed by dash3d/LoopCycle so dash3d modules (and the standalone viewer)
+    // can read the frame counter without importing Client
+    static get loopCycle(): number {
+        return LoopCycle.value;
+    }
+    static set loopCycle(value: number) {
+        LoopCycle.value = value;
+    }
     static drawCycle: number = 0;
 
     static CHARSET: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!\"£$%^&*()-_=+[{]};:'@#~,<.>/?\\| ";

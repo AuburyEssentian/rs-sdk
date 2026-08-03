@@ -444,6 +444,22 @@ export default class LoggerServer {
                             await db.insertInto('player_telemetry').values(rows).execute();
                             break;
                         }
+                        case 'koth_capture': {
+                            const { event } = msg;
+
+                            await db
+                                .insertInto('koth_capture')
+                                .values({
+                                    timestamp: toDbDate(event.timestamp),
+                                    profile: event.profile,
+                                    username: event.username,
+                                    combat_level: event.combat_level,
+                                    contenders: event.contenders,
+                                    loadout: event.loadout
+                                })
+                                .execute();
+                            break;
+                        }
                         case 'report': {
                             const { session_uuid, timestamp, coord, offender, reason } = msg;
 

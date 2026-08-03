@@ -1,4 +1,4 @@
-import { Client } from '#/client/Client.js';
+import LoopCycle from '#/dash3d/LoopCycle.js';
 
 import IdkType from '#/config/IdkType.js';
 import NpcType from '#/config/NpcType.js';
@@ -357,11 +357,11 @@ export default class ClientPlayer extends ClientEntity {
         }
 
         if (this.locModel != null) {
-            if (Client.loopCycle >= this.locStopCycle) {
+            if (LoopCycle.value >= this.locStopCycle) {
                 this.locModel = null;
             }
 
-            if (Client.loopCycle >= this.locStartCycle && Client.loopCycle < this.locStopCycle) {
+            if (LoopCycle.value >= this.locStartCycle && LoopCycle.value < this.locStopCycle) {
                 const loc = this.locModel;
                 if (loc) {
                     loc.translate(this.locOffsetY - this.y, this.locOffsetX - this.x, this.locOffsetZ - this.z);

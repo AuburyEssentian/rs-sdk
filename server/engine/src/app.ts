@@ -28,9 +28,11 @@ if (OnDemand.cache.count(0) !== 9 || OnDemand.cache.count(2) === 0 || !fs.exists
 }
 
 if (Environment.easyStartup) {
-    new Worker(new URL('./login.ts', import.meta.url));
-    new Worker(new URL('./friend.ts', import.meta.url));
-    new Worker(new URL('./logger.ts', import.meta.url));
+    for (const server of ['login', 'friend', 'logger']) {
+        const worker = new Worker(new URL(`./${server}.ts`, import.meta.url));
+        worker.on('error', err => printError(`${server} server worker error: ${err.message ?? err}`));
+        worker.on('exit', code => printError(`${server} server worker exited with code ${code}`));
+    }
 }
 
 await World.start();

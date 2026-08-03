@@ -69,6 +69,22 @@ survival) is described in the project memory; this file is the human-readable ch
 - [ ] **`[LOGOUT DEBUG]` instrumentation** — console.warn breadcrumbs in
       `NetworkPlayer.ts`, `IdleTimerHandler.ts`, `ClientCheatHandler.ts`, `PlayerOps.ts`,
       `World.ts` (and webclient `Client.ts`). Low-stakes but useful; fine to re-add lazily.
+- [ ] **King of the Hill (Demonic Ruins)** — `src/engine/Koth.ts` (rs-sdk-only file; wall
+      polygon traced from `m51_60.jm2`, one capture per wall-clock minute) + hook in
+      `World.ts` `cycle()` (`Koth.cycle` → `koth_capture` postMessage), relay cases in
+      `LoggerThread.ts`/`LoggerClient.ts`/`LoggerServer.ts`, `koth_capture` table (both
+      prisma schemas + `db/types.ts`), `/hiscores/koth` page in `web/pages/hiscores.ts`
+      (registered in `web/index.ts` + `web/hiscoresServer.ts`), player-sprite renderer in
+      webclient `src/viewer/ItemViewer.ts` (`renderPlayerSpriteAsImageData`). Depends on
+      the logger pipeline (EASY_STARTUP or a standalone `bun run logger`) — events are
+      silently dropped without it.
+- [ ] **Worker-thread crash hardening** — `src/server/InternalClient.ts` uses persistent
+      `.on('close'/'error')` handlers instead of `.once()` (a second ws error after a
+      successful open was an unhandled EventEmitter 'error' that killed the worker → every
+      later `postMessage` threw mid-cycle → whole world shut down; this was the "engine
+      dies ~40s into a bot session" local failure). `World.ts` constructor and `app.ts`
+      easyStartup block attach 'error'/'exit' listeners to every Worker so the dying
+      thread is named in the log.
 - [ ] **Choice-dialog resume guard** — `handler/ResumePauseButtonHandler.ts` ignores a bare
       RESUME_PAUSEBUTTON while `player.resumeButtons` is non-empty (a pending `p_choice`
       would otherwise resolve from stale `last_com`, silently re-picking the player's last
@@ -95,6 +111,12 @@ survival) is described in the project memory; this file is the human-readable ch
       Note: **gateway state messages come from `BotOverlay.sendState()`** (includes
       `allComponents`/`componentId`), not `StateCollector.collectDialogState` (basic fallback).
       `GatewayConnection` reads `?bot=`/`?password=` **at page load** for gateway registration.
+
+- [ ] **`src/dash3d/LoopCycle.ts`** (rs-sdk-only) — the frame counter split out of Client;
+      `Client.loopCycle` is now a static getter/setter over it and
+      `ClientPlayer.ts` reads `LoopCycle.value` instead of importing Client. Required so
+      the viewer bundle (which imports ClientPlayer for KOTH character sprites) doesn't
+      drag the whole game client (and its node-only `open` dep) in and fail to build.
 
 ### Client.ts bot SDK surface (~1,450 added lines inside upstream's `src/client/Client.ts`)
 - [ ] Bot methods: `autoLogin`, `getDialogOptions`/`getDialogText`/`getChatInterface`/

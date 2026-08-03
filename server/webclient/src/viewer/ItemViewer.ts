@@ -25,6 +25,7 @@ import Model from '#/dash3d/Model.js';
 
 import ObjType from '#/config/ObjType.js';
 import IdkType from '#/config/IdkType.js';
+import ClientPlayer from '#/dash3d/ClientPlayer.js';
 import NpcType from '#/config/NpcType.js';
 import SeqType from '#/config/SeqType.js';
 import SpotType from '#/config/SpotType.js';
@@ -224,6 +225,118 @@ export class ItemViewer {
         }
 
         this.drawArea.draw(0, 0);
+    }
+
+    /**
+     * Render a full-body character sprite from an appearance descriptor.
+     *
+     * The appearance uses the player-info protocol encoding produced by the engine:
+     * 12 slots of 0 (empty) / 0x100+idkId / 0x200+objId, 5 colour indices, gender.
+     *
+     * @param appearance - { gender, colors: number[5], slots: number[12] }
+     * @param width/height - output sprite dimensions
+     * @param yaw - model rotation, 0..2047 (0 faces the camera)
+     * @returns Pix32 with 0 as the transparent key, or null if model data is missing
+     */
+    renderPlayerSprite(appearance: { gender: number; colors: number[]; slots: number[] }, width: number = 78, height: number = 130, yaw: number = 128): Pix32 | null {
+        if (!this.initialized) {
+            throw new Error('ItemViewer not initialized. Call init() first.');
+        }
+
+        const player = new ClientPlayer();
+        player.gender = appearance.gender & 1;
+        for (let i = 0; i < 12; i++) {
+            player.appearance[i] = appearance.slots[i] ?? 0;
+        }
+        for (let i = 0; i < 5; i++) {
+            player.colour[i] = appearance.colors[i] ?? 0;
+        }
+        // static ready-pose: no anims, lowMemory skips the tempModel animate path
+        player.primaryAnim = -1;
+        player.secondaryAnim = -1;
+        player.lowMemory = true;
+        player.ready = true;
+
+        // model cache key, same derivation as ClientPlayer.setAppearance
+        let baseId = 0n;
+        for (let part = 0; part < 12; part++) {
+            baseId <<= 0x4n;
+            if (player.appearance[part] >= 256) {
+                baseId += BigInt(player.appearance[part]) - 256n;
+            }
+        }
+        if (player.appearance[0] >= 256) {
+            baseId += (BigInt(player.appearance[0]) - 256n) >> 4n;
+        }
+        if (player.appearance[1] >= 256) {
+            baseId += (BigInt(player.appearance[1]) - 256n) >> 8n;
+        }
+        for (let part = 0; part < 5; part++) {
+            baseId <<= 0x3n;
+            baseId += BigInt(player.colour[part]);
+        }
+        baseId <<= 0x1n;
+        baseId += BigInt(player.gender);
+        player.baseId = baseId;
+
+        const model = player.getTempModel2();
+        if (!model) {
+            return null;
+        }
+
+        const sprite = new Pix32(width, height);
+
+        // save the global rasterizer state and point it at our buffer (ObjType.getSprite pattern)
+        const _cx: number = Pix3D.originX;
+        const _cy: number = Pix3D.originY;
+        const _loff: Int32Array = Pix3D.scanline;
+        const _data: Int32Array = Pix2D.pixels;
+        const _w: number = Pix2D.width;
+        const _h: number = Pix2D.height;
+        const _l: number = Pix2D.clipMinX;
+        const _r: number = Pix2D.clipMaxX;
+        const _t: number = Pix2D.clipMinY;
+        const _b: number = Pix2D.clipMaxY;
+
+        Pix3D.lowDetail = false;
+        Pix2D.setPixels(sprite.data, width, height);
+        Pix2D.fillRect(0, 0, width, height, 0);
+        Pix3D.setRenderClipping();
+
+        // frame the model: projected height = minY * 512 / eyeZ, fit to ~92% of the sprite
+        const eyeZ = Math.max(1, ((model.minY * 512) / (height * 0.92)) | 0);
+        model.objRender(0, yaw, 0, 0, 0, (model.minY / 2) | 0, eyeZ);
+
+        Pix2D.setPixels(_data, _w, _h);
+        Pix2D.setClipping(_l, _t, _r, _b);
+        Pix3D.originX = _cx;
+        Pix3D.originY = _cy;
+        Pix3D.scanline = _loff;
+
+        return sprite;
+    }
+
+    /**
+     * Render a character sprite and return ImageData suitable for putImageData().
+     */
+    renderPlayerSpriteAsImageData(appearance: { gender: number; colors: number[]; slots: number[] }, width: number = 78, height: number = 130, yaw: number = 128): ImageData | null {
+        const sprite = this.renderPlayerSprite(appearance, width, height, yaw);
+        if (!sprite) return null;
+
+        const imageData = new ImageData(width, height);
+        const data = new Uint32Array(imageData.data.buffer);
+        for (let i = 0; i < sprite.data.length; i++) {
+            const pixel = sprite.data[i];
+            if (pixel === 0) {
+                data[i] = 0; // transparent
+            } else {
+                const r = (pixel >> 16) & 0xff;
+                const g = (pixel >> 8) & 0xff;
+                const b = pixel & 0xff;
+                data[i] = 0xff000000 | (b << 16) | (g << 8) | r;
+            }
+        }
+        return imageData;
     }
 
     /**

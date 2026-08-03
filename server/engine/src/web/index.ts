@@ -2,7 +2,7 @@ import { register } from 'prom-client';
 import Environment from '#/util/Environment.js';
 import World from '#/engine/World.js';
 import { handleClientPage, handleCacheEndpoints } from './pages/client.js';
-import { handleHiscoresPage, handleHiscoresPlayerPage, handleHiscoresOutfitPage, handleHiscoresBankPage } from './pages/hiscores.js';
+import { handleHiscoresPage, handleHiscoresPlayerPage, handleHiscoresOutfitPage, handleHiscoresBankPage, handleHiscoresKothPage } from './pages/hiscores.js';
 import { handleViewerAssets } from './hiscoresServer.js';
 import { handleScreenshotsListPage, handleScreenshotFilePage } from './pages/screenshots.js';
 import { handleScreenshotUpload, handleExportCollisionApi } from './pages/api.js';
@@ -195,6 +195,9 @@ export async function startWeb() {
 
             const hiscoresBankResponse = await handleHiscoresBankPage(url);
             if (hiscoresBankResponse) return hiscoresBankResponse;
+
+            const hiscoresKothResponse = await handleHiscoresKothPage(url);
+            if (hiscoresKothResponse) return hiscoresKothResponse;
 
             // Viewer assets (cache data, JS, WASM for item icon rendering)
             const viewerResponse = handleViewerAssets(url);

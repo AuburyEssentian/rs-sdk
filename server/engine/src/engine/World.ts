@@ -101,6 +101,7 @@ import VarBitType from '#/cache/config/VarBitType.js';
 import FriendlistLoaded from '#/network/game/server/model/FriendlistLoaded.js';
 import HashTable from '#/datastruct/HashTable.js';
 import Midi from '#/cache/midi/Midi.js';
+import Koth from '#/engine/Koth.js';
 
 const priv = forge.pki.privateKeyFromPem(fs.readFileSync('data/config/private.pem', 'ascii'));
 
@@ -207,6 +208,16 @@ class World {
                 console.error(err);
             }
         });
+
+        // a worker dying otherwise surfaces as an unhandled 'error' event on the Worker
+        // handle (main-process uncaughtException) and then postMessage throwing mid-cycle,
+        // with no indication of WHICH thread died
+        this.loginThread.on('error', err => printError(`login thread error: ${err.message ?? err}`));
+        this.friendThread.on('error', err => printError(`friend thread error: ${err.message ?? err}`));
+        this.loggerThread.on('error', err => printError(`logger thread error: ${err.message ?? err}`));
+        this.loginThread.on('exit', code => printError(`login thread exited with code ${code}`));
+        this.friendThread.on('exit', code => printError(`friend thread exited with code ${code}`));
+        this.loggerThread.on('exit', code => printError(`logger thread exited with code ${code}`));
     }
 
     get shutdown() {
@@ -467,6 +478,16 @@ class World {
                     if (heartbeat || player.x !== player.lastTelemetryX || player.z !== player.lastTelemetryZ || player.level !== player.lastTelemetryLevel) {
                         this.pendingTelemetry.push(this.buildTelemetryEvent(player));
                     }
+                }
+            }
+
+            {
+                const kothEvent = Koth.cycle(this.playerLoop.all());
+                if (kothEvent) {
+                    this.loggerThread.postMessage({
+                        type: 'koth_capture',
+                        event: kothEvent
+                    });
                 }
             }
 

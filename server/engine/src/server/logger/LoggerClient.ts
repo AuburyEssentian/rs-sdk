@@ -57,6 +57,23 @@ export default class LoggerClient extends InternalClient {
         );
     }
 
+    public async kothCapture(event: object) {
+        await this.connect();
+
+        if (!this.ws || !this.wsr || !this.wsr.checkIfWsLive()) {
+            return;
+        }
+
+        this.ws.send(
+            JSON.stringify({
+                type: 'koth_capture',
+                world: Environment.node.id,
+                profile: Environment.node.profile,
+                event
+            })
+        );
+    }
+
     public async report(session_uuid: string, coord: number, offender: string, reason: number) {
         await this.connect();
 

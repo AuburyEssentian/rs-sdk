@@ -49,6 +49,13 @@ async function handleRequests(_parentPort: ParentPort, msg: any) {
             await client.playerTelemetry(events);
             break;
         }
+        case 'koth_capture': {
+            // not gated on Environment.logger.enabled - koth control time is gameplay
+            // data (hiscores), not moderation logging
+            const { event } = msg;
+            await client.kothCapture(event);
+            break;
+        }
         case 'report': {
             if (Environment.logger.enabled) {
                 const { session_uuid, coord, offender, reason } = msg;
