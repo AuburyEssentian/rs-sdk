@@ -11,6 +11,7 @@ import NpcType from '#/config/NpcType.js';
 import LocType from '#/config/LocType.js';
 import type LinkList from '#/datastruct/LinkList.js';
 
+import { ReachProbe } from './reach.js';
 
 import {
     SKILL_NAMES,
@@ -96,14 +97,38 @@ export class BotStateCollector implements ScanProvider {
     // Cached prayer component map (built once on first use)
     private prayerComponentMap: PrayerComponentMap | null = null;
 
+    // Answers "could the routefinder actually get there?" for every published
+    // entity, from the same collision map the dispatch paths route over.
+    private readonly reachProbe: ReachProbe;
+    private reachabilityEnabled = true;
+
     constructor(client: Client) {
         this.client = client;
+        this.reachProbe = new ReachProbe(client as any);
+    }
+
+    /**
+     * Publish `reachable` on nearby entities, or don't. On by default; a swarm
+     * large enough to care about the per-collect flood fill can turn it off,
+     * after which every `reachable` reads undefined (unknown) rather than false.
+     */
+    setReachabilityEnabled(enabled: boolean): void {
+        this.reachabilityEnabled = enabled;
+    }
+
+    /** True when the probe should be consulted this collect: enabled and fillable. */
+    private reachProbeReady(): boolean {
+        return this.reachabilityEnabled && this.reachProbe.available();
     }
 
     collectState(currentTick: number, publish: boolean = false): BotState {
         const c = this.client as any; // Access private members
         const clientCycle = this.client.getClientCycle();
         if (publish) this.publicationRevision++;
+
+        // The player moves and doors open between snapshots; never serve
+        // reachability from a previous tick's flood fill.
+        this.reachProbe.invalidate();
 
         // Collect combat events (must be done before returning state)
         this.collectCombatEvents(currentTick);
@@ -136,7 +161,8 @@ export class BotStateCollector implements ScanProvider {
             interface: this.collectInterfaceState(),
             modalOpen: (c.mainModalId ?? -1) !== -1,
             modalInterface: c.mainModalId ?? -1,
-            prayers: this.collectPrayerState()
+            prayers: this.collectPrayerState(),
+            opFeedback: { opRejectedCount: c.mapFlagUnsetCount ?? 0 }
         };
     }
 
@@ -854,6 +880,13 @@ export class BotStateCollector implements ScanProvider {
             const npcWorldX = baseX + (npcX >> 7);
             const npcWorldZ = baseZ + (npcZ >> 7);
 
+            // The dispatch paths route to the NPC's route tile with its real
+            // footprint (Client.talkToNpc etc.), so the probe must ask the
+            // exact same question - see reach.ts invariant 1.
+            const reachable = this.reachProbeReady()
+                ? this.reachProbe.canReachEntity(npc.routeX?.[0] ?? npcX >> 7, npc.routeZ?.[0] ?? npcZ >> 7, npcType.size ?? 1)
+                : undefined;
+
             npcs.push({
                 kind: 'npc',
                 index: npcIndex,
@@ -871,7 +904,8 @@ export class BotStateCollector implements ScanProvider {
                 animId: npc.primaryAnim ?? -1,
                 spotanimId: npc.spotanimId ?? -1,
                 optionsWithIndex,
-                options: optionsWithIndex.map(o => o.text)
+                options: optionsWithIndex.map(o => o.text),
+                reachable
             });
         }
 
@@ -915,7 +949,10 @@ export class BotStateCollector implements ScanProvider {
                 combatLevel: player.combatLevel || 0,
                 x: playerWorldX,
                 z: playerWorldZ,
-                distance
+                distance,
+                reachable: this.reachProbeReady()
+                    ? this.reachProbe.canReachEntity(player.routeX?.[0] ?? (player.x || 0) >> 7, player.routeZ?.[0] ?? (player.z || 0) >> 7, 1)
+                    : undefined
             });
         }
 
@@ -932,6 +969,14 @@ export class BotStateCollector implements ScanProvider {
         const world = c.world;
 
         if (!player || !world) return locs;
+
+        // Also an on-demand ScanProvider entry point, so refresh the fill here
+        // too - a door may have opened since the last snapshot.
+        this.reachProbe.invalidate();
+        const locReachable = (tileX: number, tileZ: number, id: number): boolean | undefined => {
+            if (!this.reachProbeReady()) return undefined;
+            return this.reachProbe.canReachLoc(tileX, tileZ, id) ?? undefined;
+        };
 
         const currentLevel = c.minusedlevel || 0;
         const playerTileX = (player.x || 0) >> 7;
@@ -982,7 +1027,8 @@ export class BotStateCollector implements ScanProvider {
                                     z: baseZ + tileZ,
                                     distance,
                                     optionsWithIndex,
-                                    options: optionsWithIndex.map(o => o.text)
+                                    options: optionsWithIndex.map(o => o.text),
+                                    reachable: locReachable(tileX, tileZ, locId)
                                 });
                             }
                         } catch { /* ignore errors */ }
@@ -1015,7 +1061,8 @@ export class BotStateCollector implements ScanProvider {
                                     z: baseZ + tileZ,
                                     distance,
                                     optionsWithIndex,
-                                    options: optionsWithIndex.map(o => o.text)
+                                    options: optionsWithIndex.map(o => o.text),
+                                    reachable: locReachable(tileX, tileZ, wallId)
                                 });
                             }
                         } catch { /* ignore errors */ }
@@ -1048,7 +1095,8 @@ export class BotStateCollector implements ScanProvider {
                                     z: baseZ + tileZ,
                                     distance,
                                     optionsWithIndex,
-                                    options: optionsWithIndex.map(o => o.text)
+                                    options: optionsWithIndex.map(o => o.text),
+                                    reachable: locReachable(tileX, tileZ, decorId)
                                 });
                             }
                         } catch { /* ignore errors */ }
@@ -1081,7 +1129,8 @@ export class BotStateCollector implements ScanProvider {
                                     z: baseZ + tileZ,
                                     distance,
                                     optionsWithIndex,
-                                    options: optionsWithIndex.map(o => o.text)
+                                    options: optionsWithIndex.map(o => o.text),
+                                    reachable: locReachable(tileX, tileZ, groundDecorId)
                                 });
                             }
                         } catch { /* ignore errors */ }
@@ -1106,6 +1155,10 @@ export class BotStateCollector implements ScanProvider {
         const objStacks = c.groundObj;
         if (!objStacks) return items;
 
+        // Also an on-demand ScanProvider entry point - see scanNearbyLocs.
+        this.reachProbe.invalidate();
+        const probeReady = this.reachProbeReady();
+
         const currentLevel = c.minusedlevel || 0;
         const playerTileX = (player.x || 0) >> 7;
         const playerTileZ = (player.z || 0) >> 7;
@@ -1123,6 +1176,10 @@ export class BotStateCollector implements ScanProvider {
 
                 const stack = objStacks[currentLevel]?.[tileX]?.[tileZ] as LinkList<ClientObj> | null;
                 if (!stack) continue;
+
+                // OPOBJ routes to the item's own tile (0x0 footprint), so one
+                // answer covers the whole stack.
+                const reachable = probeReady ? this.reachProbe.canReachTile(tileX, tileZ) : undefined;
 
                 // Iterate through the link list
                 let obj = stack.head();
@@ -1142,7 +1199,8 @@ export class BotStateCollector implements ScanProvider {
                             count: clientObj.count || 1,
                             x: baseX + tileX,
                             z: baseZ + tileZ,
-                            distance
+                            distance,
+                            reachable
                         });
                     }
                     obj = stack.next();

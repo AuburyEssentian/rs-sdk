@@ -41,18 +41,28 @@ export function resolveInterfaceOption(
  * Pick the match with the shortest name, so `/hopper/i` resolves to "Hopper"
  * rather than a nearer "Hopper controls". Ties keep the list's own order
  * (nearest-first for world entities, slot order for inventories).
+ *
+ * World entities carrying `reachable: false` are considered last: interacting
+ * with one fails with a silent `cant_reach`, so a reachable match always beats
+ * an unreachable one (the "nearest man is inside the castle" trap). If every
+ * match is unreachable the best of them is still returned - callers can check
+ * `.reachable` and decide to walk, wait, or skip.
  */
-export function shortestNameMatch<T extends { name: string }>(
+export function shortestNameMatch<T extends { name: string; reachable?: boolean }>(
     items: readonly T[],
     pattern: string | RegExp,
 ): T | null {
     const regex = typeof pattern === 'string' ? new RegExp(pattern, 'i') : pattern;
     let best: T | null = null;
+    let bestReachable: T | null = null;
     for (const item of items) {
         if (!testPattern(regex, item.name)) continue;
         if (!best || item.name.length < best.name.length) best = item;
+        if (item.reachable !== false && (!bestReachable || item.name.length < bestReachable.name.length)) {
+            bestReachable = item;
+        }
     }
-    return best;
+    return bestReachable ?? best;
 }
 
 /** Anchored, escaped pattern matching exactly `name` (case-insensitive). */

@@ -98,6 +98,13 @@ export interface NearbyNpc {
     optionsWithIndex: NpcOption[];
     /** Convenience array of option text strings */
     options: string[];
+    /**
+     * Whether the client routefinder can currently path to this target. An
+     * interaction with a `reachable: false` target fails with a silent
+     * `cant_reach` before any packet is sent - pick another target instead.
+     * Undefined when unknown (scene still loading, collision map not built).
+     */
+    reachable?: boolean;
 }
 
 export interface NearbyPlayer {
@@ -110,6 +117,8 @@ export interface NearbyPlayer {
     x: number;
     z: number;
     distance: number;
+    /** See NearbyNpc.reachable. */
+    reachable?: boolean;
 }
 
 /**
@@ -126,6 +135,8 @@ export interface GroundItem {
     x: number;
     z: number;
     distance: number;
+    /** See NearbyNpc.reachable. */
+    reachable?: boolean;
 }
 
 export interface LocOption {
@@ -142,6 +153,8 @@ export interface NearbyLoc {
     optionsWithIndex: LocOption[];
     /** Convenience array of option text strings */
     options: string[];
+    /** See NearbyNpc.reachable. */
+    reachable?: boolean;
 }
 
 export interface GameMessage {
@@ -359,6 +372,18 @@ export interface BotWorldState {
     combatStyle?: CombatStyleState;
     combatEvents: CombatEvent[];
     prayers: PrayerState;
+    /**
+     * Server pushback signals for dispatched ops. The server can take an op and
+     * silently drop it (stunned, mid-action, modal open underneath); the only
+     * thing it sends back is UNSET_MAP_FLAG. Sample the counter before an op and
+     * treat an increase without the expected effect as a rejection.
+     */
+    opFeedback?: OpFeedback;
+}
+
+export interface OpFeedback {
+    /** Monotonic count of UNSET_MAP_FLAG packets received this session. */
+    opRejectedCount: number;
 }
 
 // ============ Action Types ============
@@ -628,7 +653,7 @@ export interface SmithResult {
     xpGained?: number;
     itemsSmithed?: number;
     product?: InventoryItem;
-    reason?: 'no_hammer' | 'no_bars' | 'no_anvil' | 'interface_not_opened' | 'level_too_low' | 'timeout' | 'no_xp_gained';
+    reason?: 'no_hammer' | 'no_bars' | 'no_anvil' | 'cant_reach' | 'interface_not_opened' | 'level_too_low' | 'timeout' | 'no_xp_gained';
 }
 
 export interface OpenBankResult {

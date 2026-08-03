@@ -338,8 +338,9 @@ export function formatWorldState(
             const lvl = npc.combatLevel > 0 ? ` (Lvl ${npc.combatLevel})` : '';
             const hp = npc.hp !== null && npc.maxHp !== null ? ` HP: ${npc.hp}/${npc.maxHp}` : '';
             const combat = npc.inCombat ? ' [in combat]' : '';
+            const unreachable = npc.reachable === false ? ' [UNREACHABLE]' : '';
             const opts = npc.options?.length > 0 ? ` [${npc.options.join(', ')}]` : '';
-            lines.push(`- ${npc.name}${lvl}${hp}${combat} - ${npc.distance} tiles (idx: ${npc.index})${opts}`);
+            lines.push(`- ${npc.name}${lvl}${hp}${combat}${unreachable} - ${npc.distance} tiles (idx: ${npc.index})${opts}`);
         }
         if (state.nearbyNpcs.length > 10) {
             lines.push(`  ... and ${state.nearbyNpcs.length - 10} more`);
@@ -363,8 +364,9 @@ export function formatWorldState(
         lines.push('');
         lines.push('## Nearby Objects');
         for (const loc of state.nearbyLocs.slice(0, 10)) {
+            const unreachable = loc.reachable === false ? ' [UNREACHABLE]' : '';
             const opts = loc.options?.length > 0 ? ` [${loc.options.join(', ')}]` : '';
-            lines.push(`- ${loc.name} at (${loc.x}, ${loc.z}) - ${loc.distance} tiles${opts}`);
+            lines.push(`- ${loc.name} at (${loc.x}, ${loc.z})${unreachable} - ${loc.distance} tiles${opts}`);
         }
         if (state.nearbyLocs.length > 10) {
             lines.push(`  ... and ${state.nearbyLocs.length - 10} more`);
@@ -376,7 +378,8 @@ export function formatWorldState(
         lines.push('');
         lines.push('## Ground Items');
         for (const item of state.groundItems.slice(0, 10)) {
-            lines.push(`- ${item.name} x${item.count} at (${item.x}, ${item.z}) - ${item.distance} tiles`);
+            const unreachable = item.reachable === false ? ' [UNREACHABLE]' : '';
+            lines.push(`- ${item.name} x${item.count} at (${item.x}, ${item.z})${unreachable} - ${item.distance} tiles`);
         }
         if (state.groundItems.length > 10) {
             lines.push(`  ... and ${state.groundItems.length - 10} more`);

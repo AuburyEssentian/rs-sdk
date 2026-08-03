@@ -78,6 +78,13 @@ export interface NearbyNpc {
     optionsWithIndex: NpcOption[];  // Options with op index (use .map(o => o.text) for display)
     /** Convenience array of option text strings */
     options: string[];
+    /**
+     * Whether the client routefinder can currently path to this target. An
+     * interaction with a `reachable: false` target fails with a silent
+     * `cant_reach` before any packet is sent - pick another target instead.
+     * Undefined when unknown (scene still loading, collision map not built).
+     */
+    reachable?: boolean;
 }
 
 export interface NearbyPlayer {
@@ -90,6 +97,8 @@ export interface NearbyPlayer {
     x: number;
     z: number;
     distance: number;
+    /** See NearbyNpc.reachable. */
+    reachable?: boolean;
 }
 
 export interface GroundItem {
@@ -99,6 +108,8 @@ export interface GroundItem {
     x: number;
     z: number;
     distance: number;
+    /** See NearbyNpc.reachable. */
+    reachable?: boolean;
 }
 
 export interface LocOption {
@@ -115,6 +126,8 @@ export interface NearbyLoc {
     optionsWithIndex: LocOption[];  // Options with op index (use .map(o => o.text) for display)
     /** Convenience array of option text strings */
     options: string[];
+    /** See NearbyNpc.reachable. */
+    reachable?: boolean;
 }
 
 export interface MenuAction {
@@ -319,6 +332,18 @@ export interface BotState {
     modalInterface: number;
     /** Prayer state (active prayers, prayer points) */
     prayers: PrayerState;
+    /**
+     * Server pushback signals for dispatched ops. The server can take an op and
+     * silently drop it (stunned, mid-action, modal open underneath); the only
+     * thing it sends back is UNSET_MAP_FLAG. Sample the counter before an op and
+     * treat an increase without the expected effect as a rejection.
+     */
+    opFeedback: OpFeedback;
+}
+
+export interface OpFeedback {
+    /** Monotonic count of UNSET_MAP_FLAG packets received this session. */
+    opRejectedCount: number;
 }
 
 // Extended world state interface for agent (includes extra debug info)

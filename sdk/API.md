@@ -437,6 +437,8 @@ interface BotWorldState {
   combatStyle?: CombatStyleState;
   combatEvents: CombatEvent[];
   prayers: PrayerState;
+  /** Server pushback signals for dispatched ops. The server can take an op and silently drop it (stunned, mid-action, modal open underneath); the only thing it sends back is UNSET_MAP_FLAG. Sample the counter before an op and treat an increase without the expected effect as a rejection. */
+  opFeedback?: OpFeedback;
 }
 ```
 
@@ -641,7 +643,7 @@ interface SmithResult {
   xpGained?: number;
   itemsSmithed?: number;
   product?: InventoryItem;
-  reason?: 'no_hammer' | 'no_bars' | 'no_anvil' | 'interface_not_opened' | 'level_too_low' | 'timeout' | 'no_xp_gained';
+  reason?: 'no_hammer' | 'no_bars' | 'no_anvil' | 'cant_reach' | 'interface_not_opened' | 'level_too_low' | 'timeout' | 'no_xp_gained';
 }
 ```
 

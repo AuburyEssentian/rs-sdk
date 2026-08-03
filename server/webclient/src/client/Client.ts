@@ -575,6 +575,13 @@ export class Client extends GameShell {
     private activeMapFunctions: (Pix32 | null)[] = new TypedArray1d(1000, null);
     private minimapFlagX: number = 0;
     private minimapFlagZ: number = 0;
+    /**
+     * UNSET_MAP_FLAG packets received this session. The server clears the map
+     * flag when it discards a queued op (stunned, mid-action, modal open), and
+     * sends nothing else - StateCollector publishes this as `opFeedback` so
+     * bots can tell a silently-dropped op from one still in flight.
+     */
+    private mapFlagUnsetCount: number = 0;
 
     private midiActive: boolean = true;
     private midiVolume: number = 0;
@@ -1047,7 +1054,11 @@ export class Client extends GameShell {
         // Walk to the NPC first. In 274's client-routefinder mode the server expects the
         // client to send the route to an interaction target; without it the player never
         // moves and the server replies "I can't reach that!". Mirrors spellOnNpc/useItemOnNpc.
-        const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], n.routeX[0], n.routeZ[0], false, 1, 1, 0, 0, 0, 2);
+        // Route with the NPC's real footprint so a 2x2 NPC is approachable from
+        // any of its sides; StateCollector's reach probe asks the same question
+        // with the same size, and the two must agree (reach.ts invariant 1).
+        const size = n.type?.size ?? 1;
+        const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], n.routeX[0], n.routeZ[0], false, size, size, 0, 0, 0, 2);
         if (!routed) {
             return { success: false, reason: 'cant_reach' };
         }
@@ -1083,7 +1094,9 @@ export class Client extends GameShell {
         // Walk to the NPC first. In 274's client-routefinder mode the server expects the
         // client to send the route to an interaction target; without it the player never
         // moves and the server replies "I can't reach that!". Mirrors spellOnNpc/useItemOnNpc.
-        const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], n.routeX[0], n.routeZ[0], false, 1, 1, 0, 0, 0, 2);
+        // Real footprint, same as talkToNpc - the reach probe must agree.
+        const size = n.type?.size ?? 1;
+        const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], n.routeX[0], n.routeZ[0], false, size, size, 0, 0, 0, 2);
         if (!routed) {
             return { success: false, reason: 'cant_reach' };
         }
@@ -1164,13 +1177,14 @@ export class Client extends GameShell {
         }
 
         // Try to move towards the NPC
+        const npcSize = n.type?.size ?? 1;
         const routed = this.tryMove(
             this.localPlayer.routeX[0],
             this.localPlayer.routeZ[0],
             n.routeX[0],
             n.routeZ[0],
             false,  // tryNearest
-            1, 1,   // NPC size
+            npcSize, npcSize,
             0, 0,   // angle, shape
             0,      // forceapproach
             2       // type = MOVE_OPCLICK
@@ -2025,12 +2039,13 @@ export class Client extends GameShell {
             return { success: false, reason: 'target_not_found' };
         }
 
+        const npcSize = n.type?.size ?? 1;
         const routed = this.tryMove(
             this.localPlayer.routeX[0],
             this.localPlayer.routeZ[0],
             n.routeX[0],
             n.routeZ[0],
-            false, 1, 1, 0, 0, 0, 2
+            false, npcSize, npcSize, 0, 0, 0, 2
         );
         if (!routed) {
             return { success: false, reason: 'cant_reach' };
@@ -8973,6 +8988,7 @@ export class Client extends GameShell {
 
             if (this.ptype === ServerProt.UNSET_MAP_FLAG) {
                 this.minimapFlagX = 0;
+                this.mapFlagUnsetCount++;
 
                 this.ptype = -1;
                 return true;

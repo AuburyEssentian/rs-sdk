@@ -29,6 +29,11 @@ export default class ClientStream {
         this.socket = socket;
     }
 
+    /** Closed by us, or hung up on by the server - either way there is no session left. */
+    get isClosed(): boolean {
+        return this.dummy || this.remoteClosed;
+    }
+
     get host(): string {
         return this.socket.url.split('/')[2];
     }

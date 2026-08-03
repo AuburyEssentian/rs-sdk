@@ -911,7 +911,15 @@ export class BotActions {
                 return { success: true, dialog: finalState.dialog, message: `Talking to ${npcNow.name}` };
             }
 
-            return { success: false, message: 'Dialog did not open' };
+            // The idle window can expire a tick before the server's dialog
+            // arrives (walk-up finished, NPC still turning). Give the dialog a
+            // short grace instead of reporting failure on a talk that worked.
+            try {
+                const lateState = await this.sdk.waitForCondition(s => s.dialog.isOpen, 2000);
+                return { success: true, dialog: lateState.dialog, message: `Talking to ${npcNow.name}` };
+            } catch {
+                return { success: false, message: 'Dialog did not open' };
+            }
         } catch {
             return { success: false, message: 'Timed out waiting for dialog' };
         }
@@ -2774,7 +2782,14 @@ export class BotActions {
         // Use bar on anvil
         const useResult = await this.sdk.sendUseItemOnLoc(bar.slot, anvil.x, anvil.z, anvil.id);
         if (!useResult.success) {
-            return { success: false, message: useResult.message, reason: 'no_anvil' };
+            // Propagate the real failure: a routing cant_reach is not a missing
+            // anvil, and conflating them sends callers hunting the wrong bug.
+            const reason: SmithResult['reason'] =
+                useResult.reason === 'cant_reach' ? 'cant_reach'
+                : useResult.reason === 'item_not_found' ? 'no_bars'
+                : useResult.reason === 'timeout' ? 'timeout'
+                : 'no_anvil';
+            return { success: false, message: useResult.message, reason };
         }
 
         // Wait for smithing interface to open
@@ -2931,9 +2946,15 @@ export class BotActions {
 
         const startTick = this.sdk.getState()?.tick || 0;
         const msgBaseline = this.helpers.getMessageTick();
+        const startLevel = this.sdk.getState()?.player?.level ?? -1;
         let lastMoveTick = startTick;
         let lastX = this.sdk.getState()?.player?.x ?? 0;
         let lastZ = this.sdk.getState()?.player?.z ?? 0;
+
+        // A staircase/ladder teleport can land between state polls with the
+        // climb animation never observed - the level change IS the evidence.
+        const levelChanged = (state: { player: { level: number } | null } | null): boolean =>
+            startLevel !== -1 && state?.player != null && state.player.level !== startLevel;
 
         const result = await this.sdk.sendInteractLoc(locNow.x, locNow.z, locNow.id, opIndex);
         if (!result.success) {
@@ -2953,6 +2974,7 @@ export class BotActions {
                 // Success indicators
                 if (state.dialog.isOpen || state.interface?.isOpen) return true;
                 if (state.player && state.player.animId !== -1) return true;
+                if (levelChanged(state)) return true;
 
                 // Track movement — if player moved, update last move tick
                 if (state.player && (state.player.x !== lastX || state.player.z !== lastZ)) {
@@ -2972,12 +2994,26 @@ export class BotActions {
             }
 
             if (finalState.dialog.isOpen || finalState.interface?.isOpen ||
-                (finalState.player && finalState.player.animId !== -1)) {
+                (finalState.player && finalState.player.animId !== -1) ||
+                levelChanged(finalState)) {
                 return { success: true, message: `Interacted with ${locNow.name}` };
             }
 
-            return { success: false, message: `Nothing happened interacting with ${locNow.name}`, reason: 'timeout' };
+            // The idle window can expire a tick before the server responds.
+            // Short grace for the evidence to land - see interactNpc/talkTo.
+            try {
+                await this.sdk.waitForCondition(s =>
+                    s.dialog.isOpen || Boolean(s.interface?.isOpen) ||
+                    (s.player != null && s.player.animId !== -1) || levelChanged(s), 2000);
+                return { success: true, message: `Interacted with ${locNow.name}` };
+            } catch {
+                return { success: false, message: `Nothing happened interacting with ${locNow.name}`, reason: 'timeout' };
+            }
         } catch {
+            // Even on the safety-net timeout, a level transition means it worked.
+            if (levelChanged(this.sdk.getState())) {
+                return { success: true, message: `Interacted with ${locNow.name}` };
+            }
             return { success: false, message: `Timed out interacting with ${locNow.name}`, reason: 'timeout' };
         }
     }
@@ -3086,7 +3122,17 @@ export class BotActions {
                 return { success: true, message: `Interacted with ${npcNow.name}` };
             }
 
-            return { success: false, message: `Nothing happened interacting with ${npcNow.name}`, reason: 'timeout' };
+            // The idle window can expire a tick before the server responds
+            // (walk-up finished, NPC still turning). Short grace for the
+            // evidence to land before declaring failure - see talkTo.
+            try {
+                await this.sdk.waitForCondition(s =>
+                    s.dialog.isOpen || Boolean(s.interface?.isOpen) ||
+                    (s.player != null && s.player.animId !== -1), 2000);
+                return { success: true, message: `Interacted with ${npcNow.name}` };
+            } catch {
+                return { success: false, message: `Nothing happened interacting with ${npcNow.name}`, reason: 'timeout' };
+            }
         } catch {
             return { success: false, message: `Timed out interacting with ${npcNow.name}`, reason: 'timeout' };
         }
