@@ -42,7 +42,8 @@ import {
     type CombatEvent,
     type DialogState,
     type InterfaceState,
-    type PrayerState
+    type PrayerState,
+    type OpFeedbackState
 } from './types.js';
 import type { ScanProvider } from './ActionExecutor.js';
 
@@ -92,6 +93,14 @@ export class BotStateCollector implements ScanProvider {
     private static readonly FACING_GRACE_CYCLES = 500;
     private publicationRevision = 0;
     private messageObservations = new Map<string, { tick: number; observationId: number }>();
+    // Op feedback tracking - see collectOpFeedback
+    private opFeedbackTick: number = -1;
+    private lastMapFlagUnsetCount: number = 0;
+    private lastMapFlagUnsetTick: number = -1;
+    private opRejectedCount: number = 0;
+    private lastOpRejectedTick: number = -1;
+    private lastTileX: number = -1;
+    private lastTileZ: number = -1;
     private dialogObservations = new Map<string, { tick: number; observationId: number }>();
 
     // Cached prayer component map (built once on first use)
@@ -148,8 +157,8 @@ export class BotStateCollector implements ScanProvider {
             combatStyle: this.collectCombatStyle(),
             nearbyNpcs: this.collectNearbyNpcs(clientCycle),
             nearbyPlayers: this.collectNearbyPlayers(),
-            nearbyLocs: this.scanNearbyLocs(),
-            groundItems: this.scanGroundItems(),
+            nearbyLocs: this.collectNearbyLocs(),
+            groundItems: this.collectGroundItems(),
             gameMessages: this.collectGameMessages(currentTick, publish),
             recentDialogs: this.collectRecentDialogs(currentTick, publish),
             menuActions: this.collectMenuActions(),
@@ -162,7 +171,46 @@ export class BotStateCollector implements ScanProvider {
             modalOpen: (c.mainModalId ?? -1) !== -1,
             modalInterface: c.mainModalId ?? -1,
             prayers: this.collectPrayerState(),
-            opFeedback: { opRejectedCount: c.mapFlagUnsetCount ?? 0 }
+            opFeedback: this.collectOpFeedback(currentTick)
+        };
+    }
+
+    /**
+     * Turn the raw UNSET_MAP_FLAG counter both clients keep into timestamps.
+     * See OpFeedbackState for what the signal does and does not prove.
+     *
+     * Only the first call on a given tick advances the tracking, so the extra
+     * unpublished collects BotOverlay makes for its UI cannot consume a delta or
+     * mistake "no movement since the last call 2ms ago" for "standing still".
+     */
+    private collectOpFeedback(currentTick: number): OpFeedbackState {
+        const c = this.client as any;
+        const count: number = c.mapFlagUnsetCount ?? 0;
+        const player = c.localPlayer;
+        const tileX = ((player?.x ?? 0) >> 7);
+        const tileZ = ((player?.z ?? 0) >> 7);
+
+        if (currentTick !== this.opFeedbackTick) {
+            if (this.opFeedbackTick !== -1 && count > this.lastMapFlagUnsetCount) {
+                this.lastMapFlagUnsetTick = currentTick;
+                if (tileX === this.lastTileX && tileZ === this.lastTileZ) {
+                    // Packets, not interactions - one refused interaction can
+                    // bump this twice.
+                    this.opRejectedCount += count - this.lastMapFlagUnsetCount;
+                    this.lastOpRejectedTick = currentTick;
+                }
+            }
+            this.opFeedbackTick = currentTick;
+            this.lastMapFlagUnsetCount = count;
+            this.lastTileX = tileX;
+            this.lastTileZ = tileZ;
+        }
+
+        return {
+            mapFlagUnsetCount: count,
+            lastMapFlagUnsetTick: this.lastMapFlagUnsetTick,
+            opRejectedCount: this.opRejectedCount,
+            lastOpRejectedTick: this.lastOpRejectedTick
         };
     }
 
@@ -963,6 +1011,13 @@ export class BotStateCollector implements ScanProvider {
 
     // On-demand scanning for nearby locations (implements ScanProvider)
     scanNearbyLocs(radius?: number): NearbyLoc[] {
+        // Standalone call - the player may have moved since the last snapshot.
+        // collectState goes through the private form so one fill serves it all.
+        this.reachProbe.invalidate();
+        return this.collectNearbyLocs(radius);
+    }
+
+    private collectNearbyLocs(radius?: number): NearbyLoc[] {
         const c = this.client as any;
         const locs: NearbyLoc[] = [];
         const player = c.localPlayer;
@@ -1146,6 +1201,11 @@ export class BotStateCollector implements ScanProvider {
 
     // On-demand scanning for ground items (implements ScanProvider)
     scanGroundItems(radius?: number): GroundItem[] {
+        this.reachProbe.invalidate(); // standalone call - see scanNearbyLocs
+        return this.collectGroundItems(radius);
+    }
+
+    private collectGroundItems(radius?: number): GroundItem[] {
         const c = this.client as any;
         const items: GroundItem[] = [];
         const player = c.localPlayer;

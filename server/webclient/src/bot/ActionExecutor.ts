@@ -26,6 +26,9 @@ export interface ScanProvider {
 export class ActionExecutor {
     private client: Client;
     private scanProvider: ScanProvider | null = null;
+    /** Last warn time per target - see warnUnreachable. */
+    private routeFailureWarnings = new Map<string, number>();
+    private static readonly ROUTE_WARN_INTERVAL_MS = 10_000;
 
     constructor(client: Client) {
         this.client = client;
@@ -378,12 +381,38 @@ export class ActionExecutor {
         if (result.success) {
             return { success: true, message: successMsg, phase: 'dispatch' };
         }
+        if (result.reason === 'cant_reach') {
+            this.warnUnreachable(successMsg);
+        }
         return {
             success: false,
             message: `${failMsg}: ${result.reason}`,
             phase: result.reason === 'cant_reach' ? 'routing' : 'validation',
             reason: result.reason
         };
+    }
+
+    /**
+     * Leave a trace when a route fails, because nothing else does: no packet is
+     * sent, so there is no game message and no error, and a loop that discards
+     * this ActionResult just looks like it is thinking. Rate limited per target
+     * so a tight retry loop doesn't bury the console.
+     */
+    private warnUnreachable(target: string): void {
+        const now = Date.now();
+        const last = this.routeFailureWarnings.get(target) ?? 0;
+        if (now - last < ActionExecutor.ROUTE_WARN_INTERVAL_MS) {
+            return;
+        }
+
+        if (this.routeFailureWarnings.size > 64) {
+            for (const [key, when] of this.routeFailureWarnings) {
+                if (now - when >= ActionExecutor.ROUTE_WARN_INTERVAL_MS) this.routeFailureWarnings.delete(key);
+            }
+        }
+        this.routeFailureWarnings.set(target, now);
+
+        console.warn(`[bot] cant_reach: ${target} - no route, so nothing was sent and the server will not reply. Prefer a target whose \`reachable\` flag is true.`);
     }
 
     // Show red click cross at an NPC's screen position

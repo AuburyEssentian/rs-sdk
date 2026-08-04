@@ -19,7 +19,8 @@ const target: NearbyNpc = {
     animId: -1,
     spotanimId: -1,
     optionsWithIndex: [{ text: 'Attack', opIndex: 2 }],
-    options: ['Attack']
+    options: ['Attack'],
+    reachable: true
 };
 
 function state(targetIndex: number, message?: string, attackXp: number = 0) {

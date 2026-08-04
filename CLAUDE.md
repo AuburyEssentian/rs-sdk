@@ -311,4 +311,10 @@ wiki/
 
 **Wrong target** - Use more specific regex patterns: `/^tree$/i` not `/tree/i` (which matches "tree stump").
 
+**Everything succeeds and nothing happens** - The two silent failure modes. A
+`send*` returning success only means the client wrote bytes; it is not an ack.
+
+- **The client never sent anything.** The client pathfinds before every interaction, and when it can't route it returns `cant_reach` without writing a packet - so the server never replies "I can't reach that!" either. Check `reachable` on the target before using it. `find*` already prefers reachable matches; pass `{reachable: true}` to get `null` instead of an unreachable one.
+- **The server discarded the op.** A refused op (mid-action, stunned, target gone or out of view, bad option) gets `UNSET_MAP_FLAG` and nothing else - no message, no error. A blocking modal is worse: the op is accepted and the trigger never runs. Check `state.opFeedback.opRejectedCount` around a send, and gate loops on an observed effect rather than on a timer.
+
 Start small and build up!

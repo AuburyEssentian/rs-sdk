@@ -19,7 +19,8 @@ const goblin: NearbyNpc = {
     animId: -1,
     spotanimId: -1,
     optionsWithIndex: [{ text: 'Attack', opIndex: 2 }],
-    options: ['Attack']
+    options: ['Attack'],
+    reachable: true
 };
 
 const rival: NearbyPlayer = {
@@ -29,7 +30,8 @@ const rival: NearbyPlayer = {
     combatLevel: 42,
     x: 3200,
     z: 3200,
-    distance: 1
+    distance: 1,
+    reachable: true
 };
 
 interface StateOptions {

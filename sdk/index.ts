@@ -21,12 +21,24 @@ import type {
     BotStatus,
     PrayerState,
     PrayerName,
-    GameMessage
+    GameMessage,
+    FindOptions
 } from './types';
 import { PRAYER_INDICES, PRAYER_NAMES, PLAYER_CHAT_TYPES, isPlayerChat } from './types';
 import { ChatHistory } from './chat-history';
 import * as pathfinding from './pathfinding';
 import { resolveInterfaceOption, shortestNameMatch, type InterfaceOptionSelector } from './action-quantity';
+
+/**
+ * Apply {@link FindOptions} to a find* winner. `shortestNameMatch` already
+ * prefers a reachable match; `{reachable: true}` turns an unreachable-only
+ * result into null instead, so callers get "nothing usable" rather than a
+ * target whose interaction would fail with a silent `cant_reach`.
+ */
+function applyFindOptions<T extends { reachable?: boolean }>(match: T | null, options?: FindOptions): T | null {
+    if (options?.reachable === true && match?.reachable === false) return null;
+    return match;
+}
 
 function selectorLabel(selector: InterfaceOptionSelector): string {
     if (typeof selector === 'string') return `"${selector}"`;
@@ -823,10 +835,10 @@ export class BotSDK {
         return this.state.nearbyNpcs.find(n => n.index === index) || null;
     }
 
-    /** Find NPC by name pattern (shortest matching name wins, then nearest). */
-    findNearbyNpc(pattern: string | RegExp): NearbyNpc | null {
+    /** Find NPC by name pattern (shortest matching name wins, then nearest; reachable preferred). */
+    findNearbyNpc(pattern: string | RegExp, options?: FindOptions): NearbyNpc | null {
         if (!this.state) return null;
-        return shortestNameMatch(this.state.nearbyNpcs, pattern);
+        return applyFindOptions(shortestNameMatch(this.state.nearbyNpcs, pattern), options);
     }
 
     /** Get all nearby NPCs. */
@@ -834,10 +846,10 @@ export class BotSDK {
         return this.state?.nearbyNpcs || [];
     }
 
-    /** Find a nearby player by name pattern (shortest matching name wins, then nearest). */
-    findNearbyPlayer(pattern: string | RegExp): NearbyPlayer | null {
+    /** Find a nearby player by name pattern (shortest matching name wins, then nearest; reachable preferred). */
+    findNearbyPlayer(pattern: string | RegExp, options?: FindOptions): NearbyPlayer | null {
         if (!this.state) return null;
-        return shortestNameMatch(this.state.nearbyPlayers, pattern);
+        return applyFindOptions(shortestNameMatch(this.state.nearbyPlayers, pattern), options);
     }
 
     /** Get all nearby players, nearest first. */
@@ -853,10 +865,10 @@ export class BotSDK {
         ) || null;
     }
 
-    /** Find location by name pattern (shortest matching name wins, then nearest). */
-    findNearbyLoc(pattern: string | RegExp): NearbyLoc | null {
+    /** Find location by name pattern (shortest matching name wins, then nearest; reachable preferred). */
+    findNearbyLoc(pattern: string | RegExp, options?: FindOptions): NearbyLoc | null {
         if (!this.state) return null;
-        return shortestNameMatch(this.state.nearbyLocs, pattern);
+        return applyFindOptions(shortestNameMatch(this.state.nearbyLocs, pattern), options);
     }
 
     /** Get all nearby locations (trees, rocks, etc). */
@@ -864,10 +876,10 @@ export class BotSDK {
         return this.state?.nearbyLocs || [];
     }
 
-    /** Find ground item by name pattern (shortest matching name wins, then nearest). */
-    findGroundItem(pattern: string | RegExp): GroundItem | null {
+    /** Find ground item by name pattern (shortest matching name wins, then nearest; reachable preferred). */
+    findGroundItem(pattern: string | RegExp, options?: FindOptions): GroundItem | null {
         if (!this.state) return null;
-        return shortestNameMatch(this.state.groundItems, pattern);
+        return applyFindOptions(shortestNameMatch(this.state.groundItems, pattern), options);
     }
 
     /** Get all ground items. */

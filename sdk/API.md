@@ -166,14 +166,14 @@
 | `getBankItems(): BankItem[]` | Get all bank items (bank must be open). |
 | `isBankOpen(): boolean` | Check if bank interface is open. |
 | `getNearbyNpc(index: number): NearbyNpc \| null` | Get NPC by index. |
-| `findNearbyNpc(pattern: string \| RegExp): NearbyNpc \| null` | Find NPC by name pattern (shortest matching name wins, then nearest). |
+| `findNearbyNpc(pattern: string \| RegExp, options?: FindOptions): NearbyNpc \| null` | Find NPC by name pattern (shortest matching name wins, then nearest; reachable preferred). |
 | `getNearbyNpcs(): NearbyNpc[]` | Get all nearby NPCs. |
-| `findNearbyPlayer(pattern: string \| RegExp): NearbyPlayer \| null` | Find a nearby player by name pattern (shortest matching name wins, then nearest). |
+| `findNearbyPlayer(pattern: string \| RegExp, options?: FindOptions): NearbyPlayer \| null` | Find a nearby player by name pattern (shortest matching name wins, then nearest; reachable preferred). |
 | `getNearbyPlayers(): NearbyPlayer[]` | Get all nearby players, nearest first. |
 | `getNearbyLoc(x: number, z: number, id: number): NearbyLoc \| null` | Get location (object) by coordinates and ID. |
-| `findNearbyLoc(pattern: string \| RegExp): NearbyLoc \| null` | Find location by name pattern (shortest matching name wins, then nearest). |
+| `findNearbyLoc(pattern: string \| RegExp, options?: FindOptions): NearbyLoc \| null` | Find location by name pattern (shortest matching name wins, then nearest; reachable preferred). |
 | `getNearbyLocs(): NearbyLoc[]` | Get all nearby locations (trees, rocks, etc). |
-| `findGroundItem(pattern: string \| RegExp): GroundItem \| null` | Find ground item by name pattern (shortest matching name wins, then nearest). |
+| `findGroundItem(pattern: string \| RegExp, options?: FindOptions): GroundItem \| null` | Find ground item by name pattern (shortest matching name wins, then nearest; reachable preferred). |
 | `getGroundItems(): GroundItem[]` | Get all ground items. |
 | `getDialog(): DialogState \| null` | Get current dialog state. |
 | `getPrayerState(): PrayerState \| null` | Get current prayer state from world state. |
@@ -410,6 +410,23 @@ interface PrayerResult {
 }
 ```
 
+### OpFeedbackState
+
+Evidence that the server discarded an op instead of running it, which it otherwise does completely silently. A strong hint, not a proof: the server also unsets the map flag when a walk finishes normally.
+
+```typescript
+interface OpFeedbackState {
+  /** UNSET_MAP_FLAG packets received this client session. */
+  mapFlagUnsetCount: number;
+  /** Tick of the most recent UNSET_MAP_FLAG, -1 if never. */
+  lastMapFlagUnsetTick: number;
+  /** Unsets that arrived while the player was standing still, i.e. probable rejections. Monotonic: snapshot it before sending an op, compare after. Counts refused packets, not refused interactions. */
+  opRejectedCount: number;
+  /** Tick of the most recent counted rejection, -1 if never. For logging. */
+  lastOpRejectedTick: number;
+}
+```
+
 ### BotWorldState
 
 ```typescript
@@ -437,8 +454,8 @@ interface BotWorldState {
   combatStyle?: CombatStyleState;
   combatEvents: CombatEvent[];
   prayers: PrayerState;
-  /** Server pushback signals for dispatched ops. The server can take an op and silently drop it (stunned, mid-action, modal open underneath); the only thing it sends back is UNSET_MAP_FLAG. Sample the counter before an op and treat an increase without the expected effect as a rejection. */
-  opFeedback?: OpFeedback;
+  /** Absent when the connected client predates the signal. */
+  opFeedback?: OpFeedbackState;
 }
 ```
 
@@ -724,7 +741,8 @@ interface InteractLocResult {
 interface InteractNpcResult {
   success: boolean;
   message: string;
-  reason?: 'npc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout';
+  /** 'rejected' = the packet reached the server and the server discarded it. */
+  reason?: 'npc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout' | 'rejected';
 }
 ```
 
@@ -735,8 +753,8 @@ interface PickpocketResult {
   success: boolean;
   message: string;
   xpGained?: number;
-  /** 'dispatch_failed' = the interaction never reached the game (client stalled or dropped it). */
-  reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout' | 'dispatch_failed';
+  /** 'dispatch_failed' = never reached the game (client stalled or dropped it). 'rejected' = the server discarded the op. Retryable, cheaply. 'not_started' = no attempt message and no rejection either; unaccounted for. 'timeout' = the attempt did start, then never resolved. */
+  reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout' | 'dispatch_failed' | 'rejected' | 'not_started';
 }
 ```
 

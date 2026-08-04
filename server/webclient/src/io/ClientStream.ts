@@ -29,7 +29,12 @@ export default class ClientStream {
         this.socket = socket;
     }
 
-    /** Closed by us, or hung up on by the server - either way there is no session left. */
+    /**
+     * rs-sdk: true once the socket is gone - closed by us, or hung up remotely.
+     * The browser client never asks (it discovers a dead socket by reading from
+     * one and taking the throw), but the lite session loop only reads when
+     * `available > 0`, which a remotely-closed stream reports as 0 forever.
+     */
     get isClosed(): boolean {
         return this.dummy || this.remoteClosed;
     }

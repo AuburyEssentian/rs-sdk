@@ -113,6 +113,35 @@ survival) is described in the project memory; this file is the human-readable ch
 
 ## Webclient (`server/webclient/`)
 
+### Lite client (wholly added — `src/lite/`, headless bot client; see `src/lite/README.md`)
+- [ ] `src/lite/**` is rs-sdk-only and has no upstream counterpart — it should survive
+      a sync untouched. It **consumes** vendored modules though (`config/*Type`,
+      `dash3d/Client{Player,Npc,Obj}`, `dash3d/CollisionMap`, `io/{Packet,Isaac,JagFile,
+      ClientStream,ServerProt,ClientProt}`, `wordfilter/*`), so a decode change upstream
+      lands in both clients — which is the point.
+      Verify: `bun src/lite/bench.ts 2` logs in and reports live sessions.
+- [ ] **`src/io/ClientStream.ts` `isClosed` getter** — 3 added lines exposing
+      `dummy || remoteClosed`. The browser client learns a socket is dead by reading from
+      it and taking the throw; the lite session loop only reads when `available > 0`,
+      which a remotely-closed stream reports as 0 *forever* — so without this the loop
+      spins on a dead socket and the session never ends. Consumed by
+      `lite/net/GameConnection.isClosed` → `LiteClient.isInGame()`.
+      Verify: `grep -n "get isClosed" src/io/ClientStream.ts src/lite/net/GameConnection.ts`
+- [ ] **`src/client/LoopCycle.ts` + the `Client.loopCycle` accessor pair** — `loopCycle`
+      moved out of Client into a one-field module, and `Client.ts` now exposes it as
+      `static get/set loopCycle` over that box. Reason: `ClientPlayer.ts` read
+      `Client.loopCycle` for one line in `getSequencedModel()`, and that import drags the
+      whole 14k-line Client (plus Pix3D, MapView, WebAudio, localStorage) into anything
+      touching a ClientPlayer — 212MB of imports for the headless client, vs 21MB after.
+      The box stays browser-only state: the lite client keeps a `cycle` counter per
+      `LiteClient`, since one counter shared by N bots in a process runs N× fast.
+      On conflict: keep the accessor, re-point `ClientPlayer.ts` at `LoopCycle.value`.
+      Verify: `grep -n "LoopCycle" src/dash3d/ClientPlayer.ts src/client/Client.ts`
+      **⚠ `ClientPlayer.ts` must NOT import `#/client/Client.js`.** An upstream sync that
+      restores that import silently re-bloats the lite client; it still runs, so nothing
+      fails loudly. Cheap check:
+      `bun -e 'import("./src/dash3d/ClientPlayer.js")'` must not need a DOM shim.
+
 ### Bot bridge (wholly added — `src/bot/`, 8 files + `src/client/BotClient.ts`, `src/viewer/ItemViewer.ts`)
 - [ ] `StateCollector.ts`, `BotOverlay.ts`, `ActionExecutor.ts`, `GatewayConnection.ts`,
       `OverlayUI.ts`, `formatters.ts`, `types.ts`, `index.ts`.
@@ -141,6 +170,15 @@ survival) is described in the project memory; this file is the human-readable ch
       entry `-1` at index 255.
       Verify: `grep -n "ServerProt.MESSAGE_PUBLIC" src/client/Client.ts` (a receive `if`, not
       just the enum).
+- [ ] **`mapFlagUnsetCount`** — the `UNSET_MAP_FLAG` receive branch increments a counter
+      beside `this.minimapFlagX = 0`. It is the only wire evidence that the server refused
+      an op (every `Op*Handler` refusal answers with this packet and nothing else), and
+      `bot/StateCollector.collectOpFeedback` turns it into `state.opFeedback`. Upstream
+      just clears the flag, so a sync silently reverts it — and nothing fails, the signal
+      merely goes quiet and bots go back to waiting out timeouts.
+      **Pairs with `src/lite/protocol/incoming.ts`**, which must increment the same field.
+      Verify: `grep -n "mapFlagUnsetCount" src/client/Client.ts src/lite/protocol/incoming.ts`
+      (two files, one increment each), plus `bun test src/bot/StateCollector.test.ts`.
 - [ ] **XP table** — `Client.ts` `levelExperience`: same `level/10.0` curve but **NO ×10**
       (client receives real xp; engine stores fine xp). Verify both formulas side-by-side after
       any sync touching `Player.ts` or `Client.ts`.

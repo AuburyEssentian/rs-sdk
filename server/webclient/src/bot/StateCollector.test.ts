@@ -202,6 +202,54 @@ describe('BotStateCollector combat state', () => {
     });
 });
 
+describe('BotStateCollector op feedback', () => {
+    test('counts a map-flag unset as a rejection only while the player stands still', () => {
+        const client = createClient();
+        client.mapFlagUnsetCount = 0;
+        const collector = new BotStateCollector(client);
+
+        // First collect only establishes the baseline.
+        expect(collector.collectState(1, true).opFeedback).toMatchObject({
+            opRejectedCount: 0,
+            lastOpRejectedTick: -1
+        });
+
+        // Refused op: the flag is unset and the player has not moved.
+        client.mapFlagUnsetCount = 1;
+        expect(collector.collectState(2, true).opFeedback).toMatchObject({
+            mapFlagUnsetCount: 1,
+            opRejectedCount: 1,
+            lastOpRejectedTick: 2
+        });
+
+        // A walk finishing also unsets the flag, but the player moved to get
+        // there - that must not read as a rejection.
+        client.localPlayer.x = 256;
+        client.mapFlagUnsetCount = 2;
+        expect(collector.collectState(3, true).opFeedback).toMatchObject({
+            mapFlagUnsetCount: 2,
+            opRejectedCount: 1,
+            lastOpRejectedTick: 2
+        });
+    });
+
+    test('an extra unpublished collect on the same tick cannot consume a delta', () => {
+        const client = createClient();
+        client.mapFlagUnsetCount = 0;
+        const collector = new BotStateCollector(client);
+        collector.collectState(1, true);
+
+        client.mapFlagUnsetCount = 1;
+        // BotOverlay polls for its UI between publications; that read must leave
+        // the tracking alone rather than score a phantom "not moving since 2ms ago".
+        expect(collector.collectState(2, false).opFeedback.opRejectedCount).toBe(1);
+        expect(collector.collectState(2, true).opFeedback.opRejectedCount).toBe(1);
+
+        client.mapFlagUnsetCount = 2;
+        expect(collector.collectState(3, true).opFeedback.opRejectedCount).toBe(2);
+    });
+});
+
 describe('BotStateCollector combat styles', () => {
     const SELECT_BUTTON = 5;
 

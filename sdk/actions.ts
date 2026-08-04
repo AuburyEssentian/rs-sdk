@@ -74,6 +74,14 @@ const NEVER_AUTO_CLOSE = new Set([
     3559, // player_kit - character design, must be accepted (see skipTutorial)
 ]);
 
+/**
+ * Idle ticks to wait for "You attempt to pick..." before calling an attempt
+ * dead. One attempt is 2 ticks of engine script, so 3 leaves a tick of slack:
+ * long enough not to trip on a slow state update, short enough that a discarded
+ * op costs one attempt instead of the 10s action timeout.
+ */
+const PICKPOCKET_ACK_TICKS = 3;
+
 export class BotActions {
     private helpers: ActionHelpers;
 
@@ -3077,6 +3085,7 @@ export class BotActions {
 
         const startTick = this.sdk.getState()?.tick || 0;
         const msgBaseline = this.helpers.getMessageTick();
+        const rejectCursor = this.helpers.opRejectionCursor();
         let lastMoveTick = startTick;
         let lastX = this.sdk.getState()?.player?.x ?? 0;
         let lastZ = this.sdk.getState()?.player?.z ?? 0;
@@ -3100,6 +3109,9 @@ export class BotActions {
                 if (state.dialog.isOpen || state.interface?.isOpen) return true;
                 if (state.player && state.player.animId !== -1) return true;
 
+                // The server took the packet and discarded it
+                if (this.helpers.wasOpRejectedSince(rejectCursor, state)) return true;
+
                 // Track movement — if player moved, update last move tick
                 if (state.player && (state.player.x !== lastX || state.player.z !== lastZ)) {
                     lastX = state.player.x;
@@ -3120,6 +3132,16 @@ export class BotActions {
             if (finalState.dialog.isOpen || finalState.interface?.isOpen ||
                 (finalState.player && finalState.player.animId !== -1)) {
                 return { success: true, message: `Interacted with ${npcNow.name}` };
+            }
+
+            // "Thrown away" vs "ran and did nothing observable" - only the
+            // former is worth retrying as-is.
+            if (this.helpers.wasOpRejectedSince(rejectCursor, finalState)) {
+                return {
+                    success: false,
+                    message: `Server discarded the interaction with ${npcNow.name} - mid-action, stunned, or a modal is open`,
+                    reason: 'rejected'
+                };
             }
 
             // The idle window can expire a tick before the server responds
@@ -3162,8 +3184,8 @@ export class BotActions {
         }
 
         const thievingBefore = this.sdk.getSkill('Thieving')?.experience || 0;
-        const startTick = this.sdk.getState()?.tick || 0;
         const msgBaseline = this.helpers.getMessageTick();
+        const rejectCursor = this.helpers.opRejectionCursor();
 
         const result = await this.sdk.sendInteractNpc(npc.index, pickOpt.opIndex);
         if (!result.success) {
@@ -3176,23 +3198,55 @@ export class BotActions {
             };
         }
 
+        // "You attempt to pick..." is printed by ~pick_pocket (thieving.rs2)
+        // before its first p_delay, so it is the earliest evidence the op ran -
+        // a whole attempt earlier than xp or a stun.
+        let attemptAcked = false;
+        // The client walks to the npc before writing OPNPC, so the ack can be
+        // late by the length of that walk. Measure the window from the last step
+        // taken, baselined after the send rather than before it.
+        const sentState = this.sdk.getState();
+        let lastMoveTick = sentState?.tick ?? 0;
+        let lastX = sentState?.player?.x ?? 0;
+        let lastZ = sentState?.player?.z ?? 0;
+
         try {
             const finalState = await this.sdk.waitForCondition(state => {
-                // Check for XP gain
+                // Resolved: xp landed
                 const thievingNow = state.skills.find(s => s.name === 'Thieving')?.experience || 0;
                 if (thievingNow > thievingBefore) return true;
 
-                // Check game messages for stun/catch or can't reach
+                // Resolved: stunned, or the walk failed
                 for (const msg of state.gameMessages) {
                     if (this.helpers.isMessageAfter(msg, msgBaseline)) {
                         const text = msg.text.toLowerCase();
                         if (text.includes('stunned') || text.includes('caught') || text.includes('stun')) return true;
+                        if (text.includes('you fail to pick')) return true;
                         if (text.includes("can't reach") || text.includes('cannot reach')) return true;
+                        if (text.includes('you attempt to pick')) attemptAcked = true;
                     }
                 }
 
+                // Discarded by the server - no resolution is coming.
+                if (this.helpers.wasOpRejectedSince(rejectCursor, state)) return true;
+
+                if (state.player && (state.player.x !== lastX || state.player.z !== lastZ)) {
+                    lastX = state.player.x;
+                    lastZ = state.player.z;
+                    lastMoveTick = state.tick;
+                }
+
+                // Standing still, neither acked nor rejected: the op is lost.
+                if (!attemptAcked && state.tick - lastMoveTick >= PICKPOCKET_ACK_TICKS) return true;
+
                 return false;
             }, 10000);
+
+            const thievingAfter = this.sdk.getSkill('Thieving')?.experience || 0;
+            const xpGained = thievingAfter - thievingBefore;
+            if (xpGained > 0) {
+                return { success: true, message: `Pickpocketed ${npc.name}`, xpGained };
+            }
 
             // Check what happened
             for (const msg of finalState.gameMessages) {
@@ -3201,16 +3255,26 @@ export class BotActions {
                     if (text.includes("can't reach") || text.includes('cannot reach')) {
                         return { success: false, message: `Can't reach ${npc.name}`, reason: 'cant_reach' };
                     }
-                    if (text.includes('stunned') || text.includes('caught') || text.includes('stun')) {
+                    if (text.includes('stunned') || text.includes('caught') || text.includes('stun') || text.includes('you fail to pick')) {
                         return { success: false, message: `Stunned while pickpocketing ${npc.name}`, reason: 'stunned' };
                     }
                 }
             }
 
-            const thievingAfter = this.sdk.getSkill('Thieving')?.experience || 0;
-            const xpGained = thievingAfter - thievingBefore;
-            if (xpGained > 0) {
-                return { success: true, message: `Pickpocketed ${npc.name}`, xpGained };
+            if (this.helpers.wasOpRejectedSince(rejectCursor, finalState)) {
+                return {
+                    success: false,
+                    message: `Server discarded the pickpocket op on ${npc.name} - stunned, mid-action, or a modal is open`,
+                    reason: 'rejected'
+                };
+            }
+
+            if (!attemptAcked) {
+                return {
+                    success: false,
+                    message: `Pickpocket never started on ${npc.name} (no attempt message within ${PICKPOCKET_ACK_TICKS} idle ticks)`,
+                    reason: 'not_started'
+                };
             }
 
             return { success: false, message: `Pickpocket failed on ${npc.name}`, reason: 'timeout' };

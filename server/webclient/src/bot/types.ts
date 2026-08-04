@@ -108,7 +108,7 @@ export interface GroundItem {
     x: number;
     z: number;
     distance: number;
-    /** See NearbyNpc.reachable. */
+    /** See NearbyNpc.reachable. Taking routes 0x0: you must stand on the pile. */
     reachable?: boolean;
 }
 
@@ -126,7 +126,7 @@ export interface NearbyLoc {
     optionsWithIndex: LocOption[];  // Options with op index (use .map(o => o.text) for display)
     /** Convenience array of option text strings */
     options: string[];
-    /** See NearbyNpc.reachable. */
+    /** See NearbyNpc.reachable. Uses the loc's own reach rule. */
     reachable?: boolean;
 }
 
@@ -300,6 +300,26 @@ export interface PrayerState {
     prayerLevel: number;
 }
 
+/**
+ * Evidence that the server discarded an op instead of running it, which it
+ * otherwise does completely silently. A strong hint, not a proof: the server
+ * also unsets the map flag when a walk finishes normally.
+ */
+export interface OpFeedbackState {
+    /** UNSET_MAP_FLAG packets received this client session. */
+    mapFlagUnsetCount: number;
+    /** Tick of the most recent UNSET_MAP_FLAG, -1 if never. */
+    lastMapFlagUnsetTick: number;
+    /**
+     * Unsets that arrived while the player was standing still, i.e. probable
+     * rejections. Monotonic: snapshot it before sending an op, compare after.
+     * Counts refused packets, not refused interactions.
+     */
+    opRejectedCount: number;
+    /** Tick of the most recent counted rejection, -1 if never. For logging. */
+    lastOpRejectedTick: number;
+}
+
 export interface BotState {
     tick: number;
     /** Monotonic publication cursor; advances for each state sent to agents. */
@@ -332,18 +352,8 @@ export interface BotState {
     modalInterface: number;
     /** Prayer state (active prayers, prayer points) */
     prayers: PrayerState;
-    /**
-     * Server pushback signals for dispatched ops. The server can take an op and
-     * silently drop it (stunned, mid-action, modal open underneath); the only
-     * thing it sends back is UNSET_MAP_FLAG. Sample the counter before an op and
-     * treat an increase without the expected effect as a rejection.
-     */
-    opFeedback: OpFeedback;
-}
-
-export interface OpFeedback {
-    /** Monotonic count of UNSET_MAP_FLAG packets received this session. */
-    opRejectedCount: number;
+    /** Whether the server accepted or silently discarded recent ops */
+    opFeedback: OpFeedbackState;
 }
 
 // Extended world state interface for agent (includes extra debug info)

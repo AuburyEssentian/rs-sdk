@@ -11,6 +11,7 @@ import type {
     InventoryItem,
     GroundItem,
     ShopItem,
+    BotWorldState,
 } from './types';
 
 /**
@@ -189,6 +190,33 @@ export class ActionHelpers {
     /** True when a message was published after a cursor from getMessageTick(). */
     isMessageAfter(message: { tick: number; observationId?: number }, cursor: number): boolean {
         return (message.observationId ?? message.tick) > cursor;
+    }
+
+    // ============ Op Rejection ============
+
+    /**
+     * Snapshot the op-rejection counter. Take this immediately before sending an
+     * op, hand it to wasOpRejectedSince() afterwards.
+     *
+     * Returns -1 when the connected client is too old to publish opFeedback,
+     * which wasOpRejectedSince() then reports as "no rejection" - the signal is
+     * an optimisation, never a precondition.
+     */
+    opRejectionCursor(): number {
+        return this.sdk.getState()?.opFeedback?.opRejectedCount ?? -1;
+    }
+
+    /**
+     * True when the server has probably discarded an op since the cursor. Read
+     * it as "that click did nothing, try again", not as a diagnosis - nothing
+     * observable separates the possible causes (blocking modal, active stun or
+     * action delay, target out of view, option the target no longer has).
+     */
+    wasOpRejectedSince(cursor: number, state?: BotWorldState): boolean {
+        if (cursor < 0) return false;
+        const feedback = (state ?? this.sdk.getState())?.opFeedback;
+        if (!feedback) return false;
+        return feedback.opRejectedCount > cursor;
     }
 
     /**

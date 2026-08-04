@@ -135,7 +135,20 @@ export interface GroundItem {
     x: number;
     z: number;
     distance: number;
-    /** See NearbyNpc.reachable. */
+    /**
+     * See NearbyNpc.reachable. Taking an item routes with a 0x0 footprint, so
+     * this asks whether you can stand on the pile, not merely get next to it.
+     */
+    reachable?: boolean;
+}
+
+/** Options for the `find*` lookups on {@link BotSDK}. */
+export interface FindOptions {
+    /**
+     * Return null rather than a target the client cannot route to. Off by
+     * default, where an unreachable match is still returned if it is the only
+     * one. Targets whose reachability is unknown always qualify.
+     */
     reachable?: boolean;
 }
 
@@ -153,7 +166,10 @@ export interface NearbyLoc {
     optionsWithIndex: LocOption[];
     /** Convenience array of option text strings */
     options: string[];
-    /** See NearbyNpc.reachable. */
+    /**
+     * See NearbyNpc.reachable. Uses the loc's own reach rule, so a door you
+     * can open from your side reads `true`.
+     */
     reachable?: boolean;
 }
 
@@ -348,6 +364,26 @@ export interface PrayerResult {
     reason?: 'invalid_prayer' | 'no_prayer_points' | 'level_too_low' | 'already_active' | 'already_inactive' | 'timeout';
 }
 
+/**
+ * Evidence that the server discarded an op instead of running it, which it
+ * otherwise does completely silently. A strong hint, not a proof: the server
+ * also unsets the map flag when a walk finishes normally.
+ */
+export interface OpFeedbackState {
+    /** UNSET_MAP_FLAG packets received this client session. */
+    mapFlagUnsetCount: number;
+    /** Tick of the most recent UNSET_MAP_FLAG, -1 if never. */
+    lastMapFlagUnsetTick: number;
+    /**
+     * Unsets that arrived while the player was standing still, i.e. probable
+     * rejections. Monotonic: snapshot it before sending an op, compare after.
+     * Counts refused packets, not refused interactions.
+     */
+    opRejectedCount: number;
+    /** Tick of the most recent counted rejection, -1 if never. For logging. */
+    lastOpRejectedTick: number;
+}
+
 export interface BotWorldState {
     tick: number;
     /** Monotonic state publication cursor; advances even for multiple publications in one game tick. */
@@ -372,18 +408,8 @@ export interface BotWorldState {
     combatStyle?: CombatStyleState;
     combatEvents: CombatEvent[];
     prayers: PrayerState;
-    /**
-     * Server pushback signals for dispatched ops. The server can take an op and
-     * silently drop it (stunned, mid-action, modal open underneath); the only
-     * thing it sends back is UNSET_MAP_FLAG. Sample the counter before an op and
-     * treat an increase without the expected effect as a rejection.
-     */
-    opFeedback?: OpFeedback;
-}
-
-export interface OpFeedback {
-    /** Monotonic count of UNSET_MAP_FLAG packets received this session. */
-    opRejectedCount: number;
+    /** Absent when the connected client predates the signal. */
+    opFeedback?: OpFeedbackState;
 }
 
 // ============ Action Types ============
@@ -706,15 +732,21 @@ export interface InteractLocResult {
 export interface InteractNpcResult {
     success: boolean;
     message: string;
-    reason?: 'npc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout';
+    /** 'rejected' = the packet reached the server and the server discarded it. */
+    reason?: 'npc_not_found' | 'no_matching_option' | 'cant_reach' | 'timeout' | 'rejected';
 }
 
 export interface PickpocketResult {
     success: boolean;
     message: string;
     xpGained?: number;
-    /** 'dispatch_failed' = the interaction never reached the game (client stalled or dropped it). */
-    reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout' | 'dispatch_failed';
+    /**
+     * 'dispatch_failed' = never reached the game (client stalled or dropped it).
+     * 'rejected' = the server discarded the op. Retryable, cheaply.
+     * 'not_started' = no attempt message and no rejection either; unaccounted for.
+     * 'timeout' = the attempt did start, then never resolved.
+     */
+    reason?: 'npc_not_found' | 'no_pickpocket_option' | 'cant_reach' | 'stunned' | 'timeout' | 'dispatch_failed' | 'rejected' | 'not_started';
 }
 
 export interface CraftJewelryResult {

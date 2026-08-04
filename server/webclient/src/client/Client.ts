@@ -586,10 +586,11 @@ export class Client extends GameShell {
     /**
      * UNSET_MAP_FLAG packets received this session. The server clears the map
      * flag when it discards a queued op (stunned, mid-action, modal open), and
-     * sends nothing else - StateCollector publishes this as `opFeedback` so
-     * bots can tell a silently-dropped op from one still in flight.
+     * sends nothing else - but it also sends it when a walk finishes normally,
+     * so a raw delta is not a rejection signal on its own. StateCollector
+     * combines it with tick/tile tracking to publish `state.opFeedback`.
      */
-    private mapFlagUnsetCount: number = 0;
+    mapFlagUnsetCount: number = 0;
 
     private midiActive: boolean = true;
     private midiVolume: number = 0;
