@@ -156,6 +156,10 @@ async function getOrCreateConnection(): Promise<BotConnection> {
         gatewayUrl,
         connectionMode: 'control',
         autoReconnect: true,
+        // Standalone bot scripts must attach to an already-running client. In
+        // particular, Lite fleets should never fall back to opening a browser
+        // when a headless session is temporarily unavailable.
+        autoLaunchBrowser: false,
         showChat
     });
 

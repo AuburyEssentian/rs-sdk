@@ -148,6 +148,21 @@ class LiteGatewayRunner {
             if (expired.actionId) this.sendActionResult(expired.actionId, result);
         }
 
+        const activeExpired = this.actionQueue.expireActive();
+        if (activeExpired) {
+            // `expireActive` releases the queue first, so bypass finishAction's
+            // identity guard and report a bounded failure to the controller.
+            if (this.actionQueue.isCurrentGeneration(activeExpired) && activeExpired.actionId) {
+                this.sendActionResult(activeExpired.actionId, {
+                    success: false,
+                    message: `Action expired while active: ${activeExpired.action.type}`,
+                    phase: 'completion',
+                    reason: 'queue_expired'
+                });
+            }
+            this.sendState();
+        }
+
         if (this.waitTicks > 0) {
             this.waitTicks--;
             const active = this.actionQueue.active;

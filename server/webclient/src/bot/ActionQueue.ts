@@ -55,6 +55,20 @@ export class BotActionQueue {
     }
 
     /**
+     * Release an active entry whose controller-side deadline has elapsed.
+     *
+     * Usually an action completes synchronously, but a lost completion (or an
+     * async UI action abandoned by a reconnect) otherwise leaves `current`
+     * occupied forever and blocks every later SDK action.
+     */
+    expireActive(): QueuedBotAction | null {
+        if (!this.current || this.current.expiresAt > this.now()) return null;
+        const expired = this.current;
+        this.current = null;
+        return expired;
+    }
+
+    /**
      * Drop work that has not started, but retain an in-flight action as a
      * quiescence barrier until its promise settles.
      */

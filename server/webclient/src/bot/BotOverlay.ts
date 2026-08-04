@@ -171,6 +171,23 @@ export class BotOverlay implements GatewayMessageHandler {
             this.ui.logAction('failed', result.message);
         }
 
+        const activeExpired = this.actionQueue.expireActive();
+        if (activeExpired) {
+            // `expireActive` releases the queue first, so bypass finishAction's
+            // identity guard and report a bounded failure to the controller.
+            const result: ActionResult = {
+                success: false,
+                message: `Action expired while active: ${activeExpired.action.type}`,
+                phase: 'completion',
+                reason: 'queue_expired'
+            };
+            if (this.actionQueue.isCurrentGeneration(activeExpired) && activeExpired.actionId) {
+                this.gateway.sendActionResult(activeExpired.actionId, result);
+            }
+            this.ui.logAction('failed', result.message);
+            this.sendState();
+        }
+
         // Handle wait ticks
         if (this.waitTicks > 0) {
             this.waitTicks--;

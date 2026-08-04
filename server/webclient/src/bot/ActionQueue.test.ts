@@ -76,4 +76,17 @@ describe('BotActionQueue', () => {
         expect(queue.expirePending()).toEqual([queued]);
         expect(queue.startNext()).toBeNull();
     });
+
+    test('releases an expired active entry so later work can run', () => {
+        let now = 1_000;
+        const queue = new BotActionQueue(() => now, 64, 55_000);
+        const active = queue.enqueue(entry('stalled'), 4_000)!;
+        const next = queue.enqueue(entry('next'), 10_000)!;
+        expect(queue.startNext()).toBe(active);
+
+        now += 4_000;
+        expect(queue.expireActive()).toBe(active);
+        expect(queue.active).toBeNull();
+        expect(queue.startNext()).toBe(next);
+    });
 });

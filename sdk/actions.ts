@@ -1040,7 +1040,15 @@ export class BotActions {
                                         console.log(`[walkTo] Temporarily avoiding locked door at (${door.x}, ${door.z}) — re-routing`);
                                         break; // Re-query path on next iteration
                                     } else {
-                                        // cant_reach or not_found — transient failure, track attempts
+                                        // A door present in static collision can be absent from the
+                                        // current Lite map. That is not a failed open attempt: continue
+                                        // walking so a phantom door cannot cause endless re-planning.
+                                        if (result === 'not_found') {
+                                            requiredDoorKeys.delete(dk);
+                                            continue;
+                                        }
+
+                                        // cant_reach — transient failure, track attempts
                                         const fails = (doorFailCounts.get(dk) ?? 0) + 1;
                                         doorFailCounts.set(dk, fails);
                                         if (fails >= 3) {
