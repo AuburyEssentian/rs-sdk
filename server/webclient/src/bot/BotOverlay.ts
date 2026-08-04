@@ -8,7 +8,6 @@ import { ActionExecutor, formatAction } from './ActionExecutor.js';
 import { formatBotState, formatWorldStateForAgent } from './formatters.js';
 import { GatewayConnection, type GatewayMessageHandler } from './GatewayConnection.js';
 import { OverlayUI } from './OverlayUI.js';
-import { ScriptRunnerUI } from './ScriptRunnerUI.js';
 import { BotActionQueue, type QueuedBotAction } from './ActionQueue.js';
 import type { ActionResult } from './ActionExecutor.js';
 
@@ -25,7 +24,6 @@ export class BotOverlay implements GatewayMessageHandler {
     private executor: ActionExecutor;
     private gateway: GatewayConnection;
     private ui: OverlayUI;
-    private scriptRunner: ScriptRunnerUI;
 
     // Action state
     private actionQueue = new BotActionQueue();
@@ -50,10 +48,6 @@ export class BotOverlay implements GatewayMessageHandler {
         this.ui = new OverlayUI(client, {
             onPacketLogToggle: () => {}
         });
-
-        // In-browser script runner. Owns its own controller SDK that connects to
-        // the gateway lazily on first Run, pairing with this page's bot session.
-        this.scriptRunner = new ScriptRunnerUI(client);
 
         // Wire scan provider so ActionExecutor can trigger on-demand scans
         this.executor.setScanProvider(this.collector);
