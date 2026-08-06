@@ -146,6 +146,8 @@ function getSessionStatus(session: BotSession): SessionStatus {
  * - This prevents conflicts from stale daemon connections or background scripts
  * - Multiple 'observe' mode clients can coexist freely
  * - Mixed: One controller and multiple observers can coexist
+ * - Observers may send the 'say' action (and nothing else), so chat tools can
+ *   talk through the bot without stealing control from its controller
  *
  * Identity: `sessionId` is server-generated and is the ONLY key used to look a
  * session up. `sdkClientId` is a client-supplied label kept for logs/status
@@ -473,12 +475,13 @@ const SyncModule = {
             const sdkSession = this.getSessionForSocket(ws);
             if (!sdkSession) return;
 
-            // Gate actions based on mode - observe mode cannot send actions
-            if (sdkSession.mode === 'observe') {
+            // Gate actions based on mode: observers may only send 'say', so chat
+            // tools can talk without being able to drive the bot.
+            if (sdkSession.mode === 'observe' && message.action?.type !== 'say') {
                 this.sendToSDK(sdkSession, {
                     type: 'sdk_error',
                     actionId: message.actionId,
-                    error: 'Cannot send actions in observe mode'
+                    error: `Observe mode can only send 'say' actions (got '${message.action?.type}')`
                 });
                 console.log(`[Gateway] [${sdkSession.targetUsername}] Rejected action from observe-mode SDK: ${message.action?.type}`);
                 return;

@@ -11,11 +11,18 @@ export default class WordPack {
 
     private static builder: string[] = [];
 
+    // Safety bound only, NOT the chat cap. The real per-message limit is the
+    // server-configured maxMessageLength, enforced at the call sites (Client.say,
+    // lite say) before pack and by the server before broadcast. 512 sits above
+    // the wire ceiling (~509 chars: 1-byte frame length, ~2 chars per packed
+    // byte), so this clamp never truncates a legitimate message.
+    private static readonly MAX_CHARS = 512;
+
     static unpack(word: Packet, length: number): string {
         let pos: number = 0;
         let carry: number = -1;
         let nibble: number;
-        for (let index: number = 0; index < length && pos < 100; index++) {
+        for (let index: number = 0; index < length && pos < this.MAX_CHARS; index++) {
             const value: number = word.g1();
             nibble = (value >> 4) & 0xf;
             if (carry !== -1) {
@@ -50,11 +57,33 @@ export default class WordPack {
         return this.builder.slice(0, pos).join('');
     }
 
+    /**
+     * Frame-safety clamp, mirroring the engine's WordPack. Chat frames carry a
+     * 1-byte length; digits/punctuation pack to 2 nibbles (vs 1 for common
+     * chars), so long text heavy in those can exceed 255 packed bytes even
+     * under the char cap - the length byte would wrap and corrupt the stream.
+     */
+    private static readonly MAX_PACKED_BYTES = 240;
+
+    private static truncateToByteBudget(str: string): string {
+        let nibbles: number = 0;
+        for (let index: number = 0; index < str.length; index++) {
+            let currentChar: number = this.TABLE.indexOf(str.charAt(index));
+            if (currentChar < 0) currentChar = 0; // pack() maps unknown chars to ' ' (1 nibble)
+            nibbles += currentChar > 12 ? 2 : 1;
+            if (nibbles > this.MAX_PACKED_BYTES * 2) {
+                return str.substring(0, index);
+            }
+        }
+        return str;
+    }
+
     static pack(word: Packet, str: string): void {
-        if (str.length > 80) {
-            str = str.substring(0, 80);
+        if (str.length > this.MAX_CHARS) {
+            str = str.substring(0, this.MAX_CHARS);
         }
         str = str.toLowerCase();
+        str = this.truncateToByteBudget(str);
         let carry: number = -1;
         for (let index: number = 0; index < str.length; index++) {
             const char: string = str.charAt(index);

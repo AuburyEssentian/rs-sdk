@@ -30,6 +30,15 @@ survival) is described in the project memory; this file is the human-readable ch
       over `world.json`. Also `NODE_WS_ONDEMAND` **defaults true** (274 client streams assets
       over the game WS; false ⇒ stalls at ~60% "Connecting to update server").
 - [ ] **`WorldConfig.ts`** — default `web.port = 8888` on all platforms; `xpRate = 25`.
+- [ ] **400-char chat** — `WorldConfig.ts` default `node.maxMessageLength = 400` (classic 80).
+      Paired pieces, all required: `wordenc/WordPack.ts` caps follow
+      `Environment.node.maxMessageLength` (not hardcoded 80) AND clamps packed output to
+      240 bytes (`truncateToByteBudget` — all chat frames carry a 1-byte length; 2-nibble
+      chars would overflow it and corrupt the stream); `MessagePublicHandler.ts` /
+      `MessagePrivateHandler.ts` use `Packet.alloc(1)` not `alloc(0)` (packed chat can be
+      ~250 bytes; the 100-byte tier throws RangeError mid-cycle and kicks the player).
+      Mirrors in webclient (see below) and SDK chunking (`sdk/index.ts` packedNibbles).
+      Verify: `grep -n "maxMessageLength: 400" src/util/WorldConfig.ts && grep -n "alloc(1)" src/network/game/client/handler/MessagePublicHandler.ts`
 - [ ] **`World.ts`** — connection timeouts relaxed for bot background tabs
       (`TIMEOUT_NO_CONNECTION` 5m / `TIMEOUT_NO_RESPONSE` 10m, gated by `NODE_DEBUG_SOCKET`).
 - [ ] **`World.ts` tick drift cap** — `cycle()` clamps `nextTick` to at most 2 ticks of
@@ -141,6 +150,16 @@ survival) is described in the project memory; this file is the human-readable ch
       restores that import silently re-bloats the lite client; it still runs, so nothing
       fails loudly. Cheap check:
       `bun -e 'import("./src/dash3d/ClientPlayer.js")'` must not need a DOM shim.
+
+- [ ] **400-char chat (webclient half)** — `wordfilter/WordPack.ts` internal clamps raised to
+      `MAX_CHARS = 512` (safety bound above the ~509 wire ceiling; the real cap is enforced
+      at call sites from the server-configured value) plus the same 240-byte
+      `truncateToByteBudget` as the engine copy. `lite/LiteClient.ts` default
+      `maxMessageLength` is 400 (lite has no config-injection channel — keep in sync with
+      the engine `WorldConfig` default). `lite/runner.ts` honors a `GATEWAY_URL` override
+      (bot.env or process env) because SERVER doubles as game origin + gateway address and
+      that breaks for `localhost:8888`.
+      Verify: `grep -n "MAX_CHARS = 512" src/wordfilter/WordPack.ts && grep -n "?? 400" src/lite/LiteClient.ts`
 
 ### Bot bridge (wholly added — `src/bot/`, 8 files + `src/client/BotClient.ts`, `src/viewer/ItemViewer.ts`)
 - [ ] `StateCollector.ts`, `BotOverlay.ts`, `ActionExecutor.ts`, `GatewayConnection.ts`,

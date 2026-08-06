@@ -1,4 +1,5 @@
 import Packet from '#/io/Packet.js';
+import Environment from '#/util/Environment.js';
 
 export default class WordPack {
     // prettier-ignore
@@ -16,7 +17,11 @@ export default class WordPack {
         let pos: number = 0;
         let carry: number = -1;
         let nibble: number;
-        for (let i: number = 0; i < length && pos < 80; i++) {
+        // The char cap here is the real length enforcement: MessagePublicHandler's
+        // byte-length check is on packed bytes (~2 chars each), so it alone would
+        // let ~2x the configured chars through.
+        const maxChars: number = Environment.node.maxMessageLength;
+        for (let i: number = 0; i < length && pos < maxChars; i++) {
             const data: number = packet.g1();
             nibble = (data >> 4) & 0xf;
             if (carry !== -1) {
@@ -40,11 +45,36 @@ export default class WordPack {
         return this.toSentenceCase(charBuffer.slice(0, pos).join(''));
     }
 
+    /**
+     * Frame-safety clamp. Every chat frame (MESSAGE_PUBLIC/PRIVATE, player-info
+     * chat block) carries a 1-byte length, so the packed text plus headers (up
+     * to 13 bytes for PMs) must stay under 256 bytes. Common chars pack to 1
+     * nibble but digits/punctuation take 2, so text heavy in those approaches
+     * 1 byte per char and a char cap alone (maxMessageLength can be 400+)
+     * cannot guarantee fit - without this, the length byte would wrap and
+     * corrupt the stream.
+     */
+    private static readonly MAX_PACKED_BYTES = 240;
+
+    private static truncateToByteBudget(input: string): string {
+        let nibbles: number = 0;
+        for (let i: number = 0; i < input.length; i++) {
+            let index: number = this.CHAR_LOOKUP.indexOf(input.charAt(i));
+            if (index < 0) index = 0; // pack() maps unknown chars to ' ' (1 nibble)
+            nibbles += index > 12 ? 2 : 1;
+            if (nibbles > this.MAX_PACKED_BYTES * 2) {
+                return input.substring(0, i);
+            }
+        }
+        return input;
+    }
+
     static pack(packet: Packet, input: string): void {
-        if (input.length > 80) {
-            input = input.substring(0, 80);
+        if (input.length > Environment.node.maxMessageLength) {
+            input = input.substring(0, Environment.node.maxMessageLength);
         }
         input = input.toLowerCase();
+        input = this.truncateToByteBudget(input);
         let carry: number = -1;
         for (let i: number = 0; i < input.length; i++) {
             const char: string = input.charAt(i);

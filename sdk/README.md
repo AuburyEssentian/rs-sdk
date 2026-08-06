@@ -10,6 +10,16 @@ Dump world state for a connected bot:
 bun sdk/cli.ts <username> <password> [--server <host>]
 ```
 
+Send or read chat without taking control of the bot (uses an `observe`-mode
+connection: observers may send `say` and nothing else, and never pre-empt the
+bot's controller):
+
+```bash
+bun sdk/chat.ts <botname> "message"     # send
+bun sdk/chat.ts <botname>               # recent chat
+bun sdk/chat.ts <botname> --watch       # tail live
+```
+
 Examples:
 
 ```bash

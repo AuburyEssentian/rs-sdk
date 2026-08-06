@@ -471,13 +471,18 @@ export interface ActionResult {
 }
 
 /**
- * Outcome of sending a chat message. RS silently caps public chat at 80 chars
- * and runs a word filter, so `sendSay` surfaces both via the `data` field
- * (shape below) and `say()` returns these per chunk.
+ * Outcome of sending a chat message. The server silently caps public chat at
+ * its configured maxMessageLength (400 on rs-sdk servers, 80 classic) and runs
+ * a word filter, so `sendSay` surfaces both via the `data` field (shape below)
+ * and `say()` returns these per chunk.
  */
 // ============ SDK Config ============
 
-/** Connection mode: 'control' can send actions, 'observe' is read-only */
+/**
+ * Connection mode: 'control' can send actions, 'observe' is read-only plus the
+ * 'say' action (it never pre-empts / is never pre-empted, so it can chat
+ * alongside a running controller).
+ */
 export type SDKConnectionMode = 'control' | 'observe';
 
 export interface SDKConfig {
@@ -491,9 +496,10 @@ export interface SDKConfig {
     /** Gateway port (default: 7780) */
     port?: number;
     /**
-     * Connection mode: 'control' (default) can send actions, 'observe' is read-only.
-     * Connecting in 'control' mode pre-empts whatever controller the bot already has,
-     * killing it - so read-only clients must pass 'observe' explicitly.
+     * Connection mode: 'control' (default) can send actions, 'observe' is read-only
+     * plus say() - it can chat without stealing (or losing) control. Connecting in
+     * 'control' mode pre-empts whatever controller the bot already has, killing it -
+     * so passive clients must pass 'observe' explicitly.
      */
     connectionMode?: SDKConnectionMode;
     /**

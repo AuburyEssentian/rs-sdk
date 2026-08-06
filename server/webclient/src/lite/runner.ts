@@ -267,7 +267,11 @@ const session = await startSession({
 
 console.log(`[lite-runner] '${env.BOT_USERNAME}' logged into ${host}`);
 
-const runner = new LiteGatewayRunner(session, deriveGatewayUrl(host));
+// SERVER doubles as game-server origin and gateway address, which breaks for
+// local hosts with an explicit web port (localhost:8888 is the engine, not the
+// gateway). GATEWAY_URL (bot.env or process env) overrides the derivation.
+const gatewayUrl = env.GATEWAY_URL || process.env.GATEWAY_URL || deriveGatewayUrl(host);
+const runner = new LiteGatewayRunner(session, gatewayUrl);
 runner.connect();
 
 process.on('SIGINT', () => {

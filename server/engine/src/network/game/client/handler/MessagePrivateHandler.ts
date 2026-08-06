@@ -19,7 +19,9 @@ export default class MessagePrivateHandler extends ClientGameMessageHandler<Mess
             return false;
         }
 
-        const buf: Packet = Packet.alloc(0);
+        // alloc(1): packed chat can be ~250 bytes (maxMessageLength 400 + 2-nibble
+        // chars), which overflows the 100-byte alloc(0) tier and kicks the player.
+        const buf: Packet = Packet.alloc(1);
         buf.pdata(input, 0, input.length);
         buf.pos = 0;
         World.sendPrivateMessage(player, username, WordPack.unpack(buf, input.length));

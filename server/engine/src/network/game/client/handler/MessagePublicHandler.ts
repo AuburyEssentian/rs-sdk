@@ -23,7 +23,9 @@ export default class MessagePublicHandler extends ClientGameMessageHandler<Messa
             return false;
         }
 
-        const buf: Packet = Packet.alloc(0);
+        // alloc(1): packed chat can be ~250 bytes (maxMessageLength 400 + 2-nibble
+        // chars), which overflows the 100-byte alloc(0) tier and kicks the player.
+        const buf: Packet = Packet.alloc(1);
         buf.pdata(input, 0, input.length);
         buf.pos = 0;
         const unpack: string = WordPack.unpack(buf, input.length);
@@ -34,7 +36,7 @@ export default class MessagePublicHandler extends ClientGameMessageHandler<Messa
         player.chatRights = Math.min(player.staffModLevel, 2);
         player.logMessage = unpack;
 
-        const out: Packet = Packet.alloc(0);
+        const out: Packet = Packet.alloc(1);
         WordPack.pack(out, WordEnc.filter(unpack));
         player.chatMessage = new Uint8Array(out.pos);
         out.pos = 0;

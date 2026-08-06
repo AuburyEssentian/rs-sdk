@@ -120,6 +120,22 @@ bun sdk/cli.ts {username}
 
 Record observations in `lab_log.md`, then improve the script.
 
+### Chatting Without Taking Control
+
+To talk in-game (or read chat) without disturbing whatever script currently
+owns the bot, use the chat CLI — it connects in `observe` mode, which can send
+chat (and nothing else) and never pre-empts (or gets pre-empted by) a
+controller:
+
+```bash
+bun sdk/chat.ts {username} "meet me at the bank"   # send
+bun sdk/chat.ts {username}                          # recent chat
+bun sdk/chat.ts {username} --watch                  # tail live
+```
+
+Public chat is capped at 400 chars per message; `sdk.say()` auto-splits longer
+text into wire-safe chunks.
+
 ## Script Duration Guidelines
 
 **Start short, extend as you gain confidence:**

@@ -111,7 +111,7 @@ export function createDefaultWorldConfig(): WorldConfig {
             hopTime: 45000,
             rateLimitAddressLogin: 30,
             rateLimitDeviceLogin: 5,
-            maxMessageLength: 80, // rs-sdk: the real RS wire/client limit (server was a looser 100, but the client never sent >80). Single source of truth for server validation + client truncation + SDK chunking.
+            maxMessageLength: 400, // rs-sdk: raised from the RS-classic 80 for bot-to-bot chat. Single source of truth for server validation + client truncation + SDK chunking. Hard ceiling is ~509 chars: the player-info chat block and MESSAGE_PUBLIC frames carry a 1-byte length over WordPack's ~2-chars-per-byte packing.
             objRevealTicks: 100, // rs-sdk: matches Obj.REVEAL default
             objDespawnScale: 100 // rs-sdk: 100% = unchanged despawn timers
         },

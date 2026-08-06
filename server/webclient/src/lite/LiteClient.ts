@@ -226,7 +226,10 @@ export class LiteClient {
         this.locIndex = opts.locIndex;
         this.loginUser = opts.username;
         this.loginPass = opts.password;
-        this.maxMessageLength = opts.maxMessageLength ?? 80;
+        // Unlike the browser client (which gets the server's value injected via
+        // bot.ejs), lite has no config channel - keep this default in sync with
+        // the engine's WorldConfig node.maxMessageLength default.
+        this.maxMessageLength = opts.maxMessageLength ?? 400;
         this.world = new SceneLite(opts.locIndex);
 
         for (let i = 0; i < 5000; i++) {
