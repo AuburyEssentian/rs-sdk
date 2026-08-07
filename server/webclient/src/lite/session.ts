@@ -19,6 +19,7 @@ import { GameConnection } from './net/GameConnection.js';
 import { LiteClient } from './LiteClient.js';
 import { LocIndex } from './world/LocIndex.js';
 import { ClientProt } from '#/io/ClientProt.js';
+import WordFilter from '#/wordfilter/WordFilter.js';
 
 const LOOP_MS = 20;
 /** Engine drops a socket after TIMEOUT_NO_RESPONSE; NO_TIMEOUT keeps it alive. */
@@ -39,6 +40,13 @@ export interface SessionOptions {
     cacheDir?: string;
     members?: boolean;
     maxMessageLength?: number;
+    /**
+     * Local chat censoring (WordFilter). Default on. Process-wide (WordFilter is
+     * static), so in a multi-bot process like swarm.ts the last session started
+     * wins. Cosmetic unless the server's NODE_PROFANITY_FILTER is also off - the
+     * engine censors chat before it reaches any client.
+     */
+    profanityFilter?: boolean;
     quiet?: boolean;
     /**
      * Called exactly once when the packet loop ends, whatever the cause. Fires
@@ -76,6 +84,9 @@ export interface LiteSession {
 }
 
 export async function startSession(opts: SessionOptions): Promise<LiteSession> {
+    if (opts.profanityFilter !== undefined) {
+        WordFilter.enabled = opts.profanityFilter;
+    }
     const secured = opts.secured ?? !(opts.host.startsWith('localhost') || opts.host.startsWith('127.'));
     const origin = `${secured ? 'https' : 'http'}://${opts.host}`;
     const cacheDir = opts.cacheDir ?? `${process.env.HOME}/.cache/rs-sdk-lite`;

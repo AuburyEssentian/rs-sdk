@@ -415,7 +415,7 @@
         import { Client } from './client/client.js?v=<%= cachebust %>';
 
         (() => {
-            new Client(<%= nodeid %>, <%= lowmem %>, <%= members %>);
+            new Client(<%= nodeid %>, <%= lowmem %>, <%= members %>, undefined, <%= profanityFilter %>);
         })();
 
         loadSettings();

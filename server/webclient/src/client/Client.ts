@@ -659,7 +659,7 @@ export class Client extends GameShell {
 
     // ----
 
-    constructor(nodeid: number, lowmem: boolean, members: boolean, maxMessageLength?: number) {
+    constructor(nodeid: number, lowmem: boolean, members: boolean, maxMessageLength?: number, profanityFilter?: boolean) {
         super();
         this.searchParams = new URLSearchParams(window.location.search);
 
@@ -667,6 +667,12 @@ export class Client extends GameShell {
         // below (the guard only concerns the core three params).
         if (typeof maxMessageLength === 'number' && maxMessageLength > 0) {
             Client.maxMessageLength = maxMessageLength;
+        }
+
+        // rs-sdk: server-injected (bot.ejs/client.ejs) so the local filter matches
+        // the server's NODE_PROFANITY_FILTER; the server censors independently.
+        if (profanityFilter === false) {
+            WordFilter.enabled = false;
         }
 
         if (typeof nodeid === 'undefined' || typeof lowmem === 'undefined' || typeof members === 'undefined') {

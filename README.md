@@ -91,6 +91,8 @@ Running the server locally has many advantages, primary being the ability to set
 
 You can set tickrate in `server/engine/.env` via the `NODE_TICKRATE` variable (default is 400ms, try 200ms or 30ms for faster gameplay, especially useful for headless testing). You can also change it at runtime with the in-game `::speed <ms>` command (minimum 20ms, doesn't persist across restarts).
 
+The chat profanity filter can be disabled with `NODE_PROFANITY_FILTER=false` (default on). The server censors chat before broadcasting and injects the setting into the browser client; headless lite runners have no config channel from the server, so also set `PROFANITY_FILTER=false` in the bot's `bot.env` (or process env) to stop their local re-censoring.
+
 You want all three of these running: 
 
 ```sh

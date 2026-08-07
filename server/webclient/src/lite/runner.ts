@@ -258,10 +258,15 @@ const env = Object.fromEntries(
 );
 
 const host = env.SERVER || 'localhost';
+// No config channel from the server (see LiteClient's maxMessageLength note), so
+// mirror the server's NODE_PROFANITY_FILTER by hand: PROFANITY_FILTER=false in
+// bot.env or the process env disables local chat censoring.
+const profanityRaw = (env.PROFANITY_FILTER ?? process.env.PROFANITY_FILTER ?? '').toLowerCase();
 const session = await startSession({
     host,
     username: env.BOT_USERNAME!,
     password: env.PASSWORD!,
+    profanityFilter: ['false', '0', 'off', 'no'].includes(profanityRaw) ? false : undefined,
     quiet: true
 });
 

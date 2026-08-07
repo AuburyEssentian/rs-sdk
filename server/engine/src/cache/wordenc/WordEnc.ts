@@ -4,6 +4,7 @@ import WordEncFragments from '#/cache/wordenc/WordEncFragments.js';
 import WordEncTlds from '#/cache/wordenc/WordEncTlds.js';
 import Jagfile from '#/io/Jagfile.js';
 import Packet from '#/io/Packet.js';
+import Environment from '#/util/Environment.js';
 
 export default class WordEnc {
     static PERIOD = new Uint16Array(
@@ -70,16 +71,18 @@ export default class WordEnc {
         const trimmed = characters.join('').trim();
         const lowercase = trimmed.toLowerCase();
         const filtered = [...lowercase];
-        this.wordEncTlds.filter(filtered);
-        this.wordEncBadWords.filter(filtered);
-        this.wordEncDomains.filter(filtered);
-        this.wordEncFragments.filter(filtered);
-        for (let index = 0; index < this.whitelist.length; index++) {
-            let offset = -1;
-            while ((offset = lowercase.indexOf(this.whitelist[index], offset + 1)) !== -1) {
-                const whitelisted: string[] = [...this.whitelist[index]];
-                for (let charIndex = 0; charIndex < whitelisted.length; charIndex++) {
-                    filtered[charIndex + offset] = whitelisted[charIndex];
+        if (Environment.NODE_PROFANITY_FILTER) {
+            this.wordEncTlds.filter(filtered);
+            this.wordEncBadWords.filter(filtered);
+            this.wordEncDomains.filter(filtered);
+            this.wordEncFragments.filter(filtered);
+            for (let index = 0; index < this.whitelist.length; index++) {
+                let offset = -1;
+                while ((offset = lowercase.indexOf(this.whitelist[index], offset + 1)) !== -1) {
+                    const whitelisted: string[] = [...this.whitelist[index]];
+                    for (let charIndex = 0; charIndex < whitelisted.length; charIndex++) {
+                        filtered[charIndex + offset] = whitelisted[charIndex];
+                    }
                 }
             }
         }

@@ -42,6 +42,11 @@ export default {
     // stalls at ~60% ("Connecting to update server"). Required for the bot client to load.
     NODE_WS_ONDEMAND: tryParseBoolean(process.env.NODE_WS_ONDEMAND, true),
     NODE_INFINITE_RUN: tryParseBoolean(process.env.NODE_INFINITE_RUN, true),
+    // When false, WordEnc.filter stops censoring chat (bad words, domains, TLDs)
+    // but still normalizes casing. Also injected into the browser client via
+    // bot.ejs/client.ejs so its local WordFilter matches; the lite client has no
+    // config channel and reads PROFANITY_FILTER from bot.env instead.
+    NODE_PROFANITY_FILTER: tryParseBoolean(process.env.NODE_PROFANITY_FILTER, true),
     NODE_RANDOM_EVENTS: tryParseBoolean(process.env.NODE_RANDOM_EVENTS, false),
     NODE_TICKRATE: tryParseInt(process.env.NODE_TICKRATE, 400),
     HISCORES_WEB_PORT: tryParseInt(process.env.HISCORES_WEB_PORT, 8889),

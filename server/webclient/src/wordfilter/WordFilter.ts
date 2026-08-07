@@ -2,6 +2,14 @@ import JagFile from '#/io/JagFile.js';
 import Packet from '#/io/Packet.js';
 
 export default class WordFilter {
+    /**
+     * When false, filter() still normalizes casing (WordPack lowercases the wire
+     * text) but censors nothing. Note the server censors independently
+     * (WordEnc.filter, gated by NODE_PROFANITY_FILTER) - disabling only the
+     * client filter has no visible effect unless the server's is off too.
+     */
+    static enabled: boolean = true;
+
     private static readonly PERIOD: Uint16Array = new Uint16Array(
         ['d', 'o', 't']
             .join('')
@@ -46,16 +54,18 @@ export default class WordFilter {
         const trimmed: string = characters.join('').trim();
         const lowercase: string = trimmed.toLowerCase();
         const filtered: string[] = [...lowercase];
-        this.filterTlds(filtered);
-        this.filterBadWords(filtered);
-        this.filterDomains(filtered);
-        this.filterFragments(filtered);
-        for (let index: number = 0; index < this.whitelist.length; index++) {
-            let offset: number = -1;
-            while ((offset = lowercase.indexOf(this.whitelist[index], offset + 1)) !== -1) {
-                const whitelisted: string[] = [...this.whitelist[index]];
-                for (let charIndex: number = 0; charIndex < whitelisted.length; charIndex++) {
-                    filtered[charIndex + offset] = whitelisted[charIndex];
+        if (this.enabled) {
+            this.filterTlds(filtered);
+            this.filterBadWords(filtered);
+            this.filterDomains(filtered);
+            this.filterFragments(filtered);
+            for (let index: number = 0; index < this.whitelist.length; index++) {
+                let offset: number = -1;
+                while ((offset = lowercase.indexOf(this.whitelist[index], offset + 1)) !== -1) {
+                    const whitelisted: string[] = [...this.whitelist[index]];
+                    for (let charIndex: number = 0; charIndex < whitelisted.length; charIndex++) {
+                        filtered[charIndex + offset] = whitelisted[charIndex];
+                    }
                 }
             }
         }

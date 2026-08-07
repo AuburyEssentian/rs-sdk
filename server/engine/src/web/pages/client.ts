@@ -24,6 +24,7 @@ export async function handleClientPage(url: URL): Promise<Response | null> {
             members: Environment.NODE_MEMBERS,
             botUsername,
             maxMessageLength: Environment.node.maxMessageLength,
+            profanityFilter: Environment.NODE_PROFANITY_FILTER,
             cachebust: CLIENT_CACHEBUST,
             per_deployment_token: Environment.WEB_SOCKET_TOKEN_PROTECTION ? getPublicPerDeploymentToken() : ''
         }), {
@@ -39,6 +40,7 @@ export async function handleClientPage(url: URL): Promise<Response | null> {
             nodeid: Environment.NODE_ID,
             lowmem,
             members: Environment.NODE_MEMBERS,
+            profanityFilter: Environment.NODE_PROFANITY_FILTER,
             cachebust: CLIENT_CACHEBUST,
             per_deployment_token: Environment.WEB_SOCKET_TOKEN_PROTECTION ? getPublicPerDeploymentToken() : ''
         }), {
@@ -64,6 +66,7 @@ export async function handleClientPage(url: URL): Promise<Response | null> {
                 nodeid: Environment.NODE_ID,
                 lowmem,
                 members: Environment.NODE_MEMBERS,
+                profanityFilter: Environment.NODE_PROFANITY_FILTER,
                 cachebust: CLIENT_CACHEBUST,
                 per_deployment_token: Environment.WEB_SOCKET_TOKEN_PROTECTION ? getPublicPerDeploymentToken() : ''
             }), {
