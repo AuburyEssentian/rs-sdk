@@ -19,6 +19,7 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 
 import './dom-shim.js';
 
+import CollisionMap from '#/dash3d/CollisionMap.js';
 import { ClientProt } from '#/io/ClientProt.js';
 import Packet from '#/io/Packet.js';
 import { ServerProt } from '#/io/ServerProt.js';
@@ -250,5 +251,29 @@ describe('outgoing action encoding', () => {
         expect(r.g2()).toBe(0);
         expect(r.g2()).toBe(9);
         expect(r.g2()).toBe(INV_COMPONENT);
+    });
+
+    test('long walks clamp to the current scene edge like the browser client', () => {
+        if (!available) {
+            return;
+        }
+
+        const c = makeClient('bota');
+        c.mapBuildBaseX = 3200;
+        c.mapBuildBaseZ = 3200;
+        c.collision[0] = new CollisionMap();
+        c.localPlayer!.routeX[0] = 50;
+        c.localPlayer!.routeZ[0] = 50;
+
+        const start = c.out.pos;
+        expect(c.walkTo(4000, 3250, true)).toBe(true);
+
+        const r = new Capture(c.out, start);
+        expect(r.g1()).toBe(ClientProt.MOVE_GAMECLICK);
+        expect(r.g1()).toBe(5); // one turn: run flag + absolute x/z
+        expect(r.g1()).toBe(1); // running
+        expect(r.g2()).toBe(3302); // baseX + build-area max interior tile
+        expect(r.g2()).toBe(3250);
+        expect(r.at).toBe(c.out.pos);
     });
 });

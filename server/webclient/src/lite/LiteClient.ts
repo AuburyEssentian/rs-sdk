@@ -632,11 +632,21 @@ export class LiteClient {
 
     /** Send a MOVE_GAMECLICK with a client-computed path. See movement.ts. */
     walkTo(worldX: number, worldZ: number, running = false): boolean {
-        const dest = this.toSceneTile(worldX, worldZ);
-        if (!dest || !this.localPlayer) {
+        if (!this.localPlayer) {
             return false;
         }
-        return findPathToTile(this, dest.x, dest.z, running);
+
+        // Match Client.walkTo: a long-distance BotActions route can hand the
+        // client a global waypoint beyond its current 104x104 build area. Walk
+        // to the corresponding scene edge; crossing it causes REBUILD_NORMAL,
+        // after which BotActions observes progress and dispatches the next leg.
+        // Keeping the one-tile border excluded also matches the browser's
+        // collision bounds (tiles 0 and 103 are the blocked border ring).
+        const minBound = 1;
+        const maxBound = BuildArea.SIZE - 2;
+        const destX = Math.max(minBound, Math.min(maxBound, worldX - this.mapBuildBaseX));
+        const destZ = Math.max(minBound, Math.min(maxBound, worldZ - this.mapBuildBaseZ));
+        return findPathToTile(this, destX, destZ, running);
     }
 
     // ------------------------------------------------------ outgoing plumbing

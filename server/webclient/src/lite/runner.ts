@@ -12,7 +12,6 @@
 
 import { startSession, type LiteSession } from './session.js';
 import { type ActionResult } from '#/bot/ActionExecutor.js';
-import { formatWorldStateForAgent } from '#/bot/formatters.js';
 import { BotActionQueue, type QueuedBotAction } from '#/bot/ActionQueue.js';
 import type { BotAction } from '#/bot/types.js';
 import type { LiteClient } from './LiteClient.js';
@@ -223,11 +222,7 @@ class LiteGatewayRunner {
         if (!this.wsConnected) return;
         const state = this.client.collectBotState(this.serverTick);
         if (!state) return;
-        this.send({
-            type: 'state',
-            state,
-            formattedState: formatWorldStateForAgent(state, 'SDK Control')
-        });
+        this.send({ type: 'state', state });
     }
 }
 
