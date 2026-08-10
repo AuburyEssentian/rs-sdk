@@ -201,6 +201,31 @@ export function formatBotState(state: BotState): string {
         }
     }
 
+    // Trade state (if open)
+    if (state.trade && state.trade.isOpen) {
+        lines.push('');
+        lines.push(`--- TRADE OPEN (${state.trade.screen} screen) ---`);
+        lines.push(`Partner: ${state.trade.partner ?? 'Unknown'}`);
+        if (state.trade.myAccepted) lines.push('You have accepted - waiting for partner.');
+        if (state.trade.partnerAccepted) lines.push('Partner has accepted.');
+        lines.push('Your Offer:');
+        if (state.trade.myOffer.length === 0) {
+            lines.push('  Nothing');
+        } else {
+            for (const item of state.trade.myOffer) {
+                lines.push(`  [${item.slot}] ${item.name} x${item.count}`);
+            }
+        }
+        lines.push('Their Offer:');
+        if (state.trade.theirOffer.length === 0) {
+            lines.push('  Nothing');
+        } else {
+            for (const item of state.trade.theirOffer) {
+                lines.push(`  [${item.slot}] ${item.name} x${item.count}`);
+            }
+        }
+    }
+
     return lines.join('\n');
 }
 

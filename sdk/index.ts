@@ -24,7 +24,8 @@ import type {
     GameMessage,
     FindOptions
 } from './types';
-import { PRAYER_INDICES, PRAYER_NAMES, PLAYER_CHAT_TYPES, isPlayerChat } from './types';
+import type { TradeState } from './types';
+import { PRAYER_INDICES, PRAYER_NAMES, PLAYER_CHAT_TYPES, isPlayerChat, TRADE_REQUEST_CHAT_TYPE } from './types';
 import { ChatHistory } from './chat-history';
 import * as pathfinding from './pathfinding';
 import { resolveInterfaceOption, shortestNameMatch, type InterfaceOptionSelector } from './action-quantity';
@@ -35,6 +36,13 @@ import { resolveInterfaceOption, shortestNameMatch, type InterfaceOptionSelector
  * result into null instead, so callers get "nothing usable" rather than a
  * target whose interaction would fail with a silent `cant_reach`.
  */
+// Player trade interface components (see server/webclient/src/bot/types.ts
+// for the full trademain/tradeconfirm component map).
+const TRADE_SIDE_INV_ID = 3322;     // tradeside:inv - INV_BUTTON = Offer 1/5/10/All/X
+const TRADE_MAIN_INV_ID = 3415;     // trademain:inv - INV_BUTTON = Remove 1/5/10/All/X
+const TRADE_MAIN_ACCEPT_ID = 3420;  // trademain:accept
+const TRADE_CONFIRM_ACCEPT_ID = 3546; // tradeconfirm:accept
+
 function applyFindOptions<T extends { reachable?: boolean }>(match: T | null, options?: FindOptions): T | null {
     if (options?.reachable === true && match?.reachable === false) return null;
     return match;
@@ -54,6 +62,11 @@ function selectorLabel(selector: InterfaceOptionSelector): string {
  * - anything else → wss://HOST/gateway (TLS, remote gateway path)
  */
 export function deriveGatewayUrl(server?: string): string {
+    // GATEWAY_URL overrides derivation for hosts where SERVER doubles as the
+    // web origin but not the gateway (e.g. SERVER=localhost:8888 is the engine
+    // web port; the gateway is ws://localhost:7780). The lite runner honors
+    // the same variable.
+    if (typeof process !== 'undefined' && process.env?.GATEWAY_URL) return process.env.GATEWAY_URL;
     if (!server) return 'ws://localhost:7780';
     if (server.startsWith('ws://') || server.startsWith('wss://')) return server;
     const isLocal = server === 'localhost' || server.startsWith('localhost:');
@@ -1101,6 +1114,9 @@ export class BotSDK {
         if (state.bank.isOpen) {
             return 'Bank interface is open, which replaces the inventory tab - the server will silently drop this. Close it first (bot.closeInterface() / sdk.sendCloseModal()).';
         }
+        if (state.trade?.isOpen) {
+            return 'Trade interface is open, which replaces the inventory tab - the server will silently drop this. Finish or decline the trade first (sdk.sendDeclineTrade()).';
+        }
         return null;
     }
 
@@ -1265,6 +1281,114 @@ export class BotSDK {
     /** Submit a numeric value to an open p_countdialog (Enter Amount) prompt. */
     async sendCountDialog(value: number): Promise<ActionResult> {
         return this.sendAction({ type: 'submitCountDialog', value, reason: 'SDK' });
+    }
+
+    // ============ Player Trading ============
+
+    /**
+     * Current player-to-player trade session state. Returns a closed-trade
+     * default when no state has arrived or the connected client predates
+     * trade support.
+     */
+    getTradeState(): TradeState {
+        return this.state?.trade ?? {
+            isOpen: false,
+            screen: null,
+            partner: null,
+            myOffer: [],
+            theirOffer: [],
+            myAccepted: false,
+            partnerAccepted: false
+        };
+    }
+
+    /**
+     * Send (or accept) a trade request to another player. There is no
+     * separate "accept" packet: requesting a player who already requested
+     * you is the acceptance, and opens the trade screen for both. Otherwise
+     * the partner sees "<you> wishes to trade with you." and the trade opens
+     * when they request back.
+     */
+    async sendTradeRequest(playerIndex: number): Promise<ActionResult> {
+        return this.sendInteractPlayer(playerIndex, 4);
+    }
+
+    /**
+     * Move items from your (trade-screen) side inventory into your offer.
+     * `slot` is the inventory slot. Amounts 1/5/10 and -1 (All) map to the
+     * game's offer buttons; any other amount uses Offer-X plus the count
+     * dialog. Only valid while the offer screen is open.
+     */
+    async sendOfferItem(slot: number, amount: number = 1): Promise<ActionResult> {
+        return this.sendTradeInvButton(TRADE_SIDE_INV_ID, slot, amount);
+    }
+
+    /**
+     * Remove items from your offer back to your inventory. Same amount
+     * semantics as {@link sendOfferItem}. Note: removing (or adding) items
+     * resets both players' accepts server-side.
+     */
+    async sendRetractItem(slot: number, amount: number = 1): Promise<ActionResult> {
+        return this.sendTradeInvButton(TRADE_MAIN_INV_ID, slot, amount);
+    }
+
+    private async sendTradeInvButton(componentId: number, slot: number, amount: number): Promise<ActionResult> {
+        if (!Number.isInteger(amount) || amount === 0 || (amount < 0 && amount !== -1)) {
+            return { success: false, message: `Invalid trade amount: ${amount}`, reason: 'invalid_amount' };
+        }
+        const option = amount === 1 ? 1
+            : amount === 5 ? 2
+            : amount === 10 ? 3
+            : (amount === -1 || amount >= 0x7fffffff) ? 4
+            : 5;
+        const result = await this.sendClickComponentWithOption(componentId, option, slot);
+        if (!result.success || option !== 5) return result;
+        // Offer-X: the server opens a count dialog; this waits for it and submits.
+        return this.sendCountDialog(amount);
+    }
+
+    /**
+     * Accept the currently open trade screen (first or confirm). The trade
+     * only advances when both players accept; an offer change resets accepts.
+     */
+    async sendAcceptTrade(): Promise<ActionResult> {
+        const trade = this.getTradeState();
+        if (!trade.isOpen) {
+            return { success: false, message: 'No trade screen is open', reason: 'not_open' };
+        }
+        const componentId = trade.screen === 'confirm' ? TRADE_CONFIRM_ACCEPT_ID : TRADE_MAIN_ACCEPT_ID;
+        return this.sendClickComponent(componentId);
+    }
+
+    /**
+     * Decline the open trade (closes the screen; both sides get their items
+     * back and the partner sees "Other player declined trade.").
+     */
+    async sendDeclineTrade(): Promise<ActionResult> {
+        const trade = this.getTradeState();
+        if (!trade.isOpen) {
+            return { success: false, message: 'No trade screen is open', reason: 'not_open' };
+        }
+        return this.sendCloseModal();
+    }
+
+    /**
+     * Wait for an incoming trade request ("X wishes to trade with you.").
+     * Requests arrive as chat type {@link TRADE_REQUEST_CHAT_TYPE}, which the
+     * default chat readers filter out. Returns the requester's name, or null
+     * on timeout.
+     *
+     * @param opts.from Only accept requests from this sender (substring match).
+     * @param opts.timeout Ms to wait (default 30000).
+     */
+    async waitForTradeRequest(opts: { from?: string; timeout?: number } = {}): Promise<string | null> {
+        const message = await this.waitForChat({
+            from: opts.from,
+            types: [TRADE_REQUEST_CHAT_TYPE],
+            matching: /wishes to trade/i,
+            timeout: opts.timeout ?? 30000
+        });
+        return message?.sender ?? null;
     }
 
     /** Set combat style (0-3). */

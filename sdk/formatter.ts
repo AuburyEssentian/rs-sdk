@@ -259,6 +259,31 @@ export function formatWorldState(
         }
     }
 
+    // Trade state
+    if (state.trade?.isOpen) {
+        lines.push('');
+        lines.push(`## Trade (${state.trade.screen} screen)`);
+        lines.push(`Trading with: ${state.trade.partner ?? 'Unknown'}`);
+        if (state.trade.myAccepted) lines.push('You have accepted - waiting for partner.');
+        if (state.trade.partnerAccepted) lines.push('Partner has accepted.');
+        lines.push('**Your offer:**');
+        if (state.trade.myOffer.length === 0) {
+            lines.push('  (Nothing)');
+        } else {
+            for (const item of state.trade.myOffer) {
+                lines.push(`  [${item.slot}] ${item.name} x${item.count}`);
+            }
+        }
+        lines.push('**Their offer:**');
+        if (state.trade.theirOffer.length === 0) {
+            lines.push('  (Nothing)');
+        } else {
+            for (const item of state.trade.theirOffer) {
+                lines.push(`  [${item.slot}] ${item.name} x${item.count}`);
+            }
+        }
+    }
+
     // Skills (filter out unknown/placeholder skills like Stat18, Stat19)
     lines.push('');
     lines.push('## Skills');

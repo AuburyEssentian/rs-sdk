@@ -146,6 +146,7 @@ function methodCategory(name: string, surface: 'actions' | 'sdk'): string {
         if (lower.includes('pickup')) return 'Items & Inventory';
         if (lower.includes('door')) return 'Doors';
         if (lower.includes('talk') || lower.includes('interact') || lower.includes('pickpocket')) return 'NPC & Object Interaction';
+        if (lower.includes('trade')) return 'Player Trading';
         if (lower.includes('shop') || lower.includes('buy') || lower.includes('sell')) return 'Shopping';
         if (lower.includes('bank') || lower.includes('deposit') || lower.includes('withdraw')) return 'Banking';
         if (lower.includes('wait')) return 'Condition Waiting';

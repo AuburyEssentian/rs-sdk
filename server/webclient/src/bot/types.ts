@@ -24,6 +24,23 @@ export const BANK_MAIN_ID = 5292; // Main bank interface (mainModalId)
 export const BANK_MAIN_INV_ID = 5382; // Bank inventory component (bank_main:inv)
 export const BANK_SIDE_INV_ID = 2006; // Side panel inventory for depositing
 
+// Player trade interface IDs (interface_trade content pack)
+export const TRADE_SIDE_ID = 3321; // tradeside - side panel (your inventory, "Offer" options)
+export const TRADE_SIDE_INV_ID = 3322; // tradeside:inv - INV_BUTTON1..5 = Offer 1/5/10/All/X
+export const TRADE_MAIN_ID = 3323; // trademain - first trade screen (mainModalId)
+export const TRADE_MAIN_INV_ID = 3415; // trademain:inv - your offer, INV_BUTTON1..5 = Remove 1/5/10/All/X
+export const TRADE_MAIN_OTHER_INV_ID = 3416; // trademain:otherinv - partner's offer (read-only)
+export const TRADE_MAIN_PARTNER_TEXT_ID = 3417; // trademain:otherplayer - "Trading With: <name>"
+export const TRADE_MAIN_ACCEPT_ID = 3420; // trademain:accept - IF_BUTTON
+export const TRADE_MAIN_STATUS_TEXT_ID = 3431; // trademain:status - ""/"Waiting for other player..."/"Other player has accepted."
+export const TRADE_CONFIRM_ID = 3443; // tradeconfirm - second trade screen (mainModalId)
+export const TRADE_CONFIRM_INV1_ID = 3542; // tradeconfirm:inv1 - your offer (<= 13 items variant)
+export const TRADE_CONFIRM_INV2_ID = 3538; // tradeconfirm:inv2 - your offer (> 13 items variant)
+export const TRADE_CONFIRM_OTHER_INV1_ID = 3532; // tradeconfirm:otherinv1 - partner offer (<= 13 items)
+export const TRADE_CONFIRM_OTHER_INV2_ID = 3539; // tradeconfirm:otherinv2 - partner offer (> 13 items)
+export const TRADE_CONFIRM_STATUS_TEXT_ID = 3535; // tradeconfirm:com_91 - "Are you sure..."/"Waiting for other player."/"Other player has accepted."
+export const TRADE_CONFIRM_ACCEPT_ID = 3546; // tradeconfirm:accept - IF_BUTTON
+
 // Interfaces for state data
 export interface SkillState {
     name: string;
@@ -187,6 +204,35 @@ export interface BankItem {
     count: number;
 }
 
+/** An item slot inside a trade offer window. */
+export interface TradeItem {
+    slot: number;
+    id: number;
+    name: string;
+    count: number;
+}
+
+/**
+ * Player-to-player trade session state, read from the trademain/tradeconfirm
+ * interfaces. Accept flags are parsed from the server-set status text — on
+ * each screen at most one of myAccepted/partnerAccepted is ever true, because
+ * the second accept advances (or completes) the trade. Any offer change
+ * resets both accepts server-side.
+ */
+export interface TradeState {
+    isOpen: boolean;
+    /** 'offer' = first screen (offers editable), 'confirm' = final screen. */
+    screen: 'offer' | 'confirm' | null;
+    /** Partner display name, from "Trading With: <name>". */
+    partner: string | null;
+    myOffer: TradeItem[];
+    theirOffer: TradeItem[];
+    /** True when this client accepted and is waiting on the partner. */
+    myAccepted: boolean;
+    /** True when the partner accepted the current screen. */
+    partnerAccepted: boolean;
+}
+
 export interface BankState {
     isOpen: boolean;
     items: BankItem[];
@@ -339,6 +385,7 @@ export interface BotState {
     menuActions: MenuAction[];
     shop: ShopState;
     bank: BankState;
+    trade: TradeState;
     inGame: boolean;
     /** Recent combat events (damage, kills) - bounded to last ~50 ticks */
     combatEvents: CombatEvent[];

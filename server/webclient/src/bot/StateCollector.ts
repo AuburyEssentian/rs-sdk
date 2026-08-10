@@ -19,6 +19,17 @@ import {
     EQUIPMENT_INTERFACE_ID,
     SHOP_TEMPLATE_INV_ID,
     SHOP_TEMPLATE_SIDE_INV_ID,
+    TRADE_MAIN_ID,
+    TRADE_MAIN_INV_ID,
+    TRADE_MAIN_OTHER_INV_ID,
+    TRADE_MAIN_PARTNER_TEXT_ID,
+    TRADE_MAIN_STATUS_TEXT_ID,
+    TRADE_CONFIRM_ID,
+    TRADE_CONFIRM_INV1_ID,
+    TRADE_CONFIRM_INV2_ID,
+    TRADE_CONFIRM_OTHER_INV1_ID,
+    TRADE_CONFIRM_OTHER_INV2_ID,
+    TRADE_CONFIRM_STATUS_TEXT_ID,
     type BotState,
     type SkillState,
     type InventoryItem,
@@ -36,6 +47,8 @@ import {
     type ShopItem,
     type BankState,
     type BankItem,
+    type TradeState,
+    type TradeItem,
     type PlayerState,
     type CombatStyleState,
     type CombatStyleOption,
@@ -164,6 +177,7 @@ export class BotStateCollector implements ScanProvider {
             menuActions: this.collectMenuActions(),
             shop: this.collectShopState(),
             bank: this.collectBankState(),
+            trade: this.collectTradeState(),
             inGame: c.ingame || false,
             combatEvents: [...this.combatEvents], // Return copy of events
             dialog: this.collectDialogState(),
@@ -1430,6 +1444,82 @@ export class BotStateCollector implements ScanProvider {
         }
 
         return bankState;
+    }
+
+    /**
+     * Player-to-player trade state, read from the trademain / tradeconfirm
+     * interfaces. Works on both screens:
+     * - offer screen: offers from trademain:inv / trademain:otherinv, accept
+     *   flags parsed from the trademain:status text.
+     * - confirm screen: the engine transmits to inv1 (<=13 items) OR inv2
+     *   (14+), so read whichever is non-empty; the unused variant is zeroed
+     *   by UPDATE_INV_STOP_TRANSMIT when a trade closes. The partner name is
+     *   read from trademain:otherplayer, which retains its text from the
+     *   offer screen of the same trade.
+     */
+    private collectTradeState(): TradeState {
+        const c = this.client as any;
+        const mainModalId = c.mainModalId ?? -1;
+
+        if (mainModalId !== TRADE_MAIN_ID && mainModalId !== TRADE_CONFIRM_ID) {
+            return {
+                isOpen: false,
+                screen: null,
+                partner: null,
+                myOffer: [],
+                theirOffer: [],
+                myAccepted: false,
+                partnerAccepted: false
+            };
+        }
+
+        const componentText = (id: number): string => {
+            try {
+                return IfType.list[id]?.text ?? '';
+            } catch {
+                return '';
+            }
+        };
+
+        // "Trading With: <name>" — set on the offer screen, retained on confirm.
+        const partnerText = componentText(TRADE_MAIN_PARTNER_TEXT_ID);
+        const partnerMatch = partnerText.match(/^Trading With:\s*(.+)$/i);
+        const partner = partnerMatch ? partnerMatch[1].trim() : null;
+
+        if (mainModalId === TRADE_MAIN_ID) {
+            const status = componentText(TRADE_MAIN_STATUS_TEXT_ID);
+            return {
+                isOpen: true,
+                screen: 'offer',
+                partner,
+                myOffer: this.collectTradeItems(TRADE_MAIN_INV_ID),
+                theirOffer: this.collectTradeItems(TRADE_MAIN_OTHER_INV_ID),
+                myAccepted: /waiting for other player/i.test(status),
+                partnerAccepted: /other player has accepted/i.test(status)
+            };
+        }
+
+        const status = componentText(TRADE_CONFIRM_STATUS_TEXT_ID);
+        const myInv1 = this.collectTradeItems(TRADE_CONFIRM_INV1_ID);
+        const theirInv1 = this.collectTradeItems(TRADE_CONFIRM_OTHER_INV1_ID);
+        return {
+            isOpen: true,
+            screen: 'confirm',
+            partner,
+            myOffer: myInv1.length > 0 ? myInv1 : this.collectTradeItems(TRADE_CONFIRM_INV2_ID),
+            theirOffer: theirInv1.length > 0 ? theirInv1 : this.collectTradeItems(TRADE_CONFIRM_OTHER_INV2_ID),
+            myAccepted: /waiting for other player/i.test(status),
+            partnerAccepted: /other player has accepted/i.test(status)
+        };
+    }
+
+    private collectTradeItems(interfaceId: number): TradeItem[] {
+        return this.collectInventoryItems(interfaceId).map(item => ({
+            slot: item.slot,
+            id: item.id,
+            name: item.name,
+            count: item.count
+        }));
     }
 
     /**

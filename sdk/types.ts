@@ -280,6 +280,109 @@ export interface BankState {
     items: BankItem[];
 }
 
+// ============ Trade Types ============
+
+/** An item slot inside a trade offer window. */
+export interface TradeItem {
+    slot: number;
+    id: number;
+    name: string;
+    count: number;
+}
+
+/**
+ * Player-to-player trade session state, read from the trademain/tradeconfirm
+ * interfaces. Accept flags are parsed from the server-set status text — on
+ * each screen at most one of myAccepted/partnerAccepted is ever true, because
+ * the second accept advances (or completes) the trade. Any offer change on
+ * the offer screen resets both accepts server-side, which is the built-in
+ * anti-scam property: the confirm screen always shows the final offers.
+ */
+export interface TradeState {
+    isOpen: boolean;
+    /** 'offer' = first screen (offers editable), 'confirm' = final screen. */
+    screen: 'offer' | 'confirm' | null;
+    /** Partner display name, from "Trading With: <name>". */
+    partner: string | null;
+    myOffer: TradeItem[];
+    theirOffer: TradeItem[];
+    /** True when this client accepted the current screen and is waiting on the partner. */
+    myAccepted: boolean;
+    /** True when the partner accepted the current screen. */
+    partnerAccepted: boolean;
+}
+
+/** Chat type code the client uses for "X wishes to trade with you." requests. */
+export const TRADE_REQUEST_CHAT_TYPE = 4;
+
+/** One item pattern a trade expects or gives. */
+export interface TradeItemSpec {
+    /** Item name pattern (string = case-insensitive substring, or RegExp). */
+    item: string | RegExp;
+    /** For `give`: -1 = all (default 1). For `want`: minimum count required (default 1). */
+    amount?: number;
+}
+
+export interface TradeOptions {
+    /** Items to place in your offer. Default: give nothing. */
+    give?: TradeItemSpec[];
+    /**
+     * Items the partner's offer must contain before you accept. Default `[]`
+     * accepts any partner offer including nothing (a pure gift). Re-verified
+     * on the confirm screen before the final accept.
+     */
+    want?: TradeItemSpec[];
+    /**
+     * Escape hatch replacing `want`: accept only when this predicate passes
+     * on the partner's visible offer. Also re-checked on the confirm screen.
+     */
+    accept?: (theirOffer: TradeItem[]) => boolean;
+    /** Overall deadline in ms (default 60_000). On expiry the trade is declined. */
+    timeout?: number;
+}
+
+export interface TradeResult {
+    success: boolean;
+    message: string;
+    /** Partner display name, when known. */
+    partner?: string;
+    /** Items removed from your inventory (by the completed trade). */
+    gave: TradeItem[];
+    /** Items added to your inventory (by the completed trade). */
+    received: TradeItem[];
+    reason?: 'player_not_found' | 'no_response' | 'declined' | 'busy' | 'offer_failed'
+        | 'want_not_met' | 'no_space' | 'not_open' | 'timeout' | 'error';
+}
+
+export interface ServeTradesOptions {
+    /** Only accept trades from players whose name matches. Default: anyone. */
+    from?: string | RegExp;
+    /** Items to offer in every served trade. Default: nothing. */
+    give?: TradeItemSpec[];
+    /** Items each incoming offer must contain. Default `[]` = accept anything. */
+    want?: TradeItemSpec[];
+    /** Predicate alternative to `want`, applied to the partner's offer. */
+    accept?: (theirOffer: TradeItem[]) => boolean;
+    /** Called after each completed (or failed) trade. */
+    onTrade?: (result: TradeResult) => void;
+    /** Serving stops once this returns true (checked between trades). */
+    until?: () => boolean;
+    /** Stop after this many completed trades. Default: unlimited. */
+    maxTrades?: number;
+    /** Per-trade deadline in ms once a session opens (default 60_000). */
+    tradeTimeout?: number;
+    /** Overall serving deadline in ms (default 10 minutes). */
+    timeout?: number;
+}
+
+export interface ServeTradesResult {
+    success: boolean;
+    message: string;
+    /** Completed trades, in order. */
+    trades: TradeResult[];
+    reason?: 'until' | 'max_trades' | 'timeout' | 'error';
+}
+
 export interface CombatStyleOption {
     /** Value com_mode takes for this style, and what sendSetCombatStyle expects. */
     index: number;
@@ -403,6 +506,8 @@ export interface BotWorldState {
     interface: InterfaceState;
     shop: ShopState;
     bank: BankState;
+    /** Absent when the connected client predates trade support. */
+    trade?: TradeState;
     modalOpen: boolean;
     modalInterface: number;
     combatStyle?: CombatStyleState;

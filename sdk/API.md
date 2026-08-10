@@ -82,6 +82,17 @@
 | `async depositItem(target: InventoryItem \| string \| RegExp, amount: number = -1): Promise<BankDepositResult>` | Deposit an item into the bank. Use -1 for all. |
 | `async withdrawItem(target: BankItem \| string \| RegExp \| number, amount: number = 1): Promise<BankWithdrawResult>` | Withdraw an item from the bank by slot number. |
 
+### Player Trading
+
+| Signature | Description |
+|---|---|
+| `async tradeWith(target: NearbyPlayer \| string \| RegExp, timeout: number = 30_000): Promise<ActionResult>` | Open a trade session with another player, walking closer if needed. Requesting a player who already requested you accepts their request; otherwise this waits (re-requesting periodically) until they request back or the timeout expires. |
+| `async offerTradeItems(items: TradeItemSpec[], timeout: number = 15_000): Promise<ActionResult>` | Place items into your side of an open trade. Each spec resolves against your inventory; `amount` -1 offers all of that item (default 1). Waits until the offer window reflects each addition. Adding items resets both players' accepts server-side. |
+| `async acceptTrade(timeout: number = 10_000): Promise<ActionResult>` | Accept the current trade screen and wait for observable progress: the screen advancing (offer -> confirm), the trade completing, or the acceptance being registered while waiting on the partner. |
+| `async declineTrade(timeout: number = 5_000): Promise<ActionResult>` | Decline (close) the open trade and wait for the screen to close. |
+| `async trade(target: NearbyPlayer \| string \| RegExp, options: TradeOptions = {}): Promise<TradeResult>` | Full trade happy path with one player: open the session, offer `give`, accept once the partner's offer satisfies `want` (or the `accept` predicate), re-verify on the confirm screen, and report the actual inventory delta. Any offer change resets both accepts server-side, so the offer seen at accept time is the offer that reaches the confirm screen; the confirm re-verification makes offer-switching structurally impossible to slip past this method. |
+| `async serveTrades(options: ServeTradesOptions = {}): Promise<ServeTradesResult>` | Serve incoming trades: wait for "wishes to trade with you." requests, accept ones matching the `from` filter, and run each session with the shared give/want/accept policy. The receiving half of a muling setup: ```ts // Worker: bot.trade('mule01', { give: [{ item: /ore/i, amount: -1 }] }) // Mule: bot.serveTrades({ from: /^fleet_/i, until: () => sdk.getInventory().length >= 26 }) ``` This owns the bot while running - it is an explicit serving loop, not a background hook, so it never fights another controller for the session. |
+
 ### Combat & Equipment
 
 | Signature | Description |
@@ -176,6 +187,7 @@
 | `findGroundItem(pattern: string \| RegExp, options?: FindOptions): GroundItem \| null` | Find ground item by name pattern (shortest matching name wins, then nearest; reachable preferred). |
 | `getGroundItems(): GroundItem[]` | Get all ground items. |
 | `getDialog(): DialogState \| null` | Get current dialog state. |
+| `getTradeState(): TradeState` | Current player-to-player trade session state. Returns a closed-trade default when no state has arrived or the connected client predates trade support. |
 | `getPrayerState(): PrayerState \| null` | Get current prayer state from world state. |
 | `isPrayerActive(prayer: PrayerName \| number): boolean` | Check if a specific prayer is currently active. |
 | `getActivePrayers(): PrayerName[]` | Get list of all currently active prayer names. |
@@ -198,6 +210,7 @@
 | `async waitForBotConnection(timeout?: number): Promise<void>` | Wait for bot to connect to gateway after browser launch. |
 | `async waitForConnection(timeout: number = 60000): Promise<void>` | Wait for WebSocket connection to be established. |
 | `async waitForChat(opts: { from?: string; matching?: RegExp \| string; types?: readonly number[]; includeSelf?: boolean; timeout?: number; } = {}): Promise<GameMessage \| null>` | Wait for the next chat message matching the given filters (messages arriving after this call; your own messages are excluded by default). The easy way to coordinate two bots: `sdk.say('ready'); const reply = await sdk.waitForChat({ from: 'partner', timeout: 60000 });` |
+| `async waitForTradeRequest(opts: { from?: string; timeout?: number } = {}): Promise<string \| null>` | Wait for an incoming trade request ("X wishes to trade with you."). Requests arrive as chat type {@link TRADE_REQUEST_CHAT_TYPE}, which the default chat readers filter out. Returns the requester's name, or null on timeout. |
 | `async waitForReady(timeout: number = 15000): Promise<BotWorldState>` | Wait for game state to be fully loaded and ready. Ensures player position is valid (not 0,0), bot is in-game, and state is recent. |
 | `async waitForCondition(predicate: (state: BotWorldState) => boolean, timeout: number = 30000): Promise<BotWorldState>` | _No description provided._ |
 | `async waitForStateChange(timeout: number = 30000): Promise<BotWorldState>` | Wait for next state update from server. |
@@ -241,6 +254,11 @@
 | `async sendCloseShop(): Promise<ActionResult>` | Close shop interface. |
 | `async sendCloseModal(): Promise<ActionResult>` | Close any modal interface. |
 | `async sendCountDialog(value: number): Promise<ActionResult>` | Submit a numeric value to an open p_countdialog (Enter Amount) prompt. |
+| `async sendTradeRequest(playerIndex: number): Promise<ActionResult>` | Send (or accept) a trade request to another player. There is no separate "accept" packet: requesting a player who already requested you is the acceptance, and opens the trade screen for both. Otherwise the partner sees "<you> wishes to trade with you." and the trade opens when they request back. |
+| `async sendOfferItem(slot: number, amount: number = 1): Promise<ActionResult>` | Move items from your (trade-screen) side inventory into your offer. `slot` is the inventory slot. Amounts 1/5/10 and -1 (All) map to the game's offer buttons; any other amount uses Offer-X plus the count dialog. Only valid while the offer screen is open. |
+| `async sendRetractItem(slot: number, amount: number = 1): Promise<ActionResult>` | Remove items from your offer back to your inventory. Same amount semantics as {@link sendOfferItem}. Note: removing (or adding) items resets both players' accepts server-side. |
+| `async sendAcceptTrade(): Promise<ActionResult>` | Accept the currently open trade screen (first or confirm). The trade only advances when both players accept; an offer change resets accepts. |
+| `async sendDeclineTrade(): Promise<ActionResult>` | Decline the open trade (closes the screen; both sides get their items back and the partner sees "Other player declined trade."). |
 | `async sendSetCombatStyle(style: number): Promise<ActionResult>` | Set combat style (0-3). |
 | `async sendTogglePrayer(prayer: PrayerName \| number): Promise<ActionResult>` | Toggle a prayer on or off by name or index (0-14). |
 | `async sendSpellOnNpc(npcIndex: number, spellComponent: number): Promise<ActionResult>` | Cast spell on NPC using spell component ID (OPNPCT). |
@@ -373,6 +391,54 @@ interface BankState {
 }
 ```
 
+### TradeState
+
+Player-to-player trade session state, read from the trademain/tradeconfirm interfaces. Accept flags are parsed from the server-set status text — on each screen at most one of myAccepted/partnerAccepted is ever true, because the second accept advances (or completes) the trade. Any offer change on the offer screen resets both accepts server-side, which is the built-in anti-scam property: the confirm screen always shows the final offers.
+
+```typescript
+interface TradeState {
+  isOpen: boolean;
+  /** 'offer' = first screen (offers editable), 'confirm' = final screen. */
+  screen: 'offer' | 'confirm' | null;
+  /** Partner display name, from "Trading With: <name>". */
+  partner: string | null;
+  myOffer: TradeItem[];
+  theirOffer: TradeItem[];
+  /** True when this client accepted the current screen and is waiting on the partner. */
+  myAccepted: boolean;
+  /** True when the partner accepted the current screen. */
+  partnerAccepted: boolean;
+}
+```
+
+### TradeResult
+
+```typescript
+interface TradeResult {
+  success: boolean;
+  message: string;
+  /** Partner display name, when known. */
+  partner?: string;
+  /** Items removed from your inventory (by the completed trade). */
+  gave: TradeItem[];
+  /** Items added to your inventory (by the completed trade). */
+  received: TradeItem[];
+  reason?: 'player_not_found' | 'no_response' | 'declined' | 'busy' | 'offer_failed' | 'want_not_met' | 'no_space' | 'not_open' | 'timeout' | 'error';
+}
+```
+
+### ServeTradesResult
+
+```typescript
+interface ServeTradesResult {
+  success: boolean;
+  message: string;
+  /** Completed trades, in order. */
+  trades: TradeResult[];
+  reason?: 'until' | 'max_trades' | 'timeout' | 'error';
+}
+```
+
 ### CombatStyleState
 
 ```typescript
@@ -449,6 +515,8 @@ interface BotWorldState {
   interface: InterfaceState;
   shop: ShopState;
   bank: BankState;
+  /** Absent when the connected client predates trade support. */
+  trade?: TradeState;
   modalOpen: boolean;
   modalInterface: number;
   combatStyle?: CombatStyleState;

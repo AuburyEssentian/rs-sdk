@@ -47,7 +47,22 @@ import type {
     EnchantResult,
     StringAmuletResult,
 } from './types';
+import type {
+    TradeItem,
+    TradeItemSpec,
+    TradeOptions,
+    TradeResult,
+    ServeTradesOptions,
+    ServeTradesResult,
+} from './types';
 import { PRAYER_INDICES, PRAYER_NAMES, PRAYER_LEVELS } from './types';
+import {
+    countInventoryById,
+    countMatching,
+    diffInventories,
+    missingFromOffer,
+    offerSatisfies,
+} from './trade-helpers';
 import {
     classifyQuantity,
     countItems,
@@ -1750,6 +1765,454 @@ export class BotActions {
                 reason: 'timeout',
             };
         }
+    }
+
+    // ============ Porcelain: Player Trading ============
+
+    /**
+     * Open a trade session with another player, walking closer if needed.
+     * Requesting a player who already requested you accepts their request;
+     * otherwise this waits (re-requesting periodically) until they request
+     * back or the timeout expires.
+     */
+    async tradeWith(target: NearbyPlayer | string | RegExp, timeout: number = 30_000): Promise<ActionResult> {
+        await this.dismissBlockingUI();
+
+        const open = this.sdk.getTradeState();
+        if (open.isOpen) {
+            return { success: true, message: `Trade already open with ${open.partner ?? 'unknown partner'}` };
+        }
+
+        const resolvePlayer = (): NearbyPlayer | null =>
+            typeof target === 'object' && 'index' in target
+                ? (this.sdk.getState()?.nearbyPlayers.find(p => p.index === target.index) ?? target)
+                : this.sdk.findNearbyPlayer(target);
+
+        let player = resolvePlayer();
+        if (!player) {
+            return { success: false, message: `Player not found nearby: ${target}`, reason: 'player_not_found' };
+        }
+
+        if (player.distance > 12) {
+            await this.walkTo(player.x, player.z, 8);
+            player = resolvePlayer();
+            if (!player) {
+                return { success: false, message: `Player left before trade could start: ${target}`, reason: 'player_not_found' };
+            }
+        }
+
+        const deadline = Date.now() + timeout;
+        const msgBaseline = this.helpers.getMessageTick();
+        const REREQUEST_INTERVAL = 8_000;
+
+        let failReason: 'busy' | null = null;
+        while (Date.now() < deadline) {
+            const current = resolvePlayer();
+            if (current) player = current;
+            await this.sdk.sendTradeRequest(player.index);
+
+            try {
+                const finalState = await this.waitForActionCondition(state => {
+                    if (this.helpers.findRefusal(msgBaseline, ['is busy at the moment'])) {
+                        failReason = 'busy';
+                        return true;
+                    }
+                    return state.trade?.isOpen === true;
+                }, Math.min(REREQUEST_INTERVAL, Math.max(1, deadline - Date.now())));
+
+                if (failReason) {
+                    return { success: false, message: `${player.name} is busy at the moment`, reason: failReason };
+                }
+                const partner = finalState.trade?.partner ?? player.name;
+                return { success: true, message: `Trade opened with ${partner}` };
+            } catch {
+                // No response yet - re-request and keep waiting until deadline.
+            }
+        }
+
+        return { success: false, message: `No response to trade request from ${player.name}`, reason: 'no_response' };
+    }
+
+    /**
+     * Place items into your side of an open trade. Each spec resolves against
+     * your inventory; `amount` -1 offers all of that item (default 1).
+     * Waits until the offer window reflects each addition. Adding items
+     * resets both players' accepts server-side.
+     */
+    async offerTradeItems(items: TradeItemSpec[], timeout: number = 15_000): Promise<ActionResult> {
+        const deadline = Date.now() + timeout;
+
+        for (const spec of items) {
+            const state = this.sdk.getState();
+            const trade = this.sdk.getTradeState();
+            if (!state || !trade.isOpen || trade.screen !== 'offer') {
+                return { success: false, message: 'Trade offer screen is not open', reason: 'not_open' };
+            }
+
+            const item = this.helpers.resolveInventoryItem(spec.item, /./);
+            if (!item) {
+                return { success: false, message: `Item not found in inventory: ${spec.item}`, reason: 'item_not_found' };
+            }
+
+            const available = countItems(state.inventory, item.id);
+            const amount = spec.amount ?? 1;
+            const adding = amount === -1 ? available : Math.min(amount, available);
+            const expected = countMatching(trade.myOffer, spec.item) + adding;
+
+            const msgBaseline = this.helpers.getMessageTick();
+            await this.sdk.sendOfferItem(item.slot, amount);
+
+            try {
+                let refused: string | null = null;
+                await this.waitForActionCondition(s => {
+                    refused = this.helpers.findRefusal(msgBaseline, ["you can't trade this item"]);
+                    if (refused) return true;
+                    return !!s.trade && countMatching(s.trade.myOffer, spec.item) >= expected;
+                }, Math.max(1, deadline - Date.now()));
+                if (refused) {
+                    return { success: false, message: `${item.name} is not tradeable`, reason: 'untradeable' };
+                }
+            } catch {
+                return { success: false, message: `Timeout offering ${item.name}`, reason: 'timeout' };
+            }
+        }
+
+        return { success: true, message: `Offered ${items.length} item type(s)` };
+    }
+
+    /**
+     * Accept the current trade screen and wait for observable progress:
+     * the screen advancing (offer -> confirm), the trade completing, or the
+     * acceptance being registered while waiting on the partner.
+     */
+    async acceptTrade(timeout: number = 10_000): Promise<ActionResult> {
+        const before = this.sdk.getTradeState();
+        if (!before.isOpen) {
+            return { success: false, message: 'No trade screen is open', reason: 'not_open' };
+        }
+        const screenBefore = before.screen;
+
+        await this.sdk.sendAcceptTrade();
+
+        try {
+            const finalState = await this.waitForActionCondition(s => {
+                const t = s.trade;
+                if (!t || !t.isOpen) return true;               // completed (or declined)
+                if (t.screen !== screenBefore) return true;      // advanced to confirm
+                return t.myAccepted;                             // registered, waiting on partner
+            }, timeout);
+
+            const after = finalState.trade;
+            if (!after || !after.isOpen) {
+                return { success: true, message: 'Trade screen closed' };
+            }
+            if (after.screen !== screenBefore) {
+                return { success: true, message: 'Advanced to confirm screen' };
+            }
+            return { success: true, message: 'Accepted - waiting for other player' };
+        } catch {
+            return { success: false, message: 'No visible response to accept', reason: 'timeout' };
+        }
+    }
+
+    /** Decline (close) the open trade and wait for the screen to close. */
+    async declineTrade(timeout: number = 5_000): Promise<ActionResult> {
+        const trade = this.sdk.getTradeState();
+        if (!trade.isOpen) {
+            return { success: true, message: 'No trade was open' };
+        }
+        await this.sdk.sendDeclineTrade();
+        try {
+            await this.waitForActionCondition(s => s.trade?.isOpen !== true, timeout);
+            return { success: true, message: 'Trade declined' };
+        } catch {
+            return { success: false, message: 'Trade screen did not close', reason: 'timeout' };
+        }
+    }
+
+    /**
+     * Full trade happy path with one player: open the session, offer `give`,
+     * accept once the partner's offer satisfies `want` (or the `accept`
+     * predicate), re-verify on the confirm screen, and report the actual
+     * inventory delta.
+     *
+     * Any offer change resets both accepts server-side, so the offer seen at
+     * accept time is the offer that reaches the confirm screen; the confirm
+     * re-verification makes offer-switching structurally impossible to slip
+     * past this method.
+     *
+     * @example
+     * ```ts
+     * // Pure gift (muling): give all herbs, expect nothing back
+     * await bot.trade('mule01', { give: [{ item: /herb/i, amount: -1 }] });
+     *
+     * // Exchange: give 100 coins only if 5 lobsters are offered
+     * await bot.trade('cook', {
+     *   give: [{ item: 'coins', amount: 100 }],
+     *   want: [{ item: 'lobster', amount: 5 }],
+     * });
+     * ```
+     */
+    async trade(target: NearbyPlayer | string | RegExp, options: TradeOptions = {}): Promise<TradeResult> {
+        const timeout = options.timeout ?? 60_000;
+        const deadline = Date.now() + timeout;
+
+        const opened = await this.tradeWith(target, timeout);
+        if (!opened.success) {
+            return {
+                success: false,
+                message: opened.message,
+                gave: [],
+                received: [],
+                reason: (opened.reason as TradeResult['reason']) ?? 'no_response',
+            };
+        }
+
+        return this.runOpenTradeSession(options, deadline);
+    }
+
+    /**
+     * Serve incoming trades: wait for "wishes to trade with you." requests,
+     * accept ones matching the `from` filter, and run each session with the
+     * shared give/want/accept policy. The receiving half of a muling setup:
+     *
+     * ```ts
+     * // Worker:  bot.trade('mule01', { give: [{ item: /ore/i, amount: -1 }] })
+     * // Mule:    bot.serveTrades({ from: /^fleet_/i, until: () => sdk.getInventory().length >= 26 })
+     * ```
+     *
+     * This owns the bot while running - it is an explicit serving loop, not a
+     * background hook, so it never fights another controller for the session.
+     */
+    async serveTrades(options: ServeTradesOptions = {}): Promise<ServeTradesResult> {
+        const {
+            from,
+            onTrade,
+            until,
+            maxTrades,
+            tradeTimeout = 60_000,
+            timeout = 600_000,
+        } = options;
+        const deadline = Date.now() + timeout;
+        const trades: TradeResult[] = [];
+
+        const fromMatches = (name: string): boolean => {
+            if (!from) return true;
+            if (typeof from === 'string') return name.toLowerCase().includes(from.toLowerCase());
+            return from.test(name);
+        };
+
+        while (true) {
+            if (until?.()) {
+                return { success: true, message: `Stop condition met after ${trades.length} trade(s)`, trades, reason: 'until' };
+            }
+            if (maxTrades !== undefined && trades.length >= maxTrades) {
+                return { success: true, message: `Completed ${trades.length} trade(s)`, trades, reason: 'max_trades' };
+            }
+            const remaining = deadline - Date.now();
+            if (remaining <= 0) {
+                return { success: true, message: `Serving window ended after ${trades.length} trade(s)`, trades, reason: 'timeout' };
+            }
+
+            // A session can already be open (e.g. a request raced the loop).
+            let sessionOpen = this.sdk.getTradeState().isOpen;
+            if (sessionOpen) {
+                const partner = this.sdk.getTradeState().partner;
+                if (partner && !fromMatches(partner)) {
+                    await this.declineTrade();
+                    continue;
+                }
+            } else {
+                const requester = await this.sdk.waitForTradeRequest({ timeout: Math.min(remaining, 15_000) });
+                if (!requester) continue;
+                if (!fromMatches(requester)) continue;
+
+                const player = this.sdk.findNearbyPlayer(exactNamePattern(requester));
+                if (!player) continue;
+
+                await this.sdk.sendTradeRequest(player.index);
+                try {
+                    await this.waitForActionCondition(s => s.trade?.isOpen === true, 10_000);
+                    sessionOpen = true;
+                } catch {
+                    continue;
+                }
+            }
+
+            const result = await this.runOpenTradeSession(
+                { give: options.give, want: options.want, accept: options.accept },
+                Date.now() + Math.min(tradeTimeout, Math.max(1, deadline - Date.now()))
+            );
+            trades.push(result);
+            onTrade?.(result);
+        }
+    }
+
+    /**
+     * Drive an already-open trade session to completion: offer, accept with
+     * re-accept on partner offer changes, confirm-screen re-verification,
+     * and inventory-delta reporting.
+     */
+    private async runOpenTradeSession(options: TradeOptions, deadline: number): Promise<TradeResult> {
+        const want = options.want ?? [];
+        const acceptOffer = options.accept ?? ((offer: TradeItem[]) => offerSatisfies(want, offer));
+        const startState = this.sdk.getState();
+        const partner = this.sdk.getTradeState().partner ?? undefined;
+        const invBefore = countInventoryById(startState?.inventory ?? []);
+        const sessionBaseline = this.helpers.getMessageTick();
+
+        const fail = async (message: string, reason: TradeResult['reason'], decline: boolean): Promise<TradeResult> => {
+            if (decline) await this.declineTrade();
+            return { success: false, message, partner, gave: [], received: [], reason };
+        };
+
+        // 1. Put our items in.
+        if (options.give?.length) {
+            const offered = await this.offerTradeItems(options.give, Math.max(1, deadline - Date.now()));
+            if (!offered.success) {
+                if (!this.sdk.getTradeState().isOpen) {
+                    return this.classifyClosedSession(sessionBaseline, partner, invBefore);
+                }
+                return fail(offered.message, 'offer_failed', true);
+            }
+        }
+
+        // Accept retries are gated on tick advancement, never on "any state
+        // change": every executed action publishes a snapshot with an
+        // unchanged tick, so a state-change wait resolves instantly against
+        // stale data and floods the engine's per-tick packet budget. That
+        // backlogs this client's own update stream by whole minutes - the
+        // trade advances server-side while both clients read stale screens.
+        const waitForNextTick = async () => {
+            const tick = this.sdk.getState()?.tick ?? 0;
+            await this.sdk.waitForCondition(
+                s => s.tick > tick,
+                Math.min(2_000, Math.max(1, deadline - Date.now()))
+            ).catch(() => {});
+        };
+
+        // 2. Offer screen: accept whenever the partner's visible offer passes
+        // the policy. A partner offer change resets accepts server-side, so
+        // loop until the screen advances.
+        let lastAcceptTick = -1;
+        while (true) {
+            if (Date.now() >= deadline) {
+                return fail('Trade timed out on the offer screen', 'timeout', true);
+            }
+            const trade = this.sdk.getTradeState();
+            if (!trade.isOpen) {
+                if (await this.tradeClosedForGood()) {
+                    return this.classifyClosedSession(sessionBaseline, partner, invBefore);
+                }
+                continue; // transition blip - the confirm screen is opening
+            }
+            if (trade.screen === 'confirm') break;
+
+            const tick = this.sdk.getState()?.tick ?? 0;
+            if (acceptOffer(trade.theirOffer) && !trade.myAccepted && tick !== lastAcceptTick) {
+                lastAcceptTick = tick;
+                await this.sdk.sendAcceptTrade();
+            }
+            await waitForNextTick();
+        }
+
+        // 3. Confirm screen: the offers here are final. Re-verify before the
+        // irreversible accept.
+        {
+            const confirm = this.sdk.getTradeState();
+            if (!acceptOffer(confirm.theirOffer)) {
+                const missing = missingFromOffer(want, confirm.theirOffer)
+                    .map(spec => `${spec.item}${spec.amount && spec.amount > 1 ? ` x${spec.amount}` : ''}`)
+                    .join(', ');
+                return fail(
+                    `Partner's final offer does not satisfy requirements${missing ? ` (missing: ${missing})` : ''} - declined`,
+                    'want_not_met',
+                    true
+                );
+            }
+        }
+
+        lastAcceptTick = -1;
+        while (true) {
+            if (Date.now() >= deadline) {
+                return fail('Trade timed out on the confirm screen', 'timeout', true);
+            }
+            const trade = this.sdk.getTradeState();
+            if (!trade.isOpen) {
+                if (await this.tradeClosedForGood()) {
+                    return this.classifyClosedSession(sessionBaseline, partner, invBefore);
+                }
+                continue;
+            }
+            if (trade.screen !== 'confirm') {
+                // Back on the offer screen: only possible if this session was
+                // re-entered mid-transition; let the offer-screen rules apply.
+                return fail('Trade returned to the offer screen unexpectedly', 'error', true);
+            }
+            const tick = this.sdk.getState()?.tick ?? 0;
+            if (!trade.myAccepted && tick !== lastAcceptTick) {
+                lastAcceptTick = tick;
+                await this.sdk.sendAcceptTrade();
+            }
+            await waitForNextTick();
+        }
+    }
+
+    /**
+     * True once "no trade open" has persisted for two game ticks. The engine
+     * closes the side modal with an IfClose packet before opening the confirm
+     * screen (Player.openMainModal), so a single snapshot showing no trade is
+     * not proof the session ended - it can be the offer->confirm transition.
+     */
+    private async tradeClosedForGood(): Promise<boolean> {
+        for (let i = 0; i < 2; i++) {
+            if (this.sdk.getTradeState().isOpen) return false;
+            await this.sdk.waitForTicks(1).catch(() => {});
+        }
+        return !this.sdk.getTradeState().isOpen;
+    }
+
+    /**
+     * Once the trade screen has closed, decide from game messages whether the
+     * trade completed ("Accepted trade.") or was declined, and report the
+     * inventory delta for a completion.
+     */
+    private async classifyClosedSession(
+        sessionBaseline: number,
+        partner: string | undefined,
+        invBefore: Map<number, { name: string; count: number }>
+    ): Promise<TradeResult> {
+        // Let the post-trade inventory update land before diffing.
+        await this.sdk.waitForTicks(1).catch(() => {});
+
+        const declined = this.helpers.findRefusal(sessionBaseline, ['declined trade']);
+        const noSpace = this.helpers.findRefusal(sessionBaseline, ['enough inventory space']);
+        const accepted = this.helpers.findRefusal(sessionBaseline, ['accepted trade']);
+
+        if (accepted) {
+            const invAfter = countInventoryById(this.sdk.getState()?.inventory ?? []);
+            const { gained, lost } = diffInventories(invBefore, invAfter);
+            const gaveText = lost.length ? lost.map(i => `${i.name} x${i.count}`).join(', ') : 'nothing';
+            const receivedText = gained.length ? gained.map(i => `${i.name} x${i.count}`).join(', ') : 'nothing';
+            return {
+                success: true,
+                message: `Trade completed with ${partner ?? 'partner'}: gave ${gaveText}, received ${receivedText}`,
+                partner,
+                gave: lost,
+                received: gained,
+            };
+        }
+        if (noSpace) {
+            return { success: false, message: noSpace, partner, gave: [], received: [], reason: 'no_space' };
+        }
+        return {
+            success: false,
+            message: declined ?? 'Trade screen closed before completion',
+            partner,
+            gave: [],
+            received: [],
+            reason: 'declined',
+        };
     }
 
     // ============ Porcelain: Equipment & Combat ============
