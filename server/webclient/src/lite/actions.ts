@@ -418,11 +418,20 @@ export function clickDialogOption(c: LiteClient, optionIndex = 0): boolean {
         return false;
     }
 
+    // A pending choice (OK-typed options, registered server-side via
+    // if_addresumebutton) must be answered with IF_BUTTON on one of the
+    // options - the engine refuses a bare RESUME while a choice is pending.
+    // Sending one anyway latched resumedPauseButton with no new interface
+    // arriving to reset it, pinning the dialog against every later continue
+    // click. Refuse locally instead of desyncing.
+    const choicePending = (): boolean =>
+        getDialogOptions(c).some(o => o.buttonType === ButtonType.BUTTON_OK);
+
     if (optionIndex === 0) {
         // Bare "continue". The resumedPauseButton guard mirrors the engine's
         // ResumePauseButtonHandler fix: sending a second RESUME while one is
         // pending re-picks the previous choice.
-        if (!c.resumedPauseButton && c.chatModalId !== -1) {
+        if (!c.resumedPauseButton && c.chatModalId !== -1 && !choicePending()) {
             c.writeOpcode(ClientProt.RESUME_PAUSEBUTTON);
             c.out.p2(c.chatModalId);
             c.resumedPauseButton = true;
@@ -442,7 +451,7 @@ export function clickDialogOption(c: LiteClient, optionIndex = 0): boolean {
 
     const option = options[optionIndex - 1];
     if (option.buttonType === ButtonType.BUTTON_CONTINUE) {
-        if (c.resumedPauseButton) {
+        if (c.resumedPauseButton || choicePending()) {
             return false;
         }
         c.writeOpcode(ClientProt.RESUME_PAUSEBUTTON);

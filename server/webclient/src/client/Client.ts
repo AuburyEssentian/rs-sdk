@@ -2421,8 +2421,17 @@ export class Client extends GameShell {
             return false;
         }
 
+        // A pending choice (OK-typed options, registered server-side via
+        // if_addresumebutton) must be answered with IF_BUTTON on one of the
+        // options - the engine refuses a bare RESUME while a choice is
+        // pending. Sending one anyway latched resumedPauseButton with no new
+        // interface arriving to reset it, pinning the dialog against every
+        // later continue click. Refuse locally instead of desyncing.
+        const choicePending = (): boolean =>
+            this.getDialogOptions().some(o => o.buttonType === ButtonType.BUTTON_OK);
+
         if (optionIndex === 0) {
-            if (!this.resumedPauseButton && this.chatModalId !== -1) {
+            if (!this.resumedPauseButton && this.chatModalId !== -1 && !choicePending()) {
                 this.writePacketOpcode(ClientProt.RESUME_PAUSEBUTTON);
                 this.out.p2(this.chatModalId);
                 this.resumedPauseButton = true;
@@ -2437,7 +2446,7 @@ export class Client extends GameShell {
                 const option = dialogOptions[optionIndex - 1];
 
                 if (option.buttonType === ButtonType.BUTTON_CONTINUE) {
-                    if (!this.resumedPauseButton) {
+                    if (!this.resumedPauseButton && !choicePending()) {
                         this.writePacketOpcode(ClientProt.RESUME_PAUSEBUTTON);
                         this.out.p2(option.componentId);
                         this.resumedPauseButton = true;
