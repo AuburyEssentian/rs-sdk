@@ -573,7 +573,7 @@ interface PickupResult {
   success: boolean;
   item?: InventoryItem;
   message: string;
-  reason?: 'item_not_found' | 'cant_reach' | 'inventory_full' | 'timeout';
+  reason?: 'item_not_found' | 'cant_reach' | 'inventory_full' | 'taken_by_other' | 'timeout';
 }
 ```
 

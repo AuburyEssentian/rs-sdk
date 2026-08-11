@@ -791,8 +791,6 @@ export class BotActions {
             return { success: false, message: 'Item not found on ground', reason: 'item_not_found' };
         }
 
-        const invCountBefore = this.sdk.getInventory().length;
-
         // Walk close to the item first (server handles final positioning via sendPickup)
         if (item.distance > 2) {
             const walkResult = await this.walkTo(item.x, item.z, 2);
@@ -814,8 +812,10 @@ export class BotActions {
             return { success: false, message: result.message };
         }
 
-        // Track total inventory item count (handles stackables)
-        const invTotalBefore = this.sdk.getInventory().reduce((sum, i) => sum + i.count, 0);
+        // Success is *gaining* the item, tracked by its exact id. The ground
+        // publication also disappears when another player wins the pickup, so
+        // disappearance alone only stops the wait - see chopTree.
+        const countBefore = countItems(this.sdk.getInventory(), item.id);
 
         try {
             const finalState = await this.sdk.waitForCondition(state => {
@@ -831,15 +831,10 @@ export class BotActions {
                         }
                     }
                 }
+                if (countItems(state.inventory, item.id) > countBefore) return true;
                 // Item disappeared from ground (picked up by us or someone else)
                 const stillOnGround = state.groundItems.some(g => g.x === item.x && g.z === item.z && g.id === item.id);
-                if (!stillOnGround) return true;
-                // New inventory slot appeared (non-stackable)
-                if (state.inventory.length > invCountBefore) return true;
-                // Existing stack grew (stackable)
-                const invTotalNow = state.inventory.reduce((sum, i) => sum + i.count, 0);
-                if (invTotalNow > invTotalBefore) return true;
-                return false;
+                return !stillOnGround;
             }, 10000);
 
             // Check for failure reasons
@@ -853,6 +848,20 @@ export class BotActions {
                         return { success: false, message: 'Inventory is full', reason: 'inventory_full' };
                     }
                 }
+            }
+
+            // The ground removal can publish a tick before the inventory add
+            // lands - give the add a short grace before ruling it lost.
+            let gained = countItems(finalState.inventory, item.id) - countBefore;
+            if (gained <= 0) {
+                try {
+                    const settled = await this.sdk.waitForCondition(
+                        s => countItems(s.inventory, item.id) > countBefore, 1500);
+                    gained = countItems(settled.inventory, item.id) - countBefore;
+                } catch { /* no gain observed */ }
+            }
+            if (gained <= 0) {
+                return { success: false, message: `${item.name} was taken by someone else`, reason: 'taken_by_other' };
             }
 
             const pickedUp = this.sdk.getInventory().find(i => i.id === item.id);
