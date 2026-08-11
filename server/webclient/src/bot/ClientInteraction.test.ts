@@ -181,7 +181,7 @@ describe('interactPlayer', () => {
         const payload: number[] = [];
 
         expect(Client.prototype.interactPlayer.call(playerClient(opcodes, payload), 5, 2))
-            .toEqual({ success: true });
+            .toEqual({ success: true, routed: true });
         expect(opcodes).toEqual([166]); // ClientProt.OPPLAYER2
         expect(payload).toEqual([5]);
     });
@@ -191,8 +191,53 @@ describe('interactPlayer', () => {
         const payload: number[] = [];
 
         expect(Client.prototype.interactPlayer.call(playerClient(opcodes, payload), 5, 5))
-            .toEqual({ success: true });
+            .toEqual({ success: true, routed: true });
         expect(opcodes).toEqual([174]); // ClientProt.OPPLAYER5
+    });
+});
+
+describe('npc ap-range dispatch', () => {
+    function npcClient(opcodes: number[], payload: number[], routable: boolean) {
+        return {
+            ingame: true,
+            out: { p2: (value: number) => payload.push(value) },
+            localPlayer: { routeX: [1], routeZ: [1] },
+            npc: { 42: { routeX: [5], routeZ: [6], type: { size: 1 } } },
+            tryMove: () => routable,
+            writePacketOpcode: (opcode: number) => opcodes.push(opcode)
+        };
+    }
+
+    test('interactNpc dispatches OPNPC even when routing fails', () => {
+        // Wormbrain behind the Port Sarim jail bars: apnpc1 + p_aprange(3) is
+        // the intended talk-through-the-bars mechanic, but the tile is never
+        // routable. Aborting on the failed route made the interaction
+        // impossible from the SDK while a human click worked.
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+
+        expect(Client.prototype.interactNpc.call(npcClient(opcodes, payload, false), 42, 1))
+            .toEqual({ success: true, routed: false });
+        expect(opcodes).toEqual([236]); // ClientProt.OPNPC1
+        expect(payload).toEqual([42]);
+    });
+
+    test('talkToNpc dispatches OPNPC1 even when routing fails', () => {
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+
+        expect(Client.prototype.talkToNpc.call(npcClient(opcodes, payload, false), 42))
+            .toEqual({ success: true, routed: false });
+        expect(opcodes).toEqual([236]); // ClientProt.OPNPC1
+    });
+
+    test('routed stays true when the route succeeds', () => {
+        const opcodes: number[] = [];
+        const payload: number[] = [];
+
+        expect(Client.prototype.interactNpc.call(npcClient(opcodes, payload, true), 42, 2))
+            .toEqual({ success: true, routed: true });
+        expect(opcodes).toEqual([233]); // ClientProt.OPNPC2
     });
 });
 

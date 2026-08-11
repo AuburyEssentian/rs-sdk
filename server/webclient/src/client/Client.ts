@@ -1072,17 +1072,19 @@ export class Client extends GameShell {
         // Route with the NPC's real footprint so a 2x2 NPC is approachable from
         // any of its sides; StateCollector's reach probe asks the same question
         // with the same size, and the two must agree (reach.ts invariant 1).
+        // Attempt the route, but always dispatch - mirrors interactLoc. Approach
+        // ops (apnpc scripts like Wormbrain's talk-through-the-bars, p_aprange +
+        // lineofsight) trigger at tiles the routefinder can never reach, and the
+        // server owns the reach check anyway - worst case it answers "I can't
+        // reach that!" instead of us aborting silently.
         const size = n.type?.size ?? 1;
         const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], n.routeX[0], n.routeZ[0], false, size, size, 0, 0, 0, 2);
-        if (!routed) {
-            return { success: false, reason: 'cant_reach' };
-        }
 
         // Send OPNPC1 packet (Talk-to)
         this.writePacketOpcode(ClientProt.OPNPC1);
         this.out.p2(npcIndex);
 
-        return { success: true };
+        return { success: true, routed };
     }
 
     /**
@@ -1110,11 +1112,10 @@ export class Client extends GameShell {
         // client to send the route to an interaction target; without it the player never
         // moves and the server replies "I can't reach that!". Mirrors spellOnNpc/useItemOnNpc.
         // Real footprint, same as talkToNpc - the reach probe must agree.
+        // Attempt the route, but always dispatch (see talkToNpc): apnpc ops are
+        // legitimately interactable at range through walls.
         const size = n.type?.size ?? 1;
         const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], n.routeX[0], n.routeZ[0], false, size, size, 0, 0, 0, 2);
-        if (!routed) {
-            return { success: false, reason: 'cant_reach' };
-        }
 
         // Send the appropriate OPNPC packet based on option index
         const opcodes = [
@@ -1127,7 +1128,7 @@ export class Client extends GameShell {
         this.writePacketOpcode(opcodes[optionIndex - 1]);
         this.out.p2(npcIndex);
 
-        return { success: true };
+        return { success: true, routed };
     }
 
     /**
@@ -1153,10 +1154,9 @@ export class Client extends GameShell {
         // Walk to the player first. In 274's client-routefinder mode the server expects the
         // client to send the route to an interaction target; without it the player never
         // moves and the server replies "I can't reach that!". Mirrors spellOnNpc/useItemOnNpc.
+        // Attempt the route, but always dispatch (see talkToNpc): applayer ops
+        // trigger at range and the server owns the reach check.
         const routed = this.tryMove(this.localPlayer.routeX[0], this.localPlayer.routeZ[0], p.routeX[0], p.routeZ[0], false, 1, 1, 0, 0, 0, 2);
-        if (!routed) {
-            return { success: false, reason: 'cant_reach' };
-        }
 
         const opcodes = [
             ClientProt.OPPLAYER1,
@@ -1168,7 +1168,7 @@ export class Client extends GameShell {
         this.writePacketOpcode(opcodes[optionIndex - 1]);
         this.out.p2(playerIndex);
 
-        return { success: true };
+        return { success: true, routed };
     }
 
     /**
@@ -2054,6 +2054,8 @@ export class Client extends GameShell {
             return { success: false, reason: 'target_not_found' };
         }
 
+        // Attempt the route, but always dispatch (see talkToNpc/useItemOnLoc):
+        // apnpcu ops trigger at range and the server owns the reach check.
         const npcSize = n.type?.size ?? 1;
         const routed = this.tryMove(
             this.localPlayer.routeX[0],
@@ -2062,11 +2064,8 @@ export class Client extends GameShell {
             n.routeZ[0],
             false, npcSize, npcSize, 0, 0, 0, 2
         );
-        if (!routed) {
-            return { success: false, reason: 'cant_reach' };
-        }
 
-        console.log(`[Client] Using item ${itemObj.name} (id:${itemId}, slot ${itemSlot}) on NPC ${npcIndex}`);
+        console.log(`[Client] Using item ${itemObj.name} (id:${itemId}, slot ${itemSlot}) on NPC ${npcIndex}${routed ? '' : ' (unrouted)'}`);
 
         this.writePacketOpcode(ClientProt.OPNPCU);
         this.out.p2(npcIndex);
@@ -2074,7 +2073,7 @@ export class Client extends GameShell {
         this.out.p2(itemSlot);
         this.out.p2(interfaceId);
 
-        return { success: true };
+        return { success: true, routed };
     }
 
     /**

@@ -69,6 +69,8 @@ const DISPATCH_ERROR_WINDOW = 500;
 export interface ClientActionResult {
     success: boolean;
     reason?: string;
+    /** False when the op dispatched without a client route (ap-range attempt). */
+    routed?: boolean;
 }
 
 export interface LiteClientOptions {

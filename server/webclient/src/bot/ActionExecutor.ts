@@ -379,6 +379,13 @@ export class ActionExecutor {
 
     private wrapClientAction(result: ClientActionResult, successMsg: string, failMsg: string): ActionResult {
         if (result.success) {
+            // routed:false = the op dispatched without a client route (ap-range
+            // attempt); the server owns the reach check from here. Surface it
+            // so callers can still blacklist genuinely unreachable targets.
+            if (result.routed === false) {
+                this.warnUnreachable(successMsg);
+                return { success: true, message: `${successMsg} (unrouted - ap-range attempt)`, phase: 'dispatch', data: { routed: false } };
+            }
             return { success: true, message: successMsg, phase: 'dispatch' };
         }
         if (result.reason === 'cant_reach') {

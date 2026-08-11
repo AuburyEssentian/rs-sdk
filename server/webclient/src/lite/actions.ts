@@ -73,15 +73,18 @@ export function interactLoc(c: LiteClient, worldX: number, worldZ: number, locId
         return { success: false, reason: 'target_not_found' };
     }
 
-    if (!c.routeToLoc(dest.x, dest.z, locId)) {
-        return { success: false, reason: 'cant_reach' };
-    }
+    // Attempt a route, but always dispatch - mirrors the browser client.
+    // Approach ops (aploc scripts like Mage Arena's slashable web) trigger at
+    // tiles the routefinder can never reach, and the server owns the reach
+    // check anyway - worst case it answers "I can't reach that!" instead of
+    // us aborting silently.
+    const routed = c.routeToLoc(dest.x, dest.z, locId);
 
     c.writeOpcode([ClientProt.OPLOC1, ClientProt.OPLOC2, ClientProt.OPLOC3, ClientProt.OPLOC4, ClientProt.OPLOC5][optionIndex - 1]);
     c.out.p2(worldX);
     c.out.p2(worldZ);
     c.out.p2(locId);
-    return { success: true };
+    return { success: true, routed };
 }
 
 export function talkToNpc(c: LiteClient, npcIndex: number): ClientActionResult {
@@ -113,14 +116,16 @@ function opNpc(c: LiteClient, npcIndex: number, optionIndex: number): ClientActi
     // reports cant_reach when the other three sides are open. StateCollector's
     // reach probe uses the same size - the two have to agree or `reachable`
     // starts lying.
+    // Attempt the route, but always dispatch - mirrors interactLoc. Approach
+    // ops (apnpc scripts like Wormbrain's talk-through-the-bars, p_aprange +
+    // lineofsight) trigger at tiles the routefinder can never reach, and the
+    // server owns the reach check anyway.
     const size = n.type?.size ?? 1;
-    if (!tryMoveTo(c, n.routeX[0], n.routeZ[0], size, size, 0, 0, 0)) {
-        return { success: false, reason: 'cant_reach' };
-    }
+    const routed = tryMoveTo(c, n.routeX[0], n.routeZ[0], size, size, 0, 0, 0);
 
     c.writeOpcode([ClientProt.OPNPC1, ClientProt.OPNPC2, ClientProt.OPNPC3, ClientProt.OPNPC4, ClientProt.OPNPC5][optionIndex - 1]);
     c.out.p2(npcIndex);
-    return { success: true };
+    return { success: true, routed };
 }
 
 export function interactPlayer(c: LiteClient, playerIndex: number, optionIndex: number): ClientActionResult {
@@ -139,13 +144,13 @@ export function interactPlayer(c: LiteClient, playerIndex: number, optionIndex: 
         return { success: false, reason: 'target_not_found' };
     }
 
-    if (!tryMoveTo(c, p.routeX[0], p.routeZ[0], 1, 1, 0, 0, 0)) {
-        return { success: false, reason: 'cant_reach' };
-    }
+    // Attempt the route, but always dispatch (see opNpc): applayer ops trigger
+    // at range and the server owns the reach check.
+    const routed = tryMoveTo(c, p.routeX[0], p.routeZ[0], 1, 1, 0, 0, 0);
 
     c.writeOpcode([ClientProt.OPPLAYER1, ClientProt.OPPLAYER2, ClientProt.OPPLAYER3, ClientProt.OPPLAYER4, ClientProt.OPPLAYER5][optionIndex - 1]);
     c.out.p2(playerIndex);
-    return { success: true };
+    return { success: true, routed };
 }
 
 export function pickupGroundItem(c: LiteClient, worldX: number, worldZ: number, itemId: number): ClientActionResult {
@@ -264,16 +269,16 @@ export function useItemOnNpc(c: LiteClient, itemSlot: number, npcIndex: number, 
     if (!n) {
         return { success: false, reason: 'target_not_found' };
     }
-    if (!tryMoveTo(c, n.routeX[0], n.routeZ[0], 1, 1, 0, 0, 0)) {
-        return { success: false, reason: 'cant_reach' };
-    }
+    // Attempt the route, but always dispatch (see opNpc): apnpcu ops trigger
+    // at range and the server owns the reach check.
+    const routed = tryMoveTo(c, n.routeX[0], n.routeZ[0], 1, 1, 0, 0, 0);
 
     c.writeOpcode(ClientProt.OPNPCU);
     c.out.p2(npcIndex);
     c.out.p2(itemId);
     c.out.p2(itemSlot);
     c.out.p2(interfaceId);
-    return { success: true };
+    return { success: true, routed };
 }
 
 export function useItemOnLoc(c: LiteClient, itemSlot: number, worldX: number, worldZ: number, locId: number, interfaceId: number = INVENTORY_INTERFACE_ID): ClientActionResult {
@@ -291,9 +296,9 @@ export function useItemOnLoc(c: LiteClient, itemSlot: number, worldX: number, wo
     if (!LocType.list(locId)) {
         return { success: false, reason: 'target_not_found' };
     }
-    if (!c.routeToLoc(dest.x, dest.z, locId)) {
-        return { success: false, reason: 'cant_reach' };
-    }
+    // Attempt the route, but always dispatch (see interactLoc): aplocu ops
+    // trigger at range and the server owns the reach check.
+    const routed = c.routeToLoc(dest.x, dest.z, locId);
 
     c.writeOpcode(ClientProt.OPLOCU);
     c.out.p2(worldX);
@@ -302,7 +307,7 @@ export function useItemOnLoc(c: LiteClient, itemSlot: number, worldX: number, wo
     c.out.p2(itemId);
     c.out.p2(itemSlot);
     c.out.p2(interfaceId);
-    return { success: true };
+    return { success: true, routed };
 }
 
 export function spellOnNpc(c: LiteClient, npcIndex: number, spellComponent: number): ClientActionResult {
