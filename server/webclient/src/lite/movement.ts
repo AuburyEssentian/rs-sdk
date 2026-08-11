@@ -66,6 +66,32 @@ function route(
     const srcX = c.localPlayer.routeX[0];
     const srcZ = c.localPlayer.routeZ[0];
 
+    // The normal BFS performs these exact reach checks on its first queue
+    // element, after clearing two full BuildArea-sized scratch maps. Hot
+    // interactions such as the KBD spawn attack are deliberately staged
+    // inside the target footprint, so return the identical "already in
+    // reach" result before those O(scene) fills. As in the existing
+    // length<=0 branch below, no MOVE_OPCLICK packet is required here; the
+    // caller immediately emits the interaction op.
+    if (srcX === dx && srcZ === dz) {
+        return true;
+    }
+    if (locShape !== LocShape.WALL_STRAIGHT) {
+        if ((locShape < LocShape.WALLDECOR_STRAIGHT_OFFSET
+            || locShape === LocShape.CENTREPIECE_STRAIGHT)
+            && collisionMap.testWall(srcX, srcZ, dx, dz, locShape - 1, locAngle)) {
+            return true;
+        }
+        if (locShape < LocShape.CENTREPIECE_STRAIGHT
+            && collisionMap.testWDecor(srcX, srcZ, dx, dz, locShape - 1, locAngle)) {
+            return true;
+        }
+    }
+    if (locWidth !== 0 && locLength !== 0
+        && collisionMap.testLoc(srcX, srcZ, dx, dz, locWidth, locLength, forceapproach)) {
+        return true;
+    }
+
     dirMap.fill(0);
     distMap.fill(99999999);
 

@@ -27,6 +27,7 @@ import WordPack from '#/wordfilter/WordPack.js';
 
 import { loadCache } from './cache.js';
 import { LiteClient } from './LiteClient.js';
+import { tryMoveTo } from './movement.js';
 import { dispatch } from './protocol/incoming.js';
 
 const ORIGIN = process.env.LITE_TEST_ORIGIN ?? 'https://rs-sdk-demo.fly.dev';
@@ -275,5 +276,21 @@ describe('outgoing action encoding', () => {
         expect(r.g2()).toBe(3302); // baseX + build-area max interior tile
         expect(r.g2()).toBe(3250);
         expect(r.at).toBe(c.out.pos);
+    });
+
+    test('an actor already inside an NPC footprint needs no movement packet', () => {
+        if (!available) {
+            return;
+        }
+
+        const c = makeClient('bota');
+        c.collision[0] = new CollisionMap();
+        c.localPlayer!.routeX[0] = 50;
+        c.localPlayer!.routeZ[0] = 50;
+
+        const start = c.out.pos;
+        // A size-five NPC rooted at 48,48 contains the actor at 50,50.
+        expect(tryMoveTo(c, 48, 48, 5, 5, 0, 0, 0)).toBe(true);
+        expect(c.out.pos).toBe(start);
     });
 });
