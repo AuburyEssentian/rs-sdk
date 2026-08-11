@@ -501,15 +501,23 @@ export class ActionHelpers {
 
     resolveLocation(
         target: NearbyLoc | string | RegExp | undefined,
-        defaultPattern: RegExp
+        defaultPattern: RegExp,
+        withOption?: string | RegExp
     ): NearbyLoc | null {
-        if (!target) {
-            return this.sdk.findNearbyLoc(defaultPattern);
-        }
-        if (typeof target === 'object' && 'x' in target) {
+        if (typeof target === 'object' && target !== null && 'x' in target) {
             return target;
         }
-        return this.sdk.findNearbyLoc(target);
+        const pattern = target ?? defaultPattern;
+        if (withOption !== undefined) {
+            // Prefer a loc that actually offers the requested option -
+            // overlapping option-less duplicates (Lumbridge furnace) otherwise
+            // win on distance and dead-end the interaction. Fall back to plain
+            // name matching so the "no matching option" error can still name
+            // the loc it found.
+            const withOptionMatch = this.sdk.findNearbyLoc(pattern, { withOption });
+            if (withOptionMatch) return withOptionMatch;
+        }
+        return this.sdk.findNearbyLoc(pattern);
     }
 
     resolveInventoryItem(

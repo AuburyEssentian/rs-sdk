@@ -3428,7 +3428,9 @@ export class BotActions {
     ): Promise<InteractLocResult> {
         await this.dismissBlockingUI();
 
-        const loc = this.helpers.resolveLocation(target, /./);
+        // A named option narrows resolution to locs that actually offer it.
+        const optionFilter = typeof option === 'number' ? undefined : option;
+        const loc = this.helpers.resolveLocation(target, /./, optionFilter);
         if (!loc) {
             return { success: false, message: `Location not found: ${target}`, reason: 'loc_not_found' };
         }
@@ -3459,7 +3461,7 @@ export class BotActions {
         const locPattern = target instanceof RegExp || typeof target === 'string'
             ? target
             : exactNamePattern(loc.name);
-        const locNow = this.helpers.resolveLocation(locPattern, /./);
+        const locNow = this.helpers.resolveLocation(locPattern, /./, optionFilter);
         if (!locNow) {
             return { success: false, message: `${loc.name} no longer visible`, reason: 'loc_not_found' };
         }

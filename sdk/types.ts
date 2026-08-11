@@ -150,6 +150,13 @@ export interface FindOptions {
      * one. Targets whose reachability is unknown always qualify.
      */
     reachable?: boolean;
+    /**
+     * Loc lookups only: consider only locs that publish a matching interaction
+     * option. Overlapping duplicates are real - the Lumbridge furnace pairs an
+     * inert, option-less "Furnace" with the one that offers Smelt, and plain
+     * name matching happily returns the inert one.
+     */
+    withOption?: string | RegExp;
 }
 
 export interface LocOption {

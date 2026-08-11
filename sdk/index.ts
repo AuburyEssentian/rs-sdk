@@ -906,7 +906,16 @@ export class BotSDK {
     /** Find location by name pattern (shortest matching name wins, then nearest; reachable preferred). */
     findNearbyLoc(pattern: string | RegExp, options?: FindOptions): NearbyLoc | null {
         if (!this.state) return null;
-        return applyFindOptions(shortestNameMatch(this.state.nearbyLocs, pattern), options);
+        let candidates = this.state.nearbyLocs;
+        if (options?.withOption !== undefined) {
+            const optionPattern = options.withOption;
+            const regex = typeof optionPattern === 'string' ? new RegExp(optionPattern, 'i') : optionPattern;
+            candidates = candidates.filter(loc => loc.optionsWithIndex?.some(o => {
+                regex.lastIndex = 0;
+                return regex.test(o.text);
+            }));
+        }
+        return applyFindOptions(shortestNameMatch(candidates, pattern), options);
     }
 
     /** Get all nearby locations (trees, rocks, etc). */
