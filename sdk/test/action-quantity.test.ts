@@ -10,6 +10,7 @@ import {
     skillDialogProductLabels,
     validateActionQuantity,
     MAX_ACTION_QUANTITY,
+    MAX_BANK_ACTION_QUANTITY,
     MAX_SHOP_ACTION_QUANTITY,
 } from '../action-quantity';
 import type { DialogOption, InterfaceOption, InventoryItem } from '../types';
@@ -194,6 +195,19 @@ describe('validateActionQuantity', () => {
     test('accepts the -1 "all" sentinel only when the caller opts in', () => {
         expect(validateActionQuantity(-1, { allowAll: true })).toEqual({ valid: true, amount: -1 });
         expect(validateActionQuantity(-1).valid).toBe(false);
+    });
+
+    // Bank withdraw/deposit send ONE count-dialog packet whatever the amount,
+    // so the 10k anti-packet-loop cap must not apply: capping there silently
+    // no-opped 20k-coin withdrawals from large stacks.
+    test('bank quantities above 10k are valid up to the wire limit', () => {
+        expect(validateActionQuantity(20_000, { allowAll: true, max: MAX_BANK_ACTION_QUANTITY }))
+            .toEqual({ valid: true, amount: 20_000 });
+        expect(validateActionQuantity(120_000_000, { allowAll: true, max: MAX_BANK_ACTION_QUANTITY }).valid)
+            .toBe(true);
+        // 2^31-1 is the client's "All" button encoding, not a countable amount.
+        expect(validateActionQuantity(MAX_BANK_ACTION_QUANTITY + 1, { allowAll: true, max: MAX_BANK_ACTION_QUANTITY }).valid)
+            .toBe(false);
     });
 });
 

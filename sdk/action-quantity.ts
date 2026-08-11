@@ -137,6 +137,14 @@ export function countItems(
 
 /** Upper bound for quantities that expand into repeated shop/bank packets. */
 export const MAX_ACTION_QUANTITY = 10_000;
+/**
+ * Bank withdrawals/deposits serialize the whole amount into one Withdraw-X /
+ * Deposit-X count-dialog packet — nothing expands per item — so the only real
+ * bound is the wire's: the client encodes amounts >= 2^31-1 as the "All"
+ * button. Capping these at MAX_ACTION_QUANTITY silently no-opped ordinary
+ * stackable withdrawals (e.g. 20k coins from a 125M stack).
+ */
+export const MAX_BANK_ACTION_QUANTITY = 2_147_483_646;
 /** Shops accept Buy/Sell-10 at most, so 1000 items is already 100 packets. */
 export const MAX_SHOP_ACTION_QUANTITY = 1_000;
 /** Hard cap on packets a single shop call may emit, independent of quantity. */

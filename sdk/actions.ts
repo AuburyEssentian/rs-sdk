@@ -72,6 +72,7 @@ import {
     resolveSkillDialogProduct,
     skillDialogProductLabels,
     validateActionQuantity,
+    MAX_BANK_ACTION_QUANTITY,
     MAX_SHOP_ACTION_PACKETS,
     MAX_SHOP_ACTION_QUANTITY,
     SHOP_ACTION_DEADLINE_MS,
@@ -1646,7 +1647,7 @@ export class BotActions {
 
     /** Deposit an item into the bank. Use -1 for all. */
     async depositItem(target: InventoryItem | string | RegExp, amount: number = -1): Promise<BankDepositResult> {
-        const validated = validateActionQuantity(amount, { allowAll: true });
+        const validated = validateActionQuantity(amount, { allowAll: true, max: MAX_BANK_ACTION_QUANTITY });
         if (!validated.valid) {
             return { success: false, message: validated.message, reason: 'invalid_amount' };
         }
@@ -1701,7 +1702,7 @@ export class BotActions {
 
     /** Withdraw an item from the bank by slot number. */
     async withdrawItem(target: BankItem | string | RegExp | number, amount: number = 1): Promise<BankWithdrawResult> {
-        const validated = validateActionQuantity(amount, { allowAll: true });
+        const validated = validateActionQuantity(amount, { allowAll: true, max: MAX_BANK_ACTION_QUANTITY });
         if (!validated.valid) {
             return { success: false, message: validated.message, reason: 'invalid_amount' };
         }
