@@ -977,6 +977,13 @@ export class BotActions {
         let doorRetryCount = 0;
         let poorProgressCount = 0;
         const doorFailCounts = new Map<string, number>(); // Tracks reach failures per door
+        // Where the last partial path (reachedDestination=false) stopped.
+        // Walking the same dead end twice cannot succeed - fail fast instead.
+        let lastPartialEnd: { x: number; z: number } | null = null;
+        // Best distance-to-destination seen at any iteration end. Progress is
+        // *closing on the destination*, not distance walked: an oscillating
+        // route can move 5+ tiles every iteration while never getting closer.
+        let bestRemaining = distTo(pos);
 
         // Try to open a blocking door. Returns true if door was opened.
         const tryOpenDoor = async (): Promise<boolean> => {
@@ -1026,12 +1033,34 @@ export class BotActions {
                 }
             }
 
+            // A partial path (reachedDestination=false) stopping short of the
+            // tolerance is worth walking ONCE - doors open and zones allocate
+            // along the way. But when a re-query from the dead end produces the
+            // same endpoint, walking it again just loops: surface the shortfall
+            // instead (Varrock-house-to-bank dead-end loop, bug report
+            // 2026-08-10).
+            const endWp = path.waypoints[path.waypoints.length - 1];
+            const partial = path.reachedDestination === false
+                && endWp !== undefined
+                && this.helpers.distance(endWp.x, endWp.z, x, z) > tolerance;
+            if (partial && lastPartialEnd && endWp.x === lastPartialEnd.x && endWp.z === lastPartialEnd.z) {
+                if (!await tryOpenDoor()) {
+                    const short = Math.round(this.helpers.distance(endWp.x, endWp.z, x, z));
+                    return {
+                        success: false,
+                        message: `Path to (${x}, ${z}) stops ${short} tiles short at (${endWp.x}, ${endWp.z}) - the rest is unroutable from here (locked door or separate room?)`
+                    };
+                }
+                lastPartialEnd = null;
+                continue; // A door opened - re-query the path
+            }
+            lastPartialEnd = partial ? { x: endWp.x, z: endWp.z } : null;
+
             // Identify doors the path crosses through so we can open them proactively
             const requiredDoors = findDoorsAlongPath(path.waypoints);
             const requiredDoorKeys = new Set(requiredDoors.map(d => `${d.x},${d.z}`));
 
             // Walk waypoints
-            const startPos = { ...pos };
             let consecutiveStuck = 0;
 
             for (const wp of path.waypoints) {
@@ -1106,10 +1135,12 @@ export class BotActions {
                 }
             }
 
-            // Check progress since path query started
-            const distMoved = this.helpers.distance(startPos.x, startPos.z, pos.x, pos.z);
-
-            if (distMoved >= 5) {
+            // Progress = closing on the destination. bestRemaining is a
+            // monotone minimum, so an oscillating route (walk out, walk back)
+            // cannot keep resetting the counter the way distance-moved did.
+            const remaining = distTo(pos);
+            if (remaining < bestRemaining) {
+                bestRemaining = remaining;
                 poorProgressCount = 0;
             } else if (++poorProgressCount >= 3) {
                 if (!await tryOpenDoor()) {
