@@ -496,6 +496,12 @@ export interface OpFeedbackState {
 
 export interface BotWorldState {
     tick: number;
+    /** Tick on which an updated Lite runner already emitted policy-gated KBD op2. */
+    fastKbdAttackTick?: number;
+    /** Prayer-on packets emitted in-process immediately before first-spawn KBD op2. */
+    fastKbdPrayerOn?: { tick: number; prayerIndices: number[] };
+    /** Prayer-off packets emitted in-process on the KBD-removal publication. */
+    fastKbdPrayerOff?: { tick: number; prayerIndices: number[] };
     /** Monotonic state publication cursor; advances even for multiple publications in one game tick. */
     revision?: number;
     inGame: boolean;

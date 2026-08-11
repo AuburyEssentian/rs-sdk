@@ -726,6 +726,16 @@ export class LiteClient {
     interactNpc(npcIndex: number, optionIndex: number): ClientActionResult {
         return A.interactNpc(this, npcIndex, optionIndex);
     }
+
+    /** Exact raw-table lookup for latency-critical, policy-gated hooks. */
+    findNpcIndexByExactName(name: string): number | undefined {
+        for (let i = 0; i < this.npcCount; i++) {
+            const index = this.npcIds[i];
+            const npc = this.npc[index];
+            if (npc?.type?.name === name) return index;
+        }
+        return undefined;
+    }
     interactPlayer(playerIndex: number, optionIndex: number): ClientActionResult {
         return A.interactPlayer(this, playerIndex, optionIndex);
     }

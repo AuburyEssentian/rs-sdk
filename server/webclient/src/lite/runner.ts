@@ -13,8 +13,15 @@
 import { startSession, type LiteSession } from './session.js';
 import { type ActionResult } from '#/bot/ActionExecutor.js';
 import { BotActionQueue, type QueuedBotAction } from '#/bot/ActionQueue.js';
-import type { BotAction } from '#/bot/types.js';
+import type { BotAction, BotWorldState } from '#/bot/types.js';
 import type { LiteClient } from './LiteClient.js';
+import {
+    FAST_KBD_RUNTIME_MODE,
+    findFastKbdAttackTarget,
+    findFastKbdPrayerOffIndices,
+    findFastKbdPrayerOnIndices,
+    isFastKbdPolicyState,
+} from './fast-kbd.js';
 
 const TICK_MS = 20; // matches the browser draw loop that drives BotOverlay.tick()
 const RECONNECT_MS = 3000;
@@ -24,6 +31,15 @@ class LiteGatewayRunner {
     private actionQueue = new BotActionQueue();
     private waitTicks = 0;
     private serverTick = 0;
+    private lastFastKbdAttackTick = -1;
+    private fastKbdPolicyEligible = false;
+    private fastKbdWasVisible = false;
+    private fastKbdRawWasVisible = false;
+    private fastKbdLastState: BotWorldState | null = null;
+    private lastFastKbdPrayerOnTick = -1;
+    private lastFastKbdPrayerOnIndices: number[] = [];
+    private fastKbdPrayerOffPending = false;
+    private lastFastKbdPrayerOffDispatchTick = -1;
 
     private ws: WebSocket | null = null;
     private wsConnected = false;
@@ -33,13 +49,31 @@ class LiteGatewayRunner {
 
     constructor(
         private session: LiteSession,
-        private gatewayUrl: string
+        private gatewayUrl: string,
+        private fastKbdAttackEnabled = false,
     ) {
         this.client = session.client;
         // State collection and action execution go through the client, which
         // activates this bot's interface table first - see LiteClient.activate.
         this.client.setOnGameTickCallback(() => {
             this.serverTick++;
+            // Reuse the previous authoritative one-item policy snapshot and
+            // probe the newly decoded raw NPC table before full state
+            // collection. This puts KBD op2 ahead of reachability, nearby
+            // player/loc/item scans, and UI serialization.
+            if (this.fastKbdAttackEnabled) {
+                const targetIndex = this.fastKbdPolicyEligible
+                    ? this.client.findNpcIndexByExactName('King black dragon')
+                    : undefined;
+                if (targetIndex !== undefined
+                    && this.lastFastKbdAttackTick !== this.serverTick) {
+                    if (!this.fastKbdRawWasVisible && this.fastKbdLastState) {
+                        this.dispatchFastKbdPrayerOn(this.fastKbdLastState);
+                    }
+                    this.dispatchFastKbdAttack(targetIndex);
+                }
+                this.fastKbdRawWasVisible = targetIndex !== undefined;
+            }
             this.sendState();
         });
 
@@ -218,10 +252,88 @@ class LiteGatewayRunner {
         this.send({ type: 'actionResult', actionId, result });
     }
 
+    private dispatchFastKbdAttack(targetIndex: number): void {
+        const result = this.client.interactNpc(targetIndex, 2);
+        if (result.success) this.lastFastKbdAttackTick = this.serverTick;
+    }
+
+    private dispatchFastKbdPrayerOn(state: BotWorldState): void {
+        const emitted: number[] = [];
+        for (const prayerIndex of findFastKbdPrayerOnIndices(state)) {
+            const result = this.client.executeBotAction({
+                type: 'togglePrayer',
+                prayerIndex,
+                reason: 'runner-fast KBD publication',
+            });
+            if (!(result instanceof Promise) && result.success) emitted.push(prayerIndex);
+        }
+        if (emitted.length > 0) {
+            this.lastFastKbdPrayerOnTick = this.serverTick;
+            this.lastFastKbdPrayerOnIndices = emitted;
+        }
+    }
+
     private sendState(): void {
         if (!this.wsConnected) return;
         const state = this.client.collectBotState(this.serverTick);
         if (!state) return;
+        if (this.fastKbdAttackEnabled) {
+            const targetIndex = findFastKbdAttackTarget(state);
+            if (targetIndex !== undefined && this.lastFastKbdAttackTick !== this.serverTick) {
+                // This is intentionally in-process and before state publication:
+                // the ordinary SDK path must traverse the gateway twice before
+                // the same packet reaches this client.
+                this.dispatchFastKbdPrayerOn(state);
+                this.dispatchFastKbdAttack(targetIndex);
+            }
+            if (this.lastFastKbdAttackTick === this.serverTick) {
+                state.fastKbdAttackTick = this.serverTick;
+            }
+            if (this.lastFastKbdPrayerOnTick === this.serverTick) {
+                state.fastKbdPrayerOn = {
+                    tick: this.serverTick,
+                    prayerIndices: this.lastFastKbdPrayerOnIndices,
+                };
+            }
+
+            const fastKbdVisible = targetIndex !== undefined;
+            const policyEligible = isFastKbdPolicyState(state);
+            if (this.fastKbdWasVisible && !fastKbdVisible && policyEligible) {
+                this.fastKbdPrayerOffPending = true;
+            }
+            if (fastKbdVisible || !policyEligible) {
+                this.fastKbdPrayerOffPending = false;
+            }
+            const prayerOffIndices = this.lastFastKbdPrayerOffDispatchTick === this.serverTick
+                ? []
+                : findFastKbdPrayerOffIndices(state, this.fastKbdPrayerOffPending);
+            const emittedPrayerOffIndices: number[] = [];
+            for (const prayerIndex of prayerOffIndices) {
+                const result = this.client.executeBotAction({
+                    type: 'togglePrayer',
+                    prayerIndex,
+                    reason: 'runner-fast KBD removal',
+                });
+                if (!(result instanceof Promise) && result.success) {
+                    emittedPrayerOffIndices.push(prayerIndex);
+                }
+            }
+            if (emittedPrayerOffIndices.length > 0) {
+                this.lastFastKbdPrayerOffDispatchTick = this.serverTick;
+                state.fastKbdPrayerOff = {
+                    tick: this.serverTick,
+                    prayerIndices: emittedPrayerOffIndices,
+                };
+            }
+            if (this.fastKbdPrayerOffPending
+                && !state.prayers.activePrayers.some(active => active)) {
+                this.fastKbdPrayerOffPending = false;
+            }
+            this.fastKbdPolicyEligible = policyEligible;
+            this.fastKbdWasVisible = fastKbdVisible;
+            this.fastKbdRawWasVisible = fastKbdVisible;
+            this.fastKbdLastState = state;
+        }
         this.send({ type: 'state', state });
     }
 }
@@ -271,7 +383,14 @@ console.log(`[lite-runner] '${env.BOT_USERNAME}' logged into ${host}`);
 // local hosts with an explicit web port (localhost:8888 is the engine, not the
 // gateway). GATEWAY_URL (bot.env or process env) overrides the derivation.
 const gatewayUrl = env.GATEWAY_URL || process.env.GATEWAY_URL || deriveGatewayUrl(host);
-const runner = new LiteGatewayRunner(session, gatewayUrl);
+const runtimeMode = await Bun.file(`${repoRoot}bots/logs/fleet-runtime.mode`).text()
+    .then(value => value.trim())
+    .catch(() => '');
+const fastKbdAttackEnabled = runtimeMode === FAST_KBD_RUNTIME_MODE;
+if (fastKbdAttackEnabled) {
+    console.log('[lite-runner] in-process KBD op2 enabled');
+}
+const runner = new LiteGatewayRunner(session, gatewayUrl, fastKbdAttackEnabled);
 runner.connect();
 
 process.on('SIGINT', () => {

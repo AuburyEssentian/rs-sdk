@@ -405,6 +405,12 @@ export interface BotState {
 
 // Extended world state interface for agent (includes extra debug info)
 export interface BotWorldState extends BotState {
+    /** Tick on which a policy-gated Lite runner already emitted KBD op2. */
+    fastKbdAttackTick?: number;
+    /** Prayer-on packets emitted in-process immediately before first-spawn KBD op2. */
+    fastKbdPrayerOn?: { tick: number; prayerIndices: number[] };
+    /** Prayer-off packets emitted in-process on the KBD-removal publication. */
+    fastKbdPrayerOff?: { tick: number; prayerIndices: number[] };
     dialog: DialogState & {
         allComponents?: Array<{ id: number; type: number; buttonType: number; option: string; text: string }>;
     };
