@@ -45,6 +45,16 @@ import { downloadUrl } from '#/util/JsUtil.js';
 import { gunzipSync, unzipSync } from 'fflate';
 
 /**
+ * Default new-player appearance (engine Player.body defaults), in the
+ * player-info wire encoding: slot order with 0x100+idkId entries.
+ */
+export const DEFAULT_APPEARANCE = {
+    gender: 0,
+    colors: [0, 0, 0, 0, 0],
+    slots: [0, 0, 0, 0, 0x100 + 18, 0, 0x100 + 26, 0x100 + 36, 0x100 + 0, 0x100 + 33, 0x100 + 42, 0x100 + 10]
+};
+
+/**
  * A no-op OnDemandProvider that never fetches — all models must be pre-loaded.
  */
 class NoopProvider extends OnDemandProvider {
@@ -106,6 +116,8 @@ export class ItemViewer {
 
         // Unpack textures (needed for textured model faces)
         Pix3D.unpackTextures(jagTextures);
+        // without a texel pool, textureTriangle silently draws nothing (walls, doors, fences)
+        Pix3D.initPool(20);
 
         // Initialize HSL-to-RGB colour lookup table (required for all rendering)
         Pix3D.initColourTable(0.8);
@@ -337,6 +349,270 @@ export class ItemViewer {
             }
         }
         return imageData;
+    }
+
+    /**
+     * Render a scenery (loc) model to a sprite.
+     *
+     * @param locId - The loc ID to render
+     * @param width/height - output sprite dimensions
+     * @param yaw - model rotation, 0..2047
+     * @param eyePitch - camera pitch, 0..2047 (0 = head-on, ~128 = game-like 3/4 view)
+     * @returns Pix32 with 0 as the transparent key, or null if no model
+     */
+    renderLocSprite(locId: number, width: number = 128, height: number = 128, yaw: number = 128, eyePitch: number = 128, background: number = 0): Pix32 | null {
+        if (!this.initialized) {
+            throw new Error('ItemViewer not initialized. Call init() first.');
+        }
+
+        const loc = LocType.list(locId);
+        const shape = loc.shape ? loc.shape[0] : 10; // CENTREPIECE_STRAIGHT
+        const model = loc.getModel(shape, 0, 0, 0, 0, 0, -1);
+        if (!model) {
+            return null;
+        }
+
+        // buildModel never computes bounds; objRender needs them for culling and we need them for framing
+        model.calcBoundingCylinder();
+
+        // sharelight models (walls, doors, fences) defer lighting to scene merge and
+        // their face colours are still 0 (the transparent key) — bake the lighting now
+        if (loc.sharelight) {
+            const ambient = (loc.ambient & 0xff) + 64;
+            const contrast = (loc.contrast & 0xff) * 5 + 768;
+            const magnitude = Math.sqrt(50 * 50 + 10 * 10 + 50 * 50) | 0;
+            model.light(ambient, (contrast * magnitude) >> 8, -50, -10, -50);
+        }
+
+        const sprite = new Pix32(width, height);
+
+        const _cx: number = Pix3D.originX;
+        const _cy: number = Pix3D.originY;
+        const _loff: Int32Array = Pix3D.scanline;
+        const _data: Int32Array = Pix2D.pixels;
+        const _w: number = Pix2D.width;
+        const _h: number = Pix2D.height;
+        const _l: number = Pix2D.clipMinX;
+        const _r: number = Pix2D.clipMaxX;
+        const _t: number = Pix2D.clipMinY;
+        const _b: number = Pix2D.clipMaxY;
+
+        Pix3D.lowDetail = false;
+        Pix2D.setPixels(sprite.data, width, height);
+        Pix2D.fillRect(0, 0, width, height, background);
+        Pix3D.setRenderClipping();
+
+        // frame the model so both its height (minY) and footprint (radius) fit
+        const sinPitch = Math.sin((eyePitch * Math.PI) / 1024);
+        const cosPitch = Math.cos((eyePitch * Math.PI) / 1024);
+        const projHeight = model.minY * cosPitch + 2 * model.radius * sinPitch;
+        const fit = 0.8;
+        const distByHeight = (projHeight * 512) / (height * fit);
+        const distByWidth = (2 * model.radius * 512) / (width * fit);
+        const dist = Math.max(1, Math.ceil(Math.max(distByHeight, distByWidth)));
+
+        // orbit the camera around the model centre (the ObjType.getSprite pattern):
+        // eyeY/eyeZ are the pitched components of the camera distance
+        const eyeY = ((dist * sinPitch) | 0) + ((model.minY / 2) | 0);
+        const eyeZ = Math.max(1, (dist * cosPitch) | 0);
+        model.objRender(0, yaw, 0, eyePitch, 0, eyeY, eyeZ);
+
+        Pix2D.setPixels(_data, _w, _h);
+        Pix2D.setClipping(_l, _t, _r, _b);
+        Pix3D.originX = _cx;
+        Pix3D.originY = _cy;
+        Pix3D.scanline = _loff;
+
+        return sprite;
+    }
+
+    /**
+     * Render a loc sprite and return ImageData suitable for putImageData().
+     *
+     * Renders twice (black and white background) and diffs, so models with
+     * pure-black faces (doors, fences) don't get holes from the 0-as-transparent key.
+     */
+    renderLocSpriteAsImageData(locId: number, width: number = 128, height: number = 128, yaw: number = 128, eyePitch: number = 128): ImageData | null {
+        const onBlack = this.renderLocSprite(locId, width, height, yaw, eyePitch, 0);
+        if (!onBlack) return null;
+        const onWhite = this.renderLocSprite(locId, width, height, yaw, eyePitch, 0xffffff);
+        if (!onWhite) return null;
+
+        const imageData = new ImageData(width, height);
+        const data = new Uint32Array(imageData.data.buffer);
+        for (let i = 0; i < onBlack.data.length; i++) {
+            const pixel = onBlack.data[i];
+            if (pixel === 0 && onWhite.data[i] === 0xffffff) {
+                data[i] = 0; // background in both passes → truly transparent
+            } else {
+                const r = (pixel >> 16) & 0xff;
+                const g = (pixel >> 8) & 0xff;
+                const b = pixel & 0xff;
+                data[i] = 0xff000000 | (b << 16) | (g << 8) | r;
+            }
+        }
+        return imageData;
+    }
+
+    /**
+     * Render a player in an animation pose.
+     *
+     * @param seqId - Animation (SeqType) id, or -1 for the static ready pose
+     * @param frame - Frame index within the seq (clamped by modulo)
+     * @param yaw - model rotation, 0..2047
+     * @param appearance - optional appearance override; defaults to a fresh-spawn look
+     * @returns Pix32 with 0 as the transparent key, or null if data is missing
+     */
+    renderPlayerPose(seqId: number, frame: number = 0, width: number = 128, height: number = 128, yaw: number = 128, appearance: { gender: number; colors: number[]; slots: number[] } = DEFAULT_APPEARANCE, background: number = 0): Pix32 | null {
+        if (!this.initialized) {
+            throw new Error('ItemViewer not initialized. Call init() first.');
+        }
+
+        const player = new ClientPlayer();
+        player.gender = appearance.gender & 1;
+        for (let i = 0; i < 12; i++) {
+            player.appearance[i] = appearance.slots[i] ?? 0;
+        }
+        for (let i = 0; i < 5; i++) {
+            player.colour[i] = appearance.colors[i] ?? 0;
+        }
+        player.ready = true;
+        player.lowMemory = false; // use the tempModel path so anim frames apply
+        player.primaryAnim = -1;
+        player.secondaryAnim = -1;
+        player.primaryAnimDelay = 0;
+
+        if (seqId >= 0) {
+            const seq = SeqType.list[seqId];
+            if (!seq || !seq.frames || seq.frames.length === 0) {
+                return null;
+            }
+            player.primaryAnim = seqId;
+            player.primaryAnimFrame = ((frame % seq.frames.length) + seq.frames.length) % seq.frames.length;
+        }
+
+        // model cache key, same derivation as ClientPlayer.setAppearance
+        let baseId = 0n;
+        for (let part = 0; part < 12; part++) {
+            baseId <<= 0x4n;
+            if (player.appearance[part] >= 256) {
+                baseId += BigInt(player.appearance[part]) - 256n;
+            }
+        }
+        if (player.appearance[0] >= 256) {
+            baseId += (BigInt(player.appearance[0]) - 256n) >> 4n;
+        }
+        if (player.appearance[1] >= 256) {
+            baseId += (BigInt(player.appearance[1]) - 256n) >> 8n;
+        }
+        for (let part = 0; part < 5; part++) {
+            baseId <<= 0x3n;
+            baseId += BigInt(player.colour[part]);
+        }
+        baseId <<= 0x1n;
+        baseId += BigInt(player.gender);
+        player.baseId = baseId;
+
+        const model = player.getTempModel2();
+        if (!model) {
+            return null;
+        }
+        if (model.minY === 0 && model.radius === 0) {
+            model.calcBoundingCylinder();
+        }
+
+        const sprite = new Pix32(width, height);
+
+        const _cx: number = Pix3D.originX;
+        const _cy: number = Pix3D.originY;
+        const _loff: Int32Array = Pix3D.scanline;
+        const _data: Int32Array = Pix2D.pixels;
+        const _w: number = Pix2D.width;
+        const _h: number = Pix2D.height;
+        const _l: number = Pix2D.clipMinX;
+        const _r: number = Pix2D.clipMaxX;
+        const _t: number = Pix2D.clipMinY;
+        const _b: number = Pix2D.clipMaxY;
+
+        Pix3D.lowDetail = false;
+        Pix2D.setPixels(sprite.data, width, height);
+        Pix2D.fillRect(0, 0, width, height, background);
+        Pix3D.setRenderClipping();
+
+        // fit both height and pose width (some poses sprawl sideways)
+        const fit = 0.85;
+        const eyeZ = Math.max(1, Math.ceil(Math.max((model.minY * 512) / (height * fit), (2 * model.radius * 512) / (width * fit))));
+        model.objRender(0, yaw, 0, 0, 0, (model.minY / 2) | 0, eyeZ);
+
+        Pix2D.setPixels(_data, _w, _h);
+        Pix2D.setClipping(_l, _t, _r, _b);
+        Pix3D.originX = _cx;
+        Pix3D.originY = _cy;
+        Pix3D.scanline = _loff;
+
+        return sprite;
+    }
+
+    /**
+     * Render a player pose and return ImageData (two-pass background diff for
+     * correct transparency around pure-black pixels).
+     */
+    renderPlayerPoseAsImageData(seqId: number, frame: number = 0, width: number = 128, height: number = 128, yaw: number = 128, appearance: { gender: number; colors: number[]; slots: number[] } = DEFAULT_APPEARANCE): ImageData | null {
+        const onBlack = this.renderPlayerPose(seqId, frame, width, height, yaw, appearance, 0);
+        if (!onBlack) return null;
+        const onWhite = this.renderPlayerPose(seqId, frame, width, height, yaw, appearance, 0xffffff);
+        if (!onWhite) return null;
+
+        const imageData = new ImageData(width, height);
+        const data = new Uint32Array(imageData.data.buffer);
+        for (let i = 0; i < onBlack.data.length; i++) {
+            const pixel = onBlack.data[i];
+            if (pixel === 0 && onWhite.data[i] === 0xffffff) {
+                data[i] = 0;
+            } else {
+                const r = (pixel >> 16) & 0xff;
+                const g = (pixel >> 8) & 0xff;
+                const b = pixel & 0xff;
+                data[i] = 0xff000000 | (b << 16) | (g << 8) | r;
+            }
+        }
+        return imageData;
+    }
+
+    /**
+     * Get total number of animations (seqs).
+     */
+    getSeqCount(): number {
+        return SeqType.numDefinitions;
+    }
+
+    /**
+     * Number of frames in a seq, or 0 if it has none.
+     */
+    getSeqFrameCount(seqId: number): number {
+        const seq = SeqType.list[seqId];
+        return seq && seq.frames ? seq.frames.length : 0;
+    }
+
+    /**
+     * Get loc name by ID.
+     */
+    getLocName(locId: number): string | null {
+        return LocType.list(locId).name;
+    }
+
+    /**
+     * Whether a loc has any model data (i.e. is renderable).
+     */
+    locHasModel(locId: number): boolean {
+        return LocType.list(locId).model !== null;
+    }
+
+    /**
+     * Get total number of locs.
+     */
+    getLocCount(): number {
+        return LocType.numDefinitions;
     }
 
     /**
