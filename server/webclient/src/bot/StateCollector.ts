@@ -951,6 +951,7 @@ export class BotStateCollector implements ScanProvider {
 
             npcs.push({
                 kind: 'npc',
+                id: npcType.id,
                 index: npcIndex,
                 name: npcType.name || 'Unknown',
                 combatLevel: npcType.vislevel || 0,

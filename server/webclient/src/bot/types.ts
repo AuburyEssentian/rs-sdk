@@ -70,6 +70,11 @@ export interface NpcOption {
 export interface NearbyNpc {
     /** Discriminator so npc and player targets can share one API. */
     kind: 'npc';
+    /**
+     * NPC type/config id (matches server/content npc.pack). Not the world
+     * slot - interact packets address `index`.
+     */
+    id: number;
     index: number;
     name: string;
     combatLevel: number;
