@@ -254,6 +254,39 @@ describe('outgoing action encoding', () => {
         expect(r.g2()).toBe(INV_COMPONENT);
     });
 
+    test('useInventoryItem routes non-inventory components to INV_BUTTON (no OPHELD handlers there)', () => {
+        if (!available) {
+            return;
+        }
+
+        const c = makeClient('bota');
+        giveItems(c, INV_COMPONENT, { 2: 385 }); // shark in the main inventory
+        giveItems(c, BANK_SIDE_INV, { 1: 385 }); // shark in the bank side inventory
+
+        // Main inventory (default): OPHELDn, as the engine expects for 3214.
+        let start = c.out.pos;
+        expect(c.useInventoryItem(2, 4)).toBe(true);
+
+        let r = new Capture(c.out, start);
+        expect(r.g1()).toBe(ClientProt.OPHELD4);
+        expect(r.g2()).toBe(385);
+        expect(r.g2()).toBe(2);
+        expect(r.g2()).toBe(INV_COMPONENT);
+        expect(r.at).toBe(c.out.pos);
+
+        // Foreign component: INV_BUTTONn with the same field order - OPHELD
+        // against a non-3214 com id is silently dropped by the engine.
+        start = c.out.pos;
+        expect(c.useInventoryItem(1, 4, BANK_SIDE_INV)).toBe(true);
+
+        r = new Capture(c.out, start);
+        expect(r.g1()).toBe(ClientProt.INV_BUTTON4);
+        expect(r.g2()).toBe(385);
+        expect(r.g2()).toBe(1);
+        expect(r.g2()).toBe(BANK_SIDE_INV);
+        expect(r.at).toBe(c.out.pos);
+    });
+
     test('long walks clamp to the current scene edge like the browser client', () => {
         if (!available) {
             return;

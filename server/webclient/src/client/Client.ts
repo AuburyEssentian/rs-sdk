@@ -1442,6 +1442,14 @@ export class Client extends GameShell {
             return false;
         }
 
+        // The engine only wires OPHELD1-5 to the main inventory (3214); every
+        // other component's item options are inv_button triggers. OPHELD with
+        // a foreign com id passes the wire and is silently dropped by the
+        // handler, so route those to INV_BUTTON instead.
+        if (interfaceId !== 3214) {
+            return this.clickInterfaceIop(interfaceId, optionIndex, slot);
+        }
+
         // Get item ID from the inventory slot
         const component = IfType.list[interfaceId];
         if (!component || !component.linkObjType) {

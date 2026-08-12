@@ -204,6 +204,15 @@ export function useInventoryItem(c: LiteClient, slot: number, optionIndex: numbe
     if (!c.isInGame() || optionIndex < 1 || optionIndex > 5) {
         return false;
     }
+
+    // The engine only wires OPHELD1-5 to the main inventory; every other
+    // component's item options are inv_button triggers (e.g. [inv_button4,
+    // tradeside:inv]). OPHELD with a foreign com id passes the wire and is
+    // silently dropped by the handler, so route those to INV_BUTTON instead.
+    if (interfaceId !== INVENTORY_INTERFACE_ID) {
+        return clickInterfaceIop(c, interfaceId, optionIndex, slot);
+    }
+
     const itemId = slotItemId(interfaceId, slot);
     if (!itemId) {
         return false;

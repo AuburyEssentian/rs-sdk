@@ -467,7 +467,7 @@ export type BotAction =
     | { type: 'acceptCharacterDesign'; reason: string }
     | { type: 'randomizeCharacterDesign'; reason: string }
     | { type: 'walkTo'; x: number; z: number; running?: boolean; reason: string }
-    | { type: 'useInventoryItem'; slot: number; optionIndex: number; reason: string }
+    | { type: 'useInventoryItem'; slot: number; optionIndex: number; interfaceId?: number; reason: string }
     | { type: 'dropItem'; slot: number; reason: string }
     | { type: 'pickupItem'; x: number; z: number; itemId: number; reason: string }
     | { type: 'interactGroundItem'; x: number; z: number; itemId: number; optionIndex: number; reason: string }

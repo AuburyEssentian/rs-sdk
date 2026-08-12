@@ -561,7 +561,7 @@ export type BotAction =
     // Randomize character appearance (gender, body parts, colors) with valid random values
     | { type: 'randomizeCharacterDesign'; reason: string }
     | { type: 'walkTo'; x: number; z: number; running?: boolean; reason: string }
-    | { type: 'useInventoryItem'; slot: number; optionIndex: number; reason: string }
+    | { type: 'useInventoryItem'; slot: number; optionIndex: number; interfaceId?: number; reason: string }
     | { type: 'useEquipmentItem'; slot: number; optionIndex: number; reason: string }
     | { type: 'dropItem'; slot: number; reason: string }
     | { type: 'pickupItem'; x: number; z: number; itemId: number; reason: string }

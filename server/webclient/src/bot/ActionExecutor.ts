@@ -108,7 +108,9 @@ export class ActionExecutor {
 
                 case 'useInventoryItem':
                     return this.wrapBool(
-                        this.client.useInventoryItem(action.slot, action.optionIndex),
+                        action.interfaceId !== undefined
+                            ? this.client.useInventoryItem(action.slot, action.optionIndex, action.interfaceId)
+                            : this.client.useInventoryItem(action.slot, action.optionIndex),
                         `Using inventory slot ${action.slot}`,
                         'Failed to use inventory item'
                     );

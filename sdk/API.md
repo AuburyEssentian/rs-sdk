@@ -236,7 +236,7 @@
 | `async sendInteractPlayer(playerIndex: number, option: number = 2): Promise<ActionResult>` | Interact with a player by index and option (1-5). Option 2 = Attack (wilderness), 3 = Follow, 4 = Trade. |
 | `async sendTalkToNpc(npcIndex: number): Promise<ActionResult>` | Talk to an NPC by index. |
 | `async sendPickup(x: number, z: number, itemId: number): Promise<ActionResult>` | Pick up a ground item. |
-| `async sendUseItem(slot: number, option: number = 1): Promise<ActionResult>` | Use an inventory item (eat, equip, etc). |
+| `async sendUseItem(slot: number, option: number = 1, interfaceId?: number): Promise<ActionResult>` | Use an inventory item (eat, equip, etc). `interfaceId` selects which inventory component holds the item. The main inventory (3214, the default) dispatches OPHELD1-5; any other component (trade offer, bank side inventory, ...) dispatches INV_BUTTON1-5, which is the packet family the engine actually handles for interface-defined item options - OPHELD with a foreign component id is silently dropped. |
 | `async sendUseEquipmentItem(slot: number, option: number = 1): Promise<ActionResult>` | Use an equipped item (remove, operate, etc). |
 | `async sendDropItem(slot: number): Promise<ActionResult>` | Drop an inventory item. |
 | `async sendUseItemOnItem(sourceSlot: number, targetSlot: number): Promise<ActionResult>` | Use one inventory item on another. Rejected up front while a shop or bank modal is open: those replace the inventory tab, so the server drops the packet as "component not visible" and sends no message at all. Close the modal first — `bot.closeShop()`, `bot.closeInterface()`, or `sendCloseModal()`. |
