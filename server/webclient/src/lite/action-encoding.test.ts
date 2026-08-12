@@ -267,7 +267,7 @@ describe('outgoing action encoding', () => {
         c.localPlayer!.routeZ[0] = 50;
 
         const start = c.out.pos;
-        expect(c.walkTo(4000, 3250, true)).toBe(true);
+        expect(c.walkTo(4000, 3250, true)).toEqual({ moved: true, outOfRange: true });
 
         const r = new Capture(c.out, start);
         expect(r.g1()).toBe(ClientProt.MOVE_GAMECLICK);
@@ -276,6 +276,9 @@ describe('outgoing action encoding', () => {
         expect(r.g2()).toBe(3302); // baseX + build-area max interior tile
         expect(r.g2()).toBe(3250);
         expect(r.at).toBe(c.out.pos);
+
+        // An in-area destination reports outOfRange false.
+        expect(c.walkTo(3251, 3251, true)).toEqual({ moved: true, outOfRange: false });
     });
 
     test('an actor already inside an NPC footprint needs no movement packet', () => {

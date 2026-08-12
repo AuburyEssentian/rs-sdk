@@ -158,6 +158,18 @@ export interface NearbyLoc {
     reachable?: boolean;
 }
 
+/**
+ * Result of Client/LiteClient.walkTo. `moved` reports whether a MOVE packet
+ * was emitted. `outOfRange` reports that the destination lies outside the
+ * current 104x104 build area - the emitted path (if any) is then only a leg
+ * toward the scene edge, not a route to the destination; crossing the edge
+ * rebuilds the scene and the caller must dispatch the next leg itself.
+ */
+export interface WalkResult {
+    moved: boolean;
+    outOfRange: boolean;
+}
+
 export interface MenuAction {
     option: string;
     actionCode: number;

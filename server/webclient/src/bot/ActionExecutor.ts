@@ -48,13 +48,22 @@ export class ActionExecutor {
                     return { success: true, message: `Waiting ${action.ticks || 1} ticks` };
 
                 case 'walkTo': {
-                    const result = this.wrapBool(
-                        this.client.walkTo(action.x, action.z, action.running ?? true),
-                        `Walking to (${action.x}, ${action.z})`,
-                        'Failed to walk'
-                    );
                     // walkTo already sets its own cross visual via projectTileToScreen
-                    return result;
+                    const walk = this.client.walkTo(action.x, action.z, action.running ?? true);
+                    if (!walk.moved) {
+                        return walk.outOfRange
+                            ? { success: false, message: `(${action.x}, ${action.z}) is outside the current build area and no path leads toward its edge`, phase: 'validation', reason: 'out_of_range' }
+                            : { success: false, message: 'Failed to walk', phase: 'validation', reason: 'client_rejected' };
+                    }
+                    if (walk.outOfRange) {
+                        return {
+                            success: true,
+                            message: `Walking toward (${action.x}, ${action.z}) - outside the current build area, this is a leg to the scene edge`,
+                            phase: 'dispatch',
+                            data: { outOfRange: true }
+                        };
+                    }
+                    return { success: true, message: `Walking to (${action.x}, ${action.z})`, phase: 'dispatch' };
                 }
 
                 case 'talkToNpc': {

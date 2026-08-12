@@ -39,7 +39,7 @@ import { TypedArray1d, TypedArray3d } from '#/util/Arrays.js';
 
 import { BotStateCollector } from '#/bot/StateCollector.js';
 import { ActionExecutor, type ActionResultOrPromise } from '#/bot/ActionExecutor.js';
-import type { BotAction, BotWorldState } from '#/bot/types.js';
+import type { BotAction, BotWorldState, WalkResult } from '#/bot/types.js';
 import type { Client } from '#/client/Client.js';
 
 import { GameConnection } from './net/GameConnection.js';
@@ -633,9 +633,9 @@ export class LiteClient {
     }
 
     /** Send a MOVE_GAMECLICK with a client-computed path. See movement.ts. */
-    walkTo(worldX: number, worldZ: number, running = false): boolean {
+    walkTo(worldX: number, worldZ: number, running = false): WalkResult {
         if (!this.localPlayer) {
-            return false;
+            return { moved: false, outOfRange: false };
         }
 
         // Match Client.walkTo: a long-distance BotActions route can hand the
@@ -644,11 +644,17 @@ export class LiteClient {
         // after which BotActions observes progress and dispatches the next leg.
         // Keeping the one-tile border excluded also matches the browser's
         // collision bounds (tiles 0 and 103 are the blocked border ring).
+        // `outOfRange` tells the caller this was only a leg, not a full route -
+        // the silent-no-op era where a far destination looked like a success
+        // with no signal is what bug report msjgy9cl was about.
         const minBound = 1;
         const maxBound = BuildArea.SIZE - 2;
-        const destX = Math.max(minBound, Math.min(maxBound, worldX - this.mapBuildBaseX));
-        const destZ = Math.max(minBound, Math.min(maxBound, worldZ - this.mapBuildBaseZ));
-        return findPathToTile(this, destX, destZ, running);
+        const rawX = worldX - this.mapBuildBaseX;
+        const rawZ = worldZ - this.mapBuildBaseZ;
+        const outOfRange = rawX < minBound || rawX > maxBound || rawZ < minBound || rawZ > maxBound;
+        const destX = Math.max(minBound, Math.min(maxBound, rawX));
+        const destZ = Math.max(minBound, Math.min(maxBound, rawZ));
+        return { moved: findPathToTile(this, destX, destZ, running), outOfRange };
     }
 
     // ------------------------------------------------------ outgoing plumbing

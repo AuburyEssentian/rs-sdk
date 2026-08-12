@@ -1,6 +1,8 @@
 import { playWave, setWaveVolume } from '#3rdparty/audio.js';
 import { stopMidi, setMidiVolume, playMidi } from '#3rdparty/tinymidipcm.js';
 
+import type { WalkResult } from '#/bot/types.js';
+
 import ClientBuild from '#/client/ClientBuild.js';
 import { ClientCode } from '#/client/ClientCode.js';
 import GameShell from '#/client/GameShell.js';
@@ -2131,11 +2133,13 @@ export class Client extends GameShell {
     }
 
     /**
-     * Walk to a world coordinate using proper client-side pathfinding
+     * Walk to a world coordinate using proper client-side pathfinding.
+     * An out-of-scene destination is clamped to the edge and walked as a leg;
+     * the result says so instead of pretending the whole route was found.
      */
-    walkTo(worldX: number, worldZ: number, running: boolean = false): boolean {
+    walkTo(worldX: number, worldZ: number, running: boolean = false): WalkResult {
         if (!this.ingame || !this.out || !this.localPlayer) {
-            return false;
+            return { moved: false, outOfRange: false };
         }
 
         let destSceneX = worldX - this.mapBuildBaseX;
@@ -2182,15 +2186,15 @@ export class Client extends GameShell {
             this.crossCycle = 0;
         }
 
-        return success;
+        return { moved: success, outOfRange: wasClamped };
     }
 
     /**
      * Walk relative to current position
      */
-    walkRelative(deltaX: number, deltaZ: number, running: boolean = false): boolean {
+    walkRelative(deltaX: number, deltaZ: number, running: boolean = false): WalkResult {
         if (!this.ingame || !this.localPlayer) {
-            return false;
+            return { moved: false, outOfRange: false };
         }
 
         const currentTileX = (this.localPlayer.x >> 7);
