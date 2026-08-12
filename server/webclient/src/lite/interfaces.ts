@@ -37,7 +37,11 @@ export function captureBaseInterfaces(): void {
     }
 }
 
-/** Test seam: forget the captured baseline so a suite can re-init the cache. */
+/**
+ * Forget the captured baseline so the next loadCache() recaptures it — used by
+ * invalidateCache() after a server content redeploy, and by test suites that
+ * re-init the cache. Existing InterfaceTables keep their old lists.
+ */
 export function resetBaseInterfaces(): void {
     base = null;
 }

@@ -14,8 +14,8 @@
 
 import './dom-shim.js';
 
-import { loadCache } from './cache.js';
-import { GameConnection } from './net/GameConnection.js';
+import { invalidateCache, loadCache } from './cache.js';
+import { GameConnection, LoginError } from './net/GameConnection.js';
 import { LiteClient } from './LiteClient.js';
 import { LocIndex } from './world/LocIndex.js';
 import { ClientProt } from '#/io/ClientProt.js';
@@ -91,16 +91,39 @@ export async function startSession(opts: SessionOptions): Promise<LiteSession> {
     const origin = `${secured ? 'https' : 'http'}://${opts.host}`;
     const cacheDir = opts.cacheDir ?? `${process.env.HOME}/.cache/rs-sdk-lite`;
 
-    const { checksums } = await loadCache({ origin, cacheDir, members: opts.members, quiet: opts.quiet });
-    const locIndex = await LocIndex.load({ origin, cacheDir, versionlistCrc: checksums[5], quiet: opts.quiet });
+    let { checksums } = await loadCache({ origin, cacheDir, members: opts.members, quiet: opts.quiet });
+    let locIndex = await LocIndex.load({ origin, cacheDir, versionlistCrc: checksums[5], quiet: opts.quiet });
 
-    const connection = await GameConnection.connect({
-        host: opts.host,
-        secured,
-        username: opts.username,
-        password: opts.password,
-        checksums
-    });
+    const connect = () =>
+        GameConnection.connect({
+            host: opts.host,
+            secured,
+            username: opts.username,
+            password: opts.password,
+            checksums
+        });
+
+    let connection: GameConnection;
+    try {
+        connection = await connect();
+    } catch (err) {
+        // Login response 6 from a long-lived process usually means the server's
+        // content was redeployed under us and the memoized CRCs are stale, not
+        // that this build is actually out of date. Re-fetch /crc once and retry;
+        // if the checksums come back unchanged the mismatch is real, so rethrow.
+        if (!(err instanceof LoginError) || err.code !== 6) {
+            throw err;
+        }
+        const stale = checksums;
+        invalidateCache();
+        ({ checksums } = await loadCache({ origin, cacheDir, members: opts.members, quiet: opts.quiet }));
+        if (checksums.every((crc, i) => crc === stale[i])) {
+            throw err;
+        }
+        console.error(`[lite] ${opts.username}: stale archive CRCs after server redeploy, re-fetched /crc and retrying login`);
+        locIndex = await LocIndex.load({ origin, cacheDir, versionlistCrc: checksums[5], quiet: opts.quiet });
+        connection = await connect();
+    }
 
     const client = new LiteClient({
         connection,

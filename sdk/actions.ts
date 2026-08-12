@@ -246,7 +246,11 @@ export class BotActions {
             if (!state) break;
 
             if (state.dialog.isOpen) {
-                await this.sdk.sendClickDialog(0);
+                // Click the server-assigned index of the first published option
+                // ("Click here to continue" arrives at index 1, not 0). A bare
+                // 0 is only a fallback for optionless dialogs mid-transition.
+                const first = state.dialog.options[0];
+                await this.sdk.sendClickDialog(first?.index ?? 0);
                 await this.sdk.waitForStateChange(2000).catch(() => {});
                 continue;
             }

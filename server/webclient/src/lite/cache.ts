@@ -32,7 +32,7 @@ import VarBitType from '#/config/VarBitType.js';
 import VarpType from '#/config/VarpType.js';
 import WordFilter from '#/wordfilter/WordFilter.js';
 
-import { captureBaseInterfaces } from './interfaces.js';
+import { captureBaseInterfaces, resetBaseInterfaces } from './interfaces.js';
 
 /** Archives the lite client actually unpacks, as [filename, crc index]. */
 const REQUIRED_ARCHIVES: Array<[string, number]> = [
@@ -62,6 +62,19 @@ export interface LoadedCache {
 }
 
 let loaded: LoadedCache | null = null;
+
+/**
+ * Forget the memoized cache so the next loadCache() re-fetches /crc and
+ * re-unpacks any archive whose CRC changed. Needed after a server content
+ * redeploy: a long-lived process otherwise presents its boot-time CRCs on
+ * every reconnect and gets login response 6 forever. Existing clients keep
+ * their (copy-on-write) interface tables; only clients created after the
+ * reload see the new baseline.
+ */
+export function invalidateCache(): void {
+    loaded = null;
+    resetBaseInterfaces();
+}
 
 /**
  * Download + unpack the config archives and initialise the shared config type
