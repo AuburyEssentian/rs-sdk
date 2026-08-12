@@ -1740,8 +1740,16 @@ export class BotActions {
         }
     }
 
-    /** Withdraw an item from the bank by slot number. */
-    async withdrawItem(target: BankItem | string | RegExp | number, amount: number = 1): Promise<BankWithdrawResult> {
+    /**
+     * Withdraw an item from the bank by slot, name, or BankItem.
+     *
+     * `asNote: true` withdraws as a banknote: the note/item toggle is synced
+     * first (and synced back to items on the next plain withdrawal), and
+     * completion is detected on the noted item's arrival. Items the engine
+     * cannot note are withdrawn unnoted with a game message; the result then
+     * carries the unnoted item.
+     */
+    async withdrawItem(target: BankItem | string | RegExp | number, amount: number = 1, options: { asNote?: boolean } = {}): Promise<BankWithdrawResult> {
         const validated = validateActionQuantity(amount, { allowAll: true, max: MAX_BANK_ACTION_QUANTITY });
         if (!validated.valid) {
             return { success: false, message: validated.message, reason: 'invalid_amount' };
@@ -1768,29 +1776,67 @@ export class BotActions {
             return { success: false, message: `Bank item not found: ${target}`, reason: 'item_not_found' };
         }
         const itemId = bankItem.id;
+        const itemName = bankItem.name;
 
-        const countBefore = countItems(state.inventory, itemId);
+        const asNote = options.asNote ?? false;
         const requestedAmount = dispatchAmount === -1 ? bankItem.count : dispatchAmount;
+
+        // Sync the note/item toggle (varp 115, %bankcert) with what the caller
+        // asked for. The toggle is sticky server-side, so a previous noted run
+        // would otherwise silently change what this withdrawal produces - and
+        // the id-based completion check below would time out on a noted
+        // arrival it wasn't expecting.
+        if (state.bank.noteMode !== asNote) {
+            await this.sdk.sendClickComponent(asNote ? 5386 : 5387); // bank_main:com_93 (note) / com_94 (item)
+            try {
+                await this.sdk.waitForCondition(s => s.bank.noteMode === asNote, 3000);
+            } catch {
+                return {
+                    success: false,
+                    message: `Bank ${asNote ? 'note' : 'item'} withdrawal toggle did not register`,
+                    requestedAmount,
+                    amountWithdrawn: 0,
+                    partial: false,
+                    reason: 'timeout',
+                };
+            }
+        }
+
+        // A noted withdrawal arrives as the cert obj - a different id with the
+        // same published name (ObjType.genCert copies it from the linked item),
+        // so completion is tracked by name in note mode and by id otherwise.
+        // Un-notable items are withdrawn unnoted by the engine (with a game
+        // message), which the name-based check still observes.
+        const countWithdrawn = (inv: InventoryItem[]): number => asNote
+            ? inv.filter(i => i.name === itemName).reduce((sum, i) => sum + i.count, 0)
+            : countItems(inv, itemId);
+
+        const countBefore = countWithdrawn(this.sdk.getState()?.inventory ?? state.inventory);
 
         await this.sdk.sendBankWithdraw(bankItem.slot, dispatchAmount);
 
         try {
-            // Track the specific item id. The old slot-diff heuristic reported
-            // whatever happened to land in a changed slot, which for a shifting
-            // inventory is not necessarily what was withdrawn.
+            // Track the specific item id (or name for notes). The old slot-diff
+            // heuristic reported whatever happened to land in a changed slot,
+            // which for a shifting inventory is not necessarily what was
+            // withdrawn.
             const finalState = await this.sdk.waitForCondition(
-                s => countItems(s.inventory, itemId) > countBefore,
+                s => countWithdrawn(s.inventory) > countBefore,
                 5000,
             );
 
-            const amountWithdrawn = Math.max(0, countItems(finalState.inventory, itemId) - countBefore);
+            const amountWithdrawn = Math.max(0, countWithdrawn(finalState.inventory) - countBefore);
             const quantity = classifyQuantity(requestedAmount, amountWithdrawn);
             return {
                 success: quantity.complete,
                 message: quantity.complete
                     ? `Withdrew ${bankItem.name} x${amountWithdrawn}`
                     : `Withdrew ${bankItem.name} x${amountWithdrawn} of ${requestedAmount} requested`,
-                item: finalState.inventory.find(i => i.id === itemId),
+                // In note mode the arrival is the cert obj: same name, new id.
+                item: asNote
+                    ? (finalState.inventory.find(i => i.name === itemName && i.id !== itemId)
+                        ?? finalState.inventory.find(i => i.name === itemName))
+                    : finalState.inventory.find(i => i.id === itemId),
                 requestedAmount,
                 amountWithdrawn,
                 partial: quantity.partial,

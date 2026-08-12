@@ -80,7 +80,7 @@
 | `async openBank(timeout: number = 10000): Promise<OpenBankResult>` | Open a bank booth or talk to a banker. |
 | `async closeBank(timeout: number = 5000): Promise<ActionResult>` | Close the bank interface. |
 | `async depositItem(target: InventoryItem \| string \| RegExp, amount: number = -1): Promise<BankDepositResult>` | Deposit an item into the bank. Use -1 for all. |
-| `async withdrawItem(target: BankItem \| string \| RegExp \| number, amount: number = 1): Promise<BankWithdrawResult>` | Withdraw an item from the bank by slot number. |
+| `async withdrawItem(target: BankItem \| string \| RegExp \| number, amount: number = 1, options: { asNote?: boolean } = {}): Promise<BankWithdrawResult>` | Withdraw an item from the bank by slot, name, or BankItem. `asNote: true` withdraws as a banknote: the note/item toggle is synced first (and synced back to items on the next plain withdrawal), and completion is detected on the noted item's arrival. Items the engine cannot note are withdrawn unnoted with a game message; the result then carries the unnoted item. |
 
 ### Player Trading
 
@@ -388,6 +388,8 @@ interface ShopState {
 interface BankState {
   isOpen: boolean;
   items: BankItem[];
+  /** Whether withdrawals arrive as banknotes - the bank_main note/item toggle, mirrored from varp 115 (%bankcert). Meaningless while the bank is closed. */
+  noteMode: boolean;
 }
 ```
 

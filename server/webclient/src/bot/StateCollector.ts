@@ -1427,7 +1427,9 @@ export class BotStateCollector implements ScanProvider {
         const c = this.client as any;
         const bankState: BankState = {
             isOpen: false,
-            items: []
+            items: [],
+            // varp 115 = %bankcert (varp.pack), the note/item withdrawal toggle.
+            noteMode: (c.var?.[115] ?? 0) === 1
         };
 
         // Use the Client's isBankOpen() method if available

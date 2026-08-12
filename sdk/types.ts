@@ -296,6 +296,12 @@ export interface BankItem {
 export interface BankState {
     isOpen: boolean;
     items: BankItem[];
+    /**
+     * Whether withdrawals arrive as banknotes - the bank_main note/item
+     * toggle, mirrored from varp 115 (%bankcert). Meaningless while the
+     * bank is closed.
+     */
+    noteMode: boolean;
 }
 
 // ============ Trade Types ============
