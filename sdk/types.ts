@@ -658,6 +658,14 @@ export interface SDKConfig {
      * "authenticated fine, but no game client is logged in".
      */
     readyTimeout?: number;
+    /**
+     * Deadline for the whole connect handshake - socket open plus the
+     * gateway's sdk_connected/sdk_error answer (default: 30000ms). Kept above
+     * the gateway's own 15s auth bound so a slow-but-alive login server
+     * doesn't get misread as a dead gateway. On expiry connect() rejects
+     * instead of hanging, so babysitters can recycle the process.
+     */
+    connectTimeout?: number;
     actionTimeout?: number;
     autoReconnect?: boolean;
     reconnectMaxRetries?: number;

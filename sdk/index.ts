@@ -215,6 +215,7 @@ export class BotSDK {
             browserLaunchUrl: config.browserLaunchUrl || '',
             browserLaunchTimeout: config.browserLaunchTimeout || 10000,
             readyTimeout: config.readyTimeout ?? 15000,
+            connectTimeout: config.connectTimeout ?? 30000,
             actionTimeout: config.actionTimeout || 60000,
             autoReconnect: config.autoReconnect ?? true,
             reconnectMaxRetries: config.reconnectMaxRetries ?? Infinity,
@@ -265,13 +266,21 @@ export class BotSDK {
             const url = this.config.gatewayUrl || `ws://${this.config.host}:${this.config.port}`;
             this.ws = new WebSocket(url);
 
-            const timeout = setTimeout(() => {
-                reject(new Error('Connection timeout'));
+            // One deadline for the whole handshake - socket open AND the
+            // gateway's sdk_connected/sdk_error answer. The old timer was
+            // cleared on socket open, so a gateway that accepted the socket
+            // but never answered (dead session, half-open TCP during an
+            // outage) parked connect() forever with every liveness signal
+            // reading healthy (bug report mscll1sc). Sized above the
+            // gateway's own 15s auth bound so a slow-but-alive login server
+            // doesn't false-negative.
+            let handshakeDone = false;
+            const deadline = setTimeout(() => {
+                reject(new Error(`Gateway handshake timed out after ${this.config.connectTimeout}ms`));
                 this.ws?.close();
-            }, 10000);
+            }, this.config.connectTimeout);
 
             this.ws.onopen = () => {
-                clearTimeout(timeout);
                 this.send({
                     type: 'sdk_connect',
                     username: this.config.botUsername,
@@ -287,6 +296,13 @@ export class BotSDK {
 
             this.ws.onclose = () => {
                 console.warn(`[LOGOUT DEBUG] SDK WebSocket closed - autoReconnect=${this.config.autoReconnect}, intentionalDisconnect=${this.intentionalDisconnect}`);
+                // A close before the handshake completed must settle the
+                // pending connect() - otherwise its awaiters hang forever
+                // while the auto-reconnect below builds a fresh promise.
+                if (!handshakeDone) {
+                    clearTimeout(deadline);
+                    reject(new Error('Connection closed before the gateway handshake completed'));
+                }
                 this.connectPromise = null;
                 this.ws = null;
                 this.authenticated = false;
@@ -307,7 +323,7 @@ export class BotSDK {
 
             this.ws.onerror = (error) => {
                 console.warn('[LOGOUT DEBUG] SDK WebSocket error event');
-                clearTimeout(timeout);
+                clearTimeout(deadline);
                 reject(new Error('WebSocket error'));
             };
 
@@ -315,6 +331,8 @@ export class BotSDK {
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'sdk_connected') {
+                        handshakeDone = true;
+                        clearTimeout(deadline);
                         this.ws?.removeEventListener('message', checkConnected);
                         this.reconnectAttempt = 0;
                         this.authenticated = true;
@@ -345,7 +363,8 @@ export class BotSDK {
                             });
                     } else if (msg.type === 'sdk_error') {
                         // Handle authentication errors during connection
-                        clearTimeout(timeout);
+                        handshakeDone = true;
+                        clearTimeout(deadline);
                         this.ws?.removeEventListener('message', checkConnected);
                         const errorMessage = msg.error || 'Authentication failed';
                         console.error(`[BotSDK] Connection error: ${errorMessage}`);
