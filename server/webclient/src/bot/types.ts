@@ -144,6 +144,12 @@ export interface NearbyLoc {
     name: string;
     x: number;
     z: number;
+    /**
+     * Plane this loc was observed on - always the player's plane at scan
+     * time. A loc carried across a climb/descend is stale: re-scan instead
+     * of interacting with it, or the click resolves against the wrong floor.
+     */
+    level: number;
     distance: number;
     optionsWithIndex: LocOption[];  // Options with op index (use .map(o => o.text) for display)
     /** Convenience array of option text strings */

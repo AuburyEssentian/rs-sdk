@@ -505,7 +505,17 @@ export class ActionHelpers {
         withOption?: string | RegExp
     ): NearbyLoc | null {
         if (typeof target === 'object' && target !== null && 'x' in target) {
-            return target;
+            // A loc reference carried across a climb/descend is stale: the
+            // click would resolve against whatever occupies these coordinates
+            // on the wrong floor. Re-resolve from current state instead, and
+            // fail loudly (null -> loc_not_found) if it isn't on this plane.
+            const playerLevel = this.sdk.getState()?.player?.level;
+            if (playerLevel === undefined || target.level === undefined || target.level === playerLevel) {
+                return target;
+            }
+            return this.sdk.getState()?.nearbyLocs.find(
+                l => l.id === target.id && l.x === target.x && l.z === target.z
+            ) ?? null;
         }
         const pattern = target ?? defaultPattern;
         if (withOption !== undefined) {

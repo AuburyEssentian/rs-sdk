@@ -4,6 +4,7 @@ import type { NearbyNpc } from '../types';
 
 const target: NearbyNpc = {
     kind: 'npc',
+    id: 9,
     index: 42,
     name: 'Guard',
     combatLevel: 21,

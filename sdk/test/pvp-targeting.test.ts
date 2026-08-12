@@ -4,6 +4,7 @@ import type { NearbyNpc, NearbyPlayer } from '../types';
 
 const goblin: NearbyNpc = {
     kind: 'npc',
+    id: 100,
     index: 4,
     name: 'Goblin',
     combatLevel: 2,

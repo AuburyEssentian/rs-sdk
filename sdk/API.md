@@ -221,7 +221,7 @@
 
 | Signature | Description |
 |---|---|
-| `async scanNearbyLocs(radius?: number): Promise<NearbyLoc[]>` | Scan for nearby locations with custom radius. |
+| `async scanNearbyLocs(radius?: number): Promise<NearbyLoc[]>` | Scan for nearby locations with custom radius. Results are scoped to the player's current plane (each carries `level`); re-scan after climbing or descending rather than reusing old references. |
 | `async scanGroundItems(radius?: number): Promise<GroundItem[]>` | Scan for ground items on-demand. This is more efficient than constantly pushing this data in state updates. |
 | `async scanFindNearbyLoc(pattern: string \| RegExp, radius?: number): Promise<NearbyLoc \| null>` | Find a nearby location by name pattern (on-demand scan). |
 | `async scanFindGroundItem(pattern: string \| RegExp, radius?: number): Promise<GroundItem \| null>` | Find a ground item by name pattern (on-demand scan). |

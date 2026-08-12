@@ -944,7 +944,9 @@ export class BotSDK {
     // Use these for expensive scans of nearby locations and ground items
 
     /**
-     * Scan for nearby locations with custom radius.
+     * Scan for nearby locations with custom radius. Results are scoped to the
+     * player's current plane (each carries `level`); re-scan after climbing or
+     * descending rather than reusing old references.
      * @param radius - Scan radius in tiles (default 15)
      * @returns Array of nearby locations sorted by distance
      */
