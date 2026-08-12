@@ -36,12 +36,38 @@ export interface BugReport {
     sdkVersion: string | null;
 }
 
+/**
+ * True if the log's last byte is something other than a newline - i.e. a
+ * previous append was cut short (ENOSPC during the 2026-08 disk-full event
+ * left one record truncated mid-line, and the next append spliced into it).
+ */
+function lastLineIsTruncated(): boolean {
+    let fd: number | null = null;
+    try {
+        fd = fs.openSync(REPORTS_FILE, 'r');
+        const size = fs.fstatSync(fd).size;
+        if (size === 0) {
+            return false;
+        }
+        const tail = Buffer.alloc(1);
+        fs.readSync(fd, tail, 0, 1, size - 1);
+        return tail[0] !== 0x0a;
+    } catch {
+        return false;
+    } finally {
+        if (fd !== null) {
+            fs.closeSync(fd);
+        }
+    }
+}
+
 function appendReport(report: BugReport): void {
     const dir = path.dirname(REPORTS_FILE);
     if (dir && dir !== '.' && !fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
-    fs.appendFileSync(REPORTS_FILE, JSON.stringify(report) + '\n');
+    const prefix = lastLineIsTruncated() ? '\n' : '';
+    fs.appendFileSync(REPORTS_FILE, prefix + JSON.stringify(report) + '\n');
 }
 
 /**
