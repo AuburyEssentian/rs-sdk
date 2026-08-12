@@ -21,7 +21,9 @@ mes("Oh dear you are dead!");
 clearqueue(player_death);
 
 def_obj $prev_wep = inv_getobj(worn, ^wearpos_rhand);
+def_boolean $pvp_death = false;
 if (findhero = true) {
+    $pvp_death = true;
     ~pvp_death_lose_items;
     session_log(^log_moderator, "Player died to <.displayname>");
 } else {
@@ -37,6 +39,10 @@ anim(null, 0);
 p_stopaction;
 
 ~stat_reset_all;
+if ($pvp_death = true) {
+    // deaths to another player respawn at 1hp instead of full
+    stat_sub(hitpoints, calc(stat(hitpoints) - 1), 0);
+}
 healenergy(10000);
 ~clear_pk_skull;
 ~clear_poison;
