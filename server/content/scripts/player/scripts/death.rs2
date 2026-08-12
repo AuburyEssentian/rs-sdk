@@ -38,9 +38,13 @@ buildappearance(worn);
 anim(null, 0);
 p_stopaction;
 
-~stat_reset_all;
 if ($pvp_death = true) {
-    // deaths to another player respawn at 1hp instead of full
+    ~set_pvp_death_mark;
+}
+~stat_reset_all;
+// deaths to another player respawn at 1hp instead of full, and the mark
+// keeps any death at 1hp for a while so an npc suicide can't undo it
+if ($pvp_death = true | ~has_pvp_death_mark = true) {
     stat_sub(hitpoints, calc(stat(hitpoints) - 1), 0);
 }
 healenergy(10000);

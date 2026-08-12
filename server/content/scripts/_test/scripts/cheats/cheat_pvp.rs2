@@ -7,6 +7,13 @@ mes("map_clock: <tostring(map_clock)>, %pk_skull: <tostring(%pk_skull)>");
 [debugproc,clearskull]
 ~clear_pk_skull;
 
+[debugproc,pvpmark]
+~set_pvp_death_mark;
+mes("pvp death mark set: map_clock <tostring(map_clock)>, expires <tostring(%pvp_death_mark)>");
+
+[debugproc,checkpvpmark]
+mes("map_clock: <tostring(map_clock)>, %pvp_death_mark: <tostring(%pvp_death_mark)>");
+
 [debugproc,singles]
 def_string $pk_preyname;
 def_string $pk_predatorname;

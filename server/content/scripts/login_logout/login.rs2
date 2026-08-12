@@ -52,6 +52,8 @@ queue(macro_event_login, 0, 0);
 ~macro_cube_login;
 // so pk skulls persist after logging back in
 ~set_pk_skull_login;
+// so the pvp 1hp-respawn mark persists after logging back in
+~set_pvp_death_mark_login;
 // so antifire persists after logging back in
 ~set_antifire_login;
 // if player is in a duel, they are removed from the duel
