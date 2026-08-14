@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Bob](../npcs/bob.md) |
 | **Location** | Lumbridge |
+| **Coordinates** | (3232, 3203) |
 | **Type** | Specialty Shop |
 
 ## Stock

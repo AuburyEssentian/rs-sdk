@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Tea seller](../npcs/tea-seller.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3271, 3411) |
 | **Type** | Specialty Shop |
 
 ## Stock

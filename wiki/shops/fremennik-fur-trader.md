@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fur trader](../npcs/fur-trader.md) |
 | **Location** | Quests |
+| **Coordinates** | (2640, 3675) |
 | **Type** | Specialty Shop |
 
 ## Stock

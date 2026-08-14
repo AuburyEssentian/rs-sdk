@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Helemos](../npcs/helemos.md) |
 | **Location** | Heroes' Guild |
+| **Coordinates** | (2894, 3510) L1 |
 | **Type** | Specialty Shop |
 
 ## Stock

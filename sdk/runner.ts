@@ -32,7 +32,13 @@ export interface RunOptions {
     connection?: { bot: BotActions; sdk: BotSDK };
     /** Connect if not connected (default: true) */
     autoConnect?: boolean;
-    /** Disconnect when done (default: false) */
+    /**
+     * Disconnect the bot when the script finishes (default: true when the
+     * runner opened the connection itself, false when one was passed via
+     * `connection`). Pass `false` to keep the connection alive after the
+     * script exits — e.g. when an MCP server or another process shares this
+     * bot and a disconnect would leave it stale.
+     */
     disconnectAfter?: boolean;
     /**
      * Print a short state summary after execution (default: true) -

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Tribal Weapon Salesman](../npcs/tribal-weapon-salesman.md) |
 | **Location** | Minigames |
+| **Coordinates** | (2661, 3419) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -200,6 +200,73 @@ interface ObjInfo {
     cost: number;
 }
 
+// ─── Parser: Pack File + Map Spawns (mirrors generate-npcs.ts) ───────────────
+
+interface SpawnLocation {
+    globalX: number;
+    globalZ: number;
+    level: number;
+}
+
+function parseNpcPackIdToName(content: string): Map<number, string> {
+    const idToName = new Map<number, string>();
+    for (const line of content.split('\n')) {
+        const eqIdx = line.indexOf('=');
+        if (eqIdx === -1) continue;
+        const id = parseInt(line.slice(0, eqIdx));
+        const name = line.slice(eqIdx + 1).trim();
+        if (!isNaN(id) && name) idToName.set(id, name);
+    }
+    return idToName;
+}
+
+function parseMapSpawns(
+    mapsDir: string,
+    npcIdToName: Map<number, string>
+): Map<string, SpawnLocation[]> {
+    const spawns = new Map<string, SpawnLocation[]>();
+    const mapFiles = readdirSync(mapsDir).filter(f => f.endsWith('.jm2'));
+
+    for (const file of mapFiles) {
+        const match = file.match(/^m(\d+)_(\d+)\.jm2$/);
+        if (!match) continue;
+        const mapX = parseInt(match[1]);
+        const mapZ = parseInt(match[2]);
+
+        const content = readFileSync(join(mapsDir, file), 'utf-8');
+        const npcSectionStart = content.indexOf('==== NPC ====');
+        if (npcSectionStart === -1) continue;
+
+        const afterNpc = content.slice(npcSectionStart + '==== NPC ===='.length);
+        const nextSection = afterNpc.indexOf('====');
+        const npcBlock = nextSection === -1 ? afterNpc : afterNpc.slice(0, nextSection);
+
+        for (const line of npcBlock.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            // Format: level localX localZ: npcID
+            const m = trimmed.match(/^(\d+)\s+(\d+)\s+(\d+):\s*(\d+)$/);
+            if (!m) continue;
+            const level = parseInt(m[1]);
+            const localX = parseInt(m[2]);
+            const localZ = parseInt(m[3]);
+            const npcId = parseInt(m[4]);
+
+            const configName = npcIdToName.get(npcId);
+            if (!configName) continue;
+
+            if (!spawns.has(configName)) spawns.set(configName, []);
+            spawns.get(configName)!.push({
+                globalX: mapX * 64 + localX,
+                globalZ: mapZ * 64 + localZ,
+                level,
+            });
+        }
+    }
+
+    return spawns;
+}
+
 function parseObjConfigsFull(content: string): Map<string, ObjInfo> {
     const items = new Map<string, ObjInfo>();
     let currentName = '';
@@ -354,6 +421,16 @@ function main() {
     }
     console.log(`  Loaded ${objData.size} items`);
 
+    // ─── Step 3b: Owner NPC spawn coordinates ───────────────────────────
+
+    console.log('\nStep 3b: Loading owner NPC spawn coordinates...');
+
+    const npcIdToName = parseNpcPackIdToName(
+        readFileSync(join(CONTENT_DIR, 'pack', 'npc.pack'), 'utf-8')
+    );
+    const npcSpawns = parseMapSpawns(join(CONTENT_DIR, 'maps'), npcIdToName);
+    console.log(`  Map spawns: ${npcSpawns.size} NPCs with spawn data`);
+
     // ─── Step 4: Build shop pages ───────────────────────────────────────
 
     console.log('\nStep 4: Building shop pages...');
@@ -396,7 +473,7 @@ function main() {
         const fileName = `${slug}.md`;
         const filePath = join(SHOP_DIR, fileName);
 
-        const md = generateShopMarkdown(page, objData);
+        const md = generateShopMarkdown(page, objData, npcSpawns);
         writeFileSync(filePath, md);
 
         pageIndex.push({ name: page.shopTitle, file: fileName, location: page.location });
@@ -414,7 +491,11 @@ function main() {
 
 // ─── Generate Markdown ───────────────────────────────────────────────────────
 
-function generateShopMarkdown(page: ShopPage, objData: Map<string, ObjInfo>): string {
+function generateShopMarkdown(
+    page: ShopPage,
+    objData: Map<string, ObjInfo>,
+    npcSpawns: Map<string, SpawnLocation[]>,
+): string {
     const lines: string[] = [];
     const primaryOwner = page.owners[0];
 
@@ -442,6 +523,27 @@ function generateShopMarkdown(page: ShopPage, objData: Map<string, ObjInfo>): st
     }
 
     lines.push(`| **Location** | ${page.location} |`);
+
+    // Owner spawn coordinates, so agents can walk straight to the shop
+    // instead of guessing from the area name alone.
+    const coordParts: string[] = [];
+    for (const owner of page.owners) {
+        const spawns = npcSpawns.get(owner.npcConfigName);
+        if (!spawns || spawns.length === 0) continue;
+        const samples = new Set<string>();
+        for (const spawn of spawns) {
+            const floor = spawn.level > 0 ? ` L${spawn.level}` : '';
+            samples.add(`(${spawn.globalX}, ${spawn.globalZ})${floor}`);
+        }
+        const sorted = [...samples].sort();
+        const overflow = sorted.length > 6 ? `, +${sorted.length - 6} more` : '';
+        const label = page.owners.length > 1 ? `${owner.npcDisplayName}: ` : '';
+        coordParts.push(`${label}${sorted.slice(0, 6).join(', ')}${overflow}`);
+    }
+    if (coordParts.length > 0) {
+        lines.push(`| **Coordinates** | ${coordParts.join('; ')} |`);
+    }
+
     lines.push(`| **Type** | ${page.isGeneralStore ? 'General Store' : 'Specialty Shop'} |`);
 
     lines.push('');

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Thessalia](../npcs/thessalia.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3204, 3417) |
 | **Type** | Specialty Shop |
 
 ## Stock

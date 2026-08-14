@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Armour salesman](../npcs/armour-salesman.md) |
 | **Location** | Minigames |
+| **Coordinates** | (2667, 3436) |
 | **Type** | Specialty Shop |
 
 ## Stock

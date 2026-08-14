@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Ranael](../npcs/ranael.md) |
 | **Location** | Al Kharid |
+| **Coordinates** | (3316, 3164) |
 | **Type** | Specialty Shop |
 
 ## Stock

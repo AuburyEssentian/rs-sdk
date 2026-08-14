@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Oziach](../npcs/oziach.md) |
 | **Location** | Edgeville |
+| **Coordinates** | (3069, 3517) |
 | **Type** | Specialty Shop |
 
 ## Stock

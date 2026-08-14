@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Jossik](../npcs/jossik.md) |
 | **Location** | Quests |
+| **Coordinates** | (2509, 3639) L1 |
 | **Type** | General Store |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Barker](../npcs/barker.md) |
 | **Location** | Canifis |
+| **Coordinates** | (3499, 3506) |
 | **Type** | Specialty Shop |
 
 ## Stock

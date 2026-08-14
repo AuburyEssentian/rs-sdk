@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fadli](../npcs/fadli.md) |
 | **Location** | Minigames |
+| **Coordinates** | (3383, 3269) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fionella](../npcs/fionella.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2725, 3378) L1 |
 | **Type** | General Store |
 
 ## Stock

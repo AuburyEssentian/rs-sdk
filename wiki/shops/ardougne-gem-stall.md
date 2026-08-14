@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Gem merchant](../npcs/gem-merchant.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2669, 3303) |
 | **Type** | Specialty Shop |
 
 ## Stock

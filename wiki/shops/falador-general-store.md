@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Shop keeper](../npcs/shop-keeper.md), [Shop assistant](../npcs/shop-assistant.md) |
 | **Location** | Falador |
+| **Coordinates** | Shop keeper: (2957, 3386); Shop assistant: (2955, 3389) |
 | **Type** | General Store |
 
 ## Stock

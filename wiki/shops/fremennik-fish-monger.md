@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fish monger](../npcs/fish-monger.md) |
 | **Location** | Quests |
+| **Coordinates** | (2646, 3675) |
 | **Type** | Specialty Shop |
 
 ## Stock

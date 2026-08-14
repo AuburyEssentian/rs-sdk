@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Jakut](../npcs/jakut.md) |
 | **Location** | Zanaris |
+| **Coordinates** | (3252, 9572) |
 | **Type** | Specialty Shop |
 
 ## Stock

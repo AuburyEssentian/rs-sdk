@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Rufus](../npcs/rufus.md) |
 | **Location** | Canifis |
+| **Coordinates** | (3507, 3496) |
 | **Type** | Specialty Shop |
 
 ## Stock

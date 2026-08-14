@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Wayne](../npcs/wayne.md) |
 | **Location** | Falador |
+| **Coordinates** | (2973, 3312) |
 | **Type** | Specialty Shop |
 
 ## Stock

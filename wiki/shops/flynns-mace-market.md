@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Flynn](../npcs/flynn.md) |
 | **Location** | Falador |
+| **Coordinates** | (2951, 3386) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Hickton](../npcs/hickton.md) |
 | **Location** | Catherby |
+| **Coordinates** | (2822, 3442) |
 | **Type** | Specialty Shop |
 
 ## Stock

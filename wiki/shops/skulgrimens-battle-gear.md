@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Skulgrimen](../npcs/skulgrimen.md) |
 | **Location** | Quests |
+| **Coordinates** | (2663, 3694) |
 | **Type** | Specialty Shop |
 
 ## Stock

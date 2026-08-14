@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Dommik](../npcs/dommik.md) |
 | **Location** | Al Kharid |
+| **Coordinates** | (3322, 3194) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Tostig](../npcs/tostig.md), [Sam](../npcs/sam.md), [Rachael](../npcs/rachael.md) |
 | **Location** | Quests |
+| **Coordinates** | Tostig: (2906, 3537); Sam: (2201, 4942); Rachael: (2207, 4958) |
 | **Type** | Specialty Shop |
 
 ## Stock

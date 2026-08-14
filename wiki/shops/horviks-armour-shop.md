@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Horvik](../npcs/horvik.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3229, 3438) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Siegfried Erkle](../npcs/siegfried-erkle.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2725, 3381) L2 |
 | **Type** | Specialty Shop |
 
 ## Stock

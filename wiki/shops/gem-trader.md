@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Gem trader](../npcs/gem-trader.md) |
 | **Location** | Al Kharid |
+| **Coordinates** | (3288, 3212) |
 | **Type** | Specialty Shop |
 
 ## Stock

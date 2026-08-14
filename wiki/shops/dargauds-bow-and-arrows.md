@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Bow and Arrow salesman](../npcs/bow-and-arrow-salesman.md) |
 | **Location** | Minigames |
+| **Coordinates** | (2673, 3434) |
 | **Type** | Specialty Shop |
 
 ## Stock

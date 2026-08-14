@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Herquin](../npcs/herquin.md) |
 | **Location** | Falador |
+| **Coordinates** | (2944, 3334) |
 | **Type** | Specialty Shop |
 
 ## Stock

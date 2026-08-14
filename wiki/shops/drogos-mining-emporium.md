@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Drogo dwarf](../npcs/drogo-dwarf.md) |
 | **Location** | Falador |
+| **Coordinates** | (3036, 9846) |
 | **Type** | Specialty Shop |
 
 ## Stock

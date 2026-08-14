@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Gulluck](../npcs/gulluck.md) |
 | **Location** | Tree Gnome Stronghold |
+| **Coordinates** | (2468, 3487) L2 |
 | **Type** | Specialty Shop |
 
 ## Stock

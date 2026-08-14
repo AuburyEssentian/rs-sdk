@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [chadwell](../npcs/chadwell.md) |
 | **Location** | West Ardougne |
+| **Coordinates** | (2464, 3287) |
 | **Type** | General Store |
 
 ## Stock

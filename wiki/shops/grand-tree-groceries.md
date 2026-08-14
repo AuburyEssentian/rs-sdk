@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Hudo](../npcs/hudo.md) |
 | **Location** | Tree Gnome Stronghold |
+| **Coordinates** | (2448, 3509) L1 |
 | **Type** | Specialty Shop |
 
 ## Stock

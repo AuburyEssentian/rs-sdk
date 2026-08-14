@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Silver merchant](../npcs/silver-merchant.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2658, 3316) |
 | **Type** | Specialty Shop |
 
 ## Stock

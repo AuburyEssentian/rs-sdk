@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Gaius](../npcs/gaius.md) |
 | **Location** | Taverley |
+| **Coordinates** | (2885, 3449) |
 | **Type** | Specialty Shop |
 
 ## Stock

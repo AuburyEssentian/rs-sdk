@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Arhein](../npcs/arhein.md) |
 | **Location** | Catherby |
+| **Coordinates** | (2803, 3430) |
 | **Type** | General Store |
 
 ## Stock

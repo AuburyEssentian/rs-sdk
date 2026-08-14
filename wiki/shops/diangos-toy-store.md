@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Diango](../npcs/diango.md) |
 | **Location** | Draynor Village |
+| **Coordinates** | (3079, 3250) |
 | **Type** | Specialty Shop |
 
 ## Stock

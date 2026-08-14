@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Shantay](../npcs/shantay.md) |
 | **Location** | Desert |
+| **Coordinates** | (3304, 3123) |
 | **Type** | Specialty Shop |
 
 ## Stock

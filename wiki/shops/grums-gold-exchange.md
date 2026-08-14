@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Grum](../npcs/grum.md) |
 | **Location** | Port Sarim |
+| **Coordinates** | (3013, 3248) |
 | **Type** | Specialty Shop |
 
 ## Stock

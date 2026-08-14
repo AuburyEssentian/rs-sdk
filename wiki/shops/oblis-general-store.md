@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Obli](../npcs/obli.md) |
 | **Location** | Shilo Village |
+| **Coordinates** | (2824, 2959) |
 | **Type** | General Store |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Shop keeper](../npcs/shop-keeper.md), [Shop assistant](../npcs/shop-assistant.md) |
 | **Location** | Varrock |
+| **Coordinates** | Shop keeper: (3218, 3415); Shop assistant: (3217, 3411) |
 | **Type** | General Store |
 
 ## Stock

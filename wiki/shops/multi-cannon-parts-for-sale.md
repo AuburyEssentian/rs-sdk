@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Nulodion](../npcs/nulodion.md) |
 | **Location** | Quests |
+| **Coordinates** | (3011, 3453) |
 | **Type** | Specialty Shop |
 
 ## Stock

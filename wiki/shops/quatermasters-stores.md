@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Quartermaster](../npcs/quartermaster.md) |
 | **Location** | Quests |
+| **Coordinates** | (2194, 3140) |
 | **Type** | General Store |
 
 ## Stock

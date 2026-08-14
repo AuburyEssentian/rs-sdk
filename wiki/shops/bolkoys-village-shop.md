@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Bolkoy](../npcs/bolkoy.md) |
 | **Location** | Tree Gnome Stronghold |
+| **Coordinates** | (2527, 3161) L1 |
 | **Type** | General Store |
 
 ## Stock

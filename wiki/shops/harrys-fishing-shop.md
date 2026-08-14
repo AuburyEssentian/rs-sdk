@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Harry](../npcs/harry.md) |
 | **Location** | Catherby |
+| **Coordinates** | (2834, 3445) |
 | **Type** | Specialty Shop |
 
 ## Stock

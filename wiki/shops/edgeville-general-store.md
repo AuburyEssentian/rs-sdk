@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Shop keeper](../npcs/shop-keeper.md), [Shop assistant](../npcs/shop-assistant.md) |
 | **Location** | Edgeville |
+| **Coordinates** | Shop keeper: (3080, 3511); Shop assistant: (3081, 3511) |
 | **Type** | General Store |
 
 ## Stock

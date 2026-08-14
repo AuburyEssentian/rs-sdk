@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Ogre merchant](../npcs/ogre-merchant.md) |
 | **Location** | Yanille |
+| **Coordinates** | (2528, 3048) |
 | **Type** | Specialty Shop |
 
 ## Stock

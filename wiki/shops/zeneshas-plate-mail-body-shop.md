@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Zenesha](../npcs/zenesha.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2653, 3295) |
 | **Type** | Specialty Shop |
 
 ## Stock

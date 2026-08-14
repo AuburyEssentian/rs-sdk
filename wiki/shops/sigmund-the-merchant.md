@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Sigmund The Merchant](../npcs/sigmund-the-merchant.md) |
 | **Location** | Quests |
+| **Coordinates** | (2641, 3680) |
 | **Type** | General Store |
 
 ## Stock

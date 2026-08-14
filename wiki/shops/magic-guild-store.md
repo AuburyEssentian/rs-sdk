@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Magic Store owner](../npcs/magic-store-owner.md) |
 | **Location** | Yanille |
+| **Coordinates** | (2595, 3087) L1 |
 | **Type** | Specialty Shop |
 
 ## Stock

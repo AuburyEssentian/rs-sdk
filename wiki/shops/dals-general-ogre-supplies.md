@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Ogre trader](../npcs/ogre-trader.md) |
 | **Location** | Yanille |
+| **Coordinates** | (2518, 3035) |
 | **Type** | General Store |
 
 ## Stock

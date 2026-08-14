@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Zambo](../npcs/zambo.md) |
 | **Location** | Karamja |
+| **Coordinates** | (2925, 3143) |
 | **Type** | Specialty Shop |
 
 ## Stock

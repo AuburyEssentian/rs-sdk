@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Roachey](../npcs/roachey.md) |
 | **Location** | Skill Fishing |
+| **Coordinates** | (2596, 3400) |
 | **Type** | Specialty Shop |
 
 ## Stock

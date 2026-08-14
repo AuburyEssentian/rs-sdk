@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Gerrant](../npcs/gerrant.md) |
 | **Location** | Port Sarim |
+| **Coordinates** | (3013, 3225) |
 | **Type** | Specialty Shop |
 
 ## Stock

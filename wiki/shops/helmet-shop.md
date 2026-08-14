@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Peksa](../npcs/peksa.md) |
 | **Location** | Barbarian Village |
+| **Coordinates** | (3076, 3429) |
 | **Type** | Specialty Shop |
 
 ## Stock

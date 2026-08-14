@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Dwarf](../npcs/dwarf.md) |
 | **Location** | Falador |
+| **Coordinates** | (2993, 9828) |
 | **Type** | General Store |
 
 ## Stock

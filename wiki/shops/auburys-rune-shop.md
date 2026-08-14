@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Aubury](../npcs/aubury.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3253, 3402) |
 | **Type** | Specialty Shop |
 
 ## Stock

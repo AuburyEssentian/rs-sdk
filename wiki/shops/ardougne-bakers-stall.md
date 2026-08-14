@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Baker](../npcs/baker.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2654, 3311), (2669, 3310) |
 | **Type** | Specialty Shop |
 
 ## Stock

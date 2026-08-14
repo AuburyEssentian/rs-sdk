@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Tamayu](../npcs/tamayu.md) |
 | **Location** | Quests |
+| **Coordinates** | (2800, 3057) |
 | **Type** | Specialty Shop |
 
 ## Stock

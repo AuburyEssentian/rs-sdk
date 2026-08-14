@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Frincos](../npcs/frincos.md) |
 | **Location** | Entrana |
+| **Coordinates** | (2808, 3342) |
 | **Type** | Specialty Shop |
 
 ## Stock

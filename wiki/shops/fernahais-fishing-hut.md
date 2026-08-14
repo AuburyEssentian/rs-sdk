@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fernahei](../npcs/fernahei.md) |
 | **Location** | Shilo Village |
+| **Coordinates** | (2870, 2972) |
 | **Type** | Specialty Shop |
 
 ## Stock

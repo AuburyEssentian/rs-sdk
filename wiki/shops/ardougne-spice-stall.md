@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Spice seller](../npcs/spice-seller.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2658, 3296) |
 | **Type** | Specialty Shop |
 
 ## Stock

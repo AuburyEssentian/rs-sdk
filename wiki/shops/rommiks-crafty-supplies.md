@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Rommik](../npcs/rommik.md) |
 | **Location** | Rimmington |
+| **Coordinates** | (2946, 3205) |
 | **Type** | Specialty Shop |
 
 ## Stock

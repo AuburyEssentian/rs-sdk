@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Nurmof](../npcs/nurmof.md) |
 | **Location** | Falador |
+| **Coordinates** | (2998, 9844) |
 | **Type** | Specialty Shop |
 
 ## Stock

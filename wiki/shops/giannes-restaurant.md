@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Gnome Waiter](../npcs/gnome-waiter.md) |
 | **Location** | Tree Gnome Stronghold |
+| **Coordinates** | (2448, 3503) L1, (2450, 3503) L1 |
 | **Type** | Specialty Shop |
 
 ## Stock

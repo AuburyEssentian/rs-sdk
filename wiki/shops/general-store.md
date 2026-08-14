@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fidelio](../npcs/fidelio.md) |
 | **Location** | Canifis |
+| **Coordinates** | (3475, 3497) |
 | **Type** | General Store |
 
 ## Stock

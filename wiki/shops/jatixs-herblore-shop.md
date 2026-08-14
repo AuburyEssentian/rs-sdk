@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Jatix](../npcs/jatix.md) |
 | **Location** | Taverley |
+| **Coordinates** | (2899, 3427) |
 | **Type** | Specialty Shop |
 
 ## Stock

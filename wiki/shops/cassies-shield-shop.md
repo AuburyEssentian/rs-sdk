@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Cassie](../npcs/cassie.md) |
 | **Location** | Falador |
+| **Coordinates** | (2979, 3383) |
 | **Type** | Specialty Shop |
 
 ## Stock

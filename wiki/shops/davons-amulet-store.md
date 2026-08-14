@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Davon](../npcs/davon.md) |
 | **Location** | Brimhaven |
+| **Coordinates** | (2803, 3152) |
 | **Type** | Specialty Shop |
 
 ## Stock

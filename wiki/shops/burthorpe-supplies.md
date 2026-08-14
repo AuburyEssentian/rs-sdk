@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Wistan](../npcs/wistan.md) |
 | **Location** | Quests |
+| **Coordinates** | (2928, 3546) |
 | **Type** | General Store |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Tiadeche](../npcs/tiadeche.md) |
 | **Location** | Quests |
+| **Coordinates** | (2781, 3057) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Yrsa](../npcs/yrsa.md) |
 | **Location** | Quests |
+| **Coordinates** | (2625, 3675) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Betty](../npcs/betty.md) |
 | **Location** | Port Sarim |
+| **Coordinates** | (3012, 3259) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fancy dress shop owner](../npcs/fancy-dress-shop-owner.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3281, 3398) |
 | **Type** | Specialty Shop |
 
 ## Stock

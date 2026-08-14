@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Wydin](../npcs/wydin.md) |
 | **Location** | Port Sarim |
+| **Coordinates** | (3014, 3204) |
 | **Type** | Specialty Shop |
 
 ## Stock

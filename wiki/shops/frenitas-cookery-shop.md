@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Frenita](../npcs/frenita.md) |
 | **Location** | Yanille |
+| **Coordinates** | (2566, 3098) |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Scavvo](../npcs/scavvo.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3191, 3351) L1 |
 | **Type** | Specialty Shop |
 
 ## Stock

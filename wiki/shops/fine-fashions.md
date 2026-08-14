@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Rometti](../npcs/rometti.md) |
 | **Location** | Tree Gnome Stronghold |
+| **Coordinates** | (2482, 3510) L1 |
 | **Type** | Specialty Shop |
 
 ## Stock

@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Fur trader](../npcs/fur-trader.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2666, 3295) |
 | **Type** | Specialty Shop |
 
 ## Stock

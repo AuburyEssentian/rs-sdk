@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Shop keeper](../npcs/shop-keeper.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | (2641, 3171), (2655, 3152) |
 | **Type** | General Store |
 
 ## Stock

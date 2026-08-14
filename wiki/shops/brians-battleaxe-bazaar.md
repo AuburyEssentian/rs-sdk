@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Brian](../npcs/brian.md) |
 | **Location** | Port Sarim |
+| **Coordinates** | (3028, 3250) |
 | **Type** | Specialty Shop |
 
 ## Stock

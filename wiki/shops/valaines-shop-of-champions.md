@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Valaine](../npcs/valaine.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3193, 3361) L1 |
 | **Type** | General Store |
 
 ## Stock

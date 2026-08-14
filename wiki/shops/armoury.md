@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Shop keeper](../npcs/shop-keeper.md) |
 | **Location** | Combat Training Camp |
+| **Coordinates** | (2514, 3385) |
 | **Type** | Specialty Shop |
 
 ## Stock

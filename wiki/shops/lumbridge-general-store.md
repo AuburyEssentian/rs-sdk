@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Shop keeper](../npcs/shop-keeper.md), [Shop assistant](../npcs/shop-assistant.md) |
 | **Location** | Lumbridge |
+| **Coordinates** | Shop keeper: (3209, 3247); Shop assistant: (3212, 3247) |
 | **Type** | General Store |
 
 ## Stock

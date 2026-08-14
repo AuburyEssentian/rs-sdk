@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Lowe](../npcs/lowe.md) |
 | **Location** | Varrock |
+| **Coordinates** | (3232, 3423) |
 | **Type** | Specialty Shop |
 
 ## Stock

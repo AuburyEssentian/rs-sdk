@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Noterazzo](../npcs/noterazzo.md) |
 | **Location** | Wilderness |
+| **Coordinates** | (3025, 3701) |
 | **Type** | General Store |
 
 ## Stock

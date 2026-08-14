@@ -6,16 +6,17 @@ Bronze bars require **1 copper ore + 1 tin ore** smelted at a furnace.
 
 ### How to Smelt
 
-Some furnace variants expose a `Smelt` option and others require using ore on
-the furnace. Inspect `optionsWithIndex` first; using ore on the furnace is the
+Some furnace spots pair the real furnace with an inert, option-less decoy loc
+one tile away — a bare name match can pick the decoy and smelt nothing, with no
+error. Use `{withOption}` to get the real one. Using ore on the furnace is the
 portable low-level fallback:
 
 ```typescript
 const state = sdk.getState();
 if (!state) throw new Error('No world state');
 const copper = state.inventory.find(i => /copper ore/i.test(i.name));
-const furnace = state.nearbyLocs.find(l => /furnace/i.test(l.name));
-if (!copper || !furnace) throw new Error('Copper ore and a nearby furnace are required');
+const furnace = sdk.findNearbyLoc(/furnace/i, { withOption: /smelt/i });
+if (!copper || !furnace) throw new Error('Copper ore and a usable nearby furnace are required');
 await sdk.sendUseItemOnLoc(copper.slot, furnace.x, furnace.z, furnace.id);
 await sdk.waitForCondition(
     next => next.inventory.some(item => /bronze bar/i.test(item.name)),
@@ -31,8 +32,8 @@ await sdk.waitForCondition(
 ### Furnace Locations
 | Location | Coordinates | Furnace IDs | Notes |
 |----------|-------------|-------------|-------|
-| Lumbridge furnace | (3225, 3256) | 2785, 2781 | Right next to spawn, reliable.
-| Al Kharid furnace | (3273, 3184) | 2785, 2781 | Needs 10gp toll gate. 
+| Lumbridge furnace | (3225, 3256) | 2785, 2781 | Right next to spawn, reliable. 2781 has `Smelt`; 2785 is a decoy.
+| Al Kharid furnace | (3273, 3184) | 2785, 2781 | Needs 10gp toll gate. 2781 has `Smelt`; 2785 is a decoy.
 
 
 ### Anvil Locations

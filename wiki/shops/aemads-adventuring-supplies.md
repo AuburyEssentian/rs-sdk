@@ -4,6 +4,7 @@
 |---|---|
 | **Owner** | [Aemad](../npcs/aemad.md), [Kortan](../npcs/kortan.md) |
 | **Location** | East Ardougne |
+| **Coordinates** | Aemad: (2613, 3294); Kortan: (2615, 3292) |
 | **Type** | General Store |
 
 ## Stock
