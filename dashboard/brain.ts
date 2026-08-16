@@ -15,11 +15,13 @@ export function buildBrainSnapshot(
     reconciler: any,
     costs: any,
     workOrders: WorkOrderCounts,
+    strategy: any = null,
     now = Date.now(),
 ): any {
     const statusAgeMs = timestampAgeMs(status?.updatedAt, now);
     const reconcilerAgeMs = timestampAgeMs(reconciler?.updatedAt, now);
     const costAgeMs = timestampAgeMs(costs?.updatedAt, now);
+    const strategyAgeMs = timestampAgeMs(strategy?.updatedAt, now);
     const healthy = Boolean(status?.online)
         && statusAgeMs !== null
         && statusAgeMs < 10 * 60_000
@@ -31,6 +33,7 @@ export function buildBrainSnapshot(
         statusAgeMs,
         reconcilerAgeMs,
         costAgeMs,
+        strategyAgeMs,
         status: status ?? {
             online: false,
             health: 'offline',
@@ -45,10 +48,21 @@ export function buildBrainSnapshot(
         reconciler: reconciler ?? {
             online: false,
             phase: 'offline',
-            allowedActions: ['restart_controller'],
+            allowedActions: ['restart_controller', 'restart_client', 'restart_account', 'add_account', 'remove_account'],
+            hardMaxAccounts: 20,
+            protectedAccounts: ['FSZ6yjrsA'],
+            removalPolicy: 'disable-and-archive',
             updatedAt: null,
         },
         workOrders,
+        strategy: strategy ?? {
+            version: 1,
+            longHorizon: { title: 'Awaiting Luna’s durable objective', state: 'selecting', successCriteria: [] },
+            milestones: [],
+            shortTermGoals: [],
+            progressEvidence: [],
+            updatedAt: null,
+        },
         costs: {
             currency: 'USD',
             billingMode: 'list-price-equivalent',

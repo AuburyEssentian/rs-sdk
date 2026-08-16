@@ -27,6 +27,7 @@ const FLEET_PATH = join(REPO_ROOT, 'fleet.json');
 const LOGISTICS_PATH = join(REPO_ROOT, 'fleet', 'logistics.json');
 const BRAIN_RUNTIME_PATH = join(REPO_ROOT, 'fleet', 'brain', 'runtime');
 const BRAIN_STATUS_PATH = join(BRAIN_RUNTIME_PATH, 'brain-status.json');
+const STRATEGY_PATH = join(BRAIN_RUNTIME_PATH, 'strategy.json');
 const RECONCILER_STATUS_PATH = join(BRAIN_RUNTIME_PATH, 'reconciler-status.json');
 const COSTS_PATH = join(BRAIN_RUNTIME_PATH, 'costs.json');
 const PORT = Number(process.env.PORT || 8240);
@@ -113,12 +114,14 @@ async function dashboardPayload(): Promise<any> {
     const logistics = await readJsonFile(LOGISTICS_PATH) ?? { updatedAt: null, lastTransfer: null };
     const fleet = {
         ...buildFleetSnapshot(fleetDefinitions, fleetStatuses),
+        limits: fleetManifest?.limits ?? { maxAccounts: 20, protectedAccounts: ['FSZ6yjrsA'], removalPolicy: 'disable-and-archive' },
         resourcePlan: fleetManifest?.resourcePlan ?? null,
         plannedRoles: Array.isArray(fleetManifest?.plannedRoles) ? fleetManifest.plannedRoles : [],
         logistics,
     };
-    const [brainStatus, reconcilerStatus, costs, pendingOrders, completedOrders, rejectedOrders] = await Promise.all([
+    const [brainStatus, strategy, reconcilerStatus, costs, pendingOrders, completedOrders, rejectedOrders] = await Promise.all([
         readJsonFile(BRAIN_STATUS_PATH),
+        readJsonFile(STRATEGY_PATH),
         readJsonFile(RECONCILER_STATUS_PATH),
         readJsonFile(COSTS_PATH),
         countJsonFiles(join(BRAIN_RUNTIME_PATH, 'work-orders', 'pending')),
@@ -129,7 +132,7 @@ async function dashboardPayload(): Promise<any> {
         pending: pendingOrders,
         completed: completedOrders,
         rejected: rejectedOrders,
-    });
+    }, strategy);
 
     await recordTelemetry(status);
     const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000;
@@ -163,7 +166,7 @@ async function dashboardPayload(): Promise<any> {
         startedAt,
         bot: BOT_NAME,
         readOnly: true,
-        online: browserHealthy && controllerHealthy && fleet.summary.configured > 0 && fleet.summary.online === fleet.summary.configured,
+        online: browserHealthy && controllerHealthy && fleet.summary.active > 0 && fleet.summary.online === fleet.summary.active,
         current: {
             activity: status?.activity ?? 'Starting',
             detail: status?.detail ?? 'Waiting for controller status',

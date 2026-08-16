@@ -3,6 +3,7 @@ export interface FleetBotDefinition {
     role: string;
     clientMode: 'browser' | 'lite';
     statusPath: string;
+    enabled?: boolean;
 }
 
 export interface FleetBotStatus {
@@ -26,9 +27,11 @@ export function buildFleetSnapshot(
         const status = statuses[definition.id] ?? null;
         const parsed = status?.updatedAt ? Date.parse(status.updatedAt) : Number.NaN;
         const ageMs = Number.isFinite(parsed) ? Math.max(0, now - parsed) : null;
-        const healthy = Boolean(status?.online) && ageMs !== null && ageMs < 120_000;
+        const enabled = definition.enabled !== false;
+        const healthy = enabled && Boolean(status?.online) && ageMs !== null && ageMs < 120_000;
         return {
             ...definition,
+            enabled,
             healthy,
             ageMs,
             totalLevel: typeof status?.totalLevel === 'number' ? status.totalLevel : null,
@@ -44,8 +47,10 @@ export function buildFleetSnapshot(
     return {
         summary: {
             configured: bots.length,
+            active: bots.filter(bot => bot.enabled).length,
+            disabled: bots.filter(bot => !bot.enabled).length,
             online: bots.filter(bot => bot.healthy).length,
-            totalLevel: bots.reduce((sum, bot) => sum + (bot.totalLevel ?? 0), 0),
+            totalLevel: bots.filter(bot => bot.enabled).reduce((sum, bot) => sum + (bot.totalLevel ?? 0), 0),
         },
         bots,
     };

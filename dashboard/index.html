@@ -648,7 +648,7 @@
         <section class="card" id="fleet" role="tabpanel" aria-labelledby="tab-fleet" hidden aria-hidden="true">
           <div class="card-head"><div class="card-title"><span class="kicker">FLEET</span><h2>Account roster</h2></div><span class="kicker" id="fleet-health">checking</span></div>
           <div class="fleet-summary">
-            <div class="fleet-stat"><span>Configured</span><strong id="fleet-configured">—</strong></div>
+            <div class="fleet-stat"><span>Active / total</span><strong id="fleet-configured">—</strong></div>
             <div class="fleet-stat"><span>Online</span><strong id="fleet-online">—</strong></div>
             <div class="fleet-stat"><span>Combined level</span><strong id="fleet-total-level">—</strong></div>
           </div>
@@ -663,10 +663,20 @@
             <div class="fleet-stat"><span>Last review</span><strong id="brain-age">—</strong></div>
           </div>
           <div class="brain-objective">
-            <span class="kicker">Fleet objective</span>
+            <span class="kicker">Long horizon</span>
+            <h3 id="brain-long-horizon">Waiting for Luna to select a durable achievement</h3>
+            <p class="brain-decision" id="brain-long-why">The durable outcome will stay fixed while tactical goals evolve beneath it.</p>
+            <p class="brain-decision" id="brain-milestone">Milestones will link the long horizon to daily execution.</p>
+            <span class="kicker" style="margin-top:16px;display:block">Current campaign</span>
             <h3 id="brain-objective">Waiting for Fleetbrain</h3>
             <p class="brain-decision" id="brain-decision">The isolated orchestrator has not published its first review.</p>
           </div>
+          <p class="subhead" style="padding:0 14px">Short-term goals</p>
+          <div class="observation-list" id="brain-short-goals"></div>
+          <p class="subhead" style="padding:0 14px">Milestone roadmap</p>
+          <div class="observation-list" id="brain-milestones"></div>
+          <p class="subhead" style="padding:0 14px">Progress evidence</p>
+          <div class="observation-list" id="brain-progress-evidence"></div>
           <p class="subhead" style="padding:0 14px">Latest observations</p>
           <div class="observation-list" id="brain-observations"></div>
         </section>
@@ -1084,7 +1094,7 @@
       identity.append(name, role);
       const state = document.createElement('div');
       state.className = `fleet-bot-state ${bot.healthy ? 'ok' : ''}`;
-      state.textContent = bot.healthy ? 'online' : 'attention';
+      state.textContent = bot.enabled === false ? 'disabled' : (bot.healthy ? 'online' : 'attention');
       head.append(identity, state);
 
       const meta = document.createElement('div');
@@ -1106,7 +1116,7 @@
       }
       const detail = document.createElement('div');
       detail.className = 'fleet-detail';
-      detail.textContent = `${titleCase(bot.activity)} · ${bot.detail}`;
+      detail.textContent = bot.enabled === false ? 'Archived from active fleet · credentials and history preserved' : `${titleCase(bot.activity)} · ${bot.detail}`;
       card.append(head, meta, detail);
       return card;
     }
@@ -1123,22 +1133,26 @@
     }
 
     function renderFleet(fleet = {}) {
-      const summary = fleet.summary || { configured: 0, online: 0, totalLevel: 0 };
-      $('fleet-configured').textContent = summary.configured;
+      const summary = fleet.summary || { configured: 0, active: 0, disabled: 0, online: 0, totalLevel: 0 };
+      $('fleet-configured').textContent = `${summary.active ?? summary.configured}/${summary.configured}`;
       $('fleet-online').textContent = summary.online;
       $('fleet-total-level').textContent = formatNumber(summary.totalLevel);
-      $('fleet-health').textContent = `${summary.online}/${summary.configured} online`;
+      $('fleet-health').textContent = `${summary.online}/${summary.active ?? summary.configured} active online`;
       const bots = fleet.bots || [];
       $('fleet-list').replaceChildren(...(bots.length ? bots.map(fleetBotCard) : [emptyState('No accounts configured', 'Add accounts to the local fleet manifest to expose read-only telemetry.') ]));
 
       const plan = fleet.resourcePlan || {};
+      const limits = fleet.limits || { maxAccounts: 20, protectedAccounts: ['FSZ6yjrsA'], removalPolicy: 'disable-and-archive' };
       $('fleet-resource-plan').replaceChildren(
+        fleetPlanRow('Hard account cap', `${limits.maxAccounts ?? 20} total · ${Math.max(0, (limits.maxAccounts ?? 20) - summary.configured)} unallocated`),
+        fleetPlanRow('Protected account', (limits.protectedAccounts || ['FSZ6yjrsA']).join(', ')),
+        fleetPlanRow('Removal policy', limits.removalPolicy || 'disable-and-archive'),
         fleetPlanRow('Host memory', `${plan.hostMemoryGiB ?? '—'} GiB`),
         fleetPlanRow('Rendered browser', `${plan.measuredRenderedClientMiB ?? '—'} MiB measured`),
         fleetPlanRow('Lite client', `${plan.measuredLiteClientMiB ?? '—'} MiB measured`),
         fleetPlanRow('Full lite account', `${plan.measuredLiteStackMiB ?? '—'} MiB RSS`),
-        fleetPlanRow('Projected 10 accounts', `${plan.projectedFleetRssMiB ?? '—'} MiB RSS`),
-        fleetPlanRow('Target mix', `${plan.renderedClients ?? 1} rendered + ${plan.liteClientsTarget ?? 0} lite`),
+        fleetPlanRow('Measured 10-account plan', `${plan.projectedFleetRssMiB ?? '—'} MiB RSS`),
+        fleetPlanRow('Current baseline mix', `${plan.renderedClients ?? 1} rendered + ${plan.liteClientsTarget ?? 0} lite`),
       );
       const transfer = fleet.logistics?.lastTransfer;
       if (transfer) {
@@ -1157,6 +1171,8 @@
 
     function renderBrain(brain = {}) {
       const status = brain.status || {};
+      const strategy = brain.strategy || {};
+      const longHorizon = strategy.longHorizon || {};
       const reconciler = brain.reconciler || {};
       const workOrders = brain.workOrders || {};
       const costs = brain.costs || {};
@@ -1165,9 +1181,32 @@
       $('brain-state').textContent = status.health || (status.online ? 'online' : 'offline');
       $('brain-model').textContent = status.model || 'gpt-5.6-luna';
       $('brain-age').textContent = age(brain.statusAgeMs);
+      $('brain-long-horizon').textContent = longHorizon.title || status.longHorizonGoal || 'Waiting for Luna to select a durable achievement';
+      $('brain-long-why').textContent = longHorizon.why || `Strategy state: ${longHorizon.state || 'selecting'} · updated ${age(brain.strategyAgeMs)}`;
+      const milestones = Array.isArray(strategy.milestones) ? strategy.milestones : [];
+      const currentMilestone = milestones.find(item => item?.status === 'active') || milestones.find(item => item?.status === 'pending');
+      $('brain-milestone').textContent = currentMilestone?.title || status.currentMilestone || 'No active milestone published yet.';
       $('brain-objective').textContent = status.objective || 'Waiting for the first strategic review';
       $('brain-decision').textContent = status.decision || 'No fleet-level decision has been published.';
       const observations = Array.isArray(status.observations) ? status.observations.slice(0, 5) : [];
+      const shortGoals = Array.isArray(strategy.shortTermGoals) ? strategy.shortTermGoals.slice(0, 5) : [];
+      $('brain-short-goals').replaceChildren(...(shortGoals.length ? shortGoals.map(goal => dataRow(
+        goal.title || goal.goal || 'Untitled tactical goal',
+        `${[].concat(goal.ownerBotIds || goal.ownerAccounts || goal.owners || []).join(', ') || 'fleet'}${goal.milestoneId ? ` · ${goal.milestoneId}` : ''}`,
+        goal.status || 'planned',
+      )) : [emptyState('No short-term goals yet', 'Luna will decompose its durable objective into measurable worker goals.') ]));
+      $('brain-milestones').replaceChildren(...(milestones.length ? milestones.slice(0, 6).map((milestone, index) => dataRow(
+        milestone.title || `Milestone ${index + 1}`,
+        Array.isArray(milestone.successCriteria) ? milestone.successCriteria.join(' · ') : (milestone.successCriteria || 'Awaiting measurable criteria'),
+        milestone.status || 'planned',
+      )) : [emptyState('No milestone roadmap yet', 'Luna will publish the ordered path to the long-horizon achievement.') ]));
+      const progressEvidence = Array.isArray(strategy.progressEvidence) ? strategy.progressEvidence.slice(-10).reverse() : [];
+      $('brain-progress-evidence').replaceChildren(...(progressEvidence.length ? progressEvidence.map(item => {
+        const node = document.createElement('div');
+        node.className = 'observation';
+        node.textContent = typeof item === 'string' ? item : (item.evidence || item.detail || JSON.stringify(item));
+        return node;
+      }) : [emptyState('No durable progress evidence yet', 'Fresh telemetry will be recorded as milestones and tactical goals advance.') ]));
       $('brain-observations').replaceChildren(...(observations.length ? observations.map(text => {
         const node = document.createElement('div');
         node.className = 'observation';
@@ -1180,9 +1219,14 @@
       $('brain-orders-rejected').textContent = workOrders.rejected ?? 0;
       $('brain-control-details').replaceChildren(
         fleetPlanRow('Reconciler', reconciler.online ? `${reconciler.phase || 'idle'} · online` : 'offline'),
-        fleetPlanRow('Automatic authority', (reconciler.allowedActions || ['restart_controller']).join(', ')),
-        fleetPlanRow('Restart guard', 'offline or stale ≥10m'),
-        fleetPlanRow('Cooldown', `${Math.round((reconciler.cooldownMs || 300000) / 60000)} minutes per controller`),
+        fleetPlanRow('Automatic authority', (reconciler.allowedActions || ['restart_controller', 'restart_client', 'restart_account', 'add_account', 'remove_account']).join(', ')),
+        fleetPlanRow('Luna desired active', status.desiredActiveAccounts == null ? 'awaiting v2 review' : `${status.desiredActiveAccounts}/${reconciler.hardMaxAccounts || 20}`),
+        fleetPlanRow('Capacity decision', status.capacityDecision || 'Awaiting Luna’s next capacity review'),
+        fleetPlanRow('Hard account cap', `${reconciler.hardMaxAccounts || 20} total characters`),
+        fleetPlanRow('Protected', (reconciler.protectedAccounts || ['FSZ6yjrsA']).join(', ')),
+        fleetPlanRow('Removal semantics', reconciler.removalPolicy || 'disable-and-archive'),
+        fleetPlanRow('Restart cooldown', `${Math.round((reconciler.restartCooldownMs || 300000) / 60000)} minutes per account`),
+        fleetPlanRow('Scale cooldown', `${Math.round((reconciler.scaleCooldownMs || 900000) / 60000)} minutes`),
         fleetPlanRow('Gameplay ownership', 'deterministic workers only'),
         fleetPlanRow('Dashboard controls', 'none · read only'),
       );

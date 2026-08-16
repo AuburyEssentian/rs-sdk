@@ -1,14 +1,21 @@
 {
-  "version": 2,
+  "version": 3,
+  "limits": {
+    "maxAccounts": 20,
+    "protectedAccounts": [
+      "FSZ6yjrsA"
+    ],
+    "removalPolicy": "disable-and-archive"
+  },
   "resourcePlan": {
     "hostMemoryGiB": 16,
     "renderedClients": 1,
     "liteClientsTarget": 9,
-    "measuredRenderedClientMiB": 1212.0,
+    "measuredRenderedClientMiB": 1212,
     "measuredLiteClientMiB": 101.8,
     "measuredRenderedStackMiB": 1373.2,
     "measuredLiteStackMiB": 565.2,
-    "projectedFleetRssMiB": 6460.0,
+    "projectedFleetRssMiB": 6460,
     "note": "Keep one rendered browser for screenshots; run additional accounts with LiteClient."
   },
   "bots": [
@@ -88,7 +95,8 @@
       "roleKey": "flex",
       "clientMode": "lite",
       "controller": "fleet/worker.ts",
-      "statusPath": "bots/Fszflex1/status.json"
+      "statusPath": "bots/Fszflex1/status.json",
+      "enabled": true
     }
   ],
   "plannedRoles": [

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildFleetChildSpecs, restartDelayMs, type SupervisorBot } from './supervisor-model';
+import { buildFleetChildSpecs, reconcileFleetChildSpecs, restartDelayMs, validateFleetCapacity, type SupervisorBot } from './supervisor-model';
 
 const bots: SupervisorBot[] = [
     { id: 'FSZ6yjrsA', clientMode: 'browser', controller: 'bots/FSZ6yjrsA/autoplay.ts' },
@@ -23,5 +23,38 @@ describe('fleet supervisor model', () => {
         expect(restartDelayMs(0)).toBe(5_000);
         expect(restartDelayMs(3)).toBe(40_000);
         expect(restartDelayMs(99)).toBe(60_000);
+    });
+
+    test('diffs manifest changes without disturbing unchanged children', () => {
+        const current = buildFleetChildSpecs(bots, '/repo');
+        const desired = buildFleetChildSpecs([
+            bots[0],
+            bots[1],
+            { id: 'Fszfish1', clientMode: 'lite', controller: 'fleet/worker.ts', roleKey: 'fish' },
+        ], '/repo');
+        const diff = reconcileFleetChildSpecs(current, desired);
+        expect(diff.add.map(spec => spec.key)).toEqual(['Fszfish1:client', 'Fszfish1:controller']);
+        expect(diff.remove.map(spec => spec.key)).toEqual(['Fszwood1:client', 'Fszwood1:controller']);
+        expect(diff.replace).toEqual([]);
+    });
+
+    test('restarts only a child whose command changed', () => {
+        const current = buildFleetChildSpecs([bots[2]], '/repo');
+        const desired = buildFleetChildSpecs([{ ...bots[2], roleKey: 'flex' }], '/repo');
+        const diff = reconcileFleetChildSpecs(current, desired);
+        expect(diff.replace.map(spec => spec.key)).toEqual(['Fszwood1:controller']);
+        expect(diff.add).toEqual([]);
+        expect(diff.remove).toEqual([]);
+    });
+
+    test('enforces the hard active and total account cap', () => {
+        expect(validateFleetCapacity(bots, 20)).toEqual({ ok: true, active: 3, total: 3 });
+        const twentyOne = Array.from({ length: 21 }, (_, index) => ({
+            id: `Fsz${index}`,
+            clientMode: 'lite' as const,
+            controller: 'fleet/worker.ts',
+        }));
+        expect(validateFleetCapacity(twentyOne, 20).ok).toBe(false);
+        expect(validateFleetCapacity([...twentyOne.slice(0, 20), { ...twentyOne[20], enabled: false }], 20).ok).toBe(false);
     });
 });

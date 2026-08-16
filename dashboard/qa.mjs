@@ -108,7 +108,12 @@ const desktop = await page.evaluate(() => ({
   chartPath: document.querySelector('#chart-line')?.getAttribute('d'),
   fleetBots: document.querySelectorAll('.fleet-bot').length,
   fleetOnline: document.querySelector('#fleet-online')?.textContent,
+  fleetConfigured: document.querySelector('#fleet-configured')?.textContent,
   brainModel: document.querySelector('#brain-model')?.textContent,
+  longHorizon: document.querySelector('#brain-long-horizon')?.textContent,
+  shortGoals: document.querySelectorAll('#brain-short-goals .data-row').length,
+  milestones: document.querySelectorAll('#brain-milestones .data-row').length,
+  progressEvidence: document.querySelectorAll('#brain-progress-evidence .observation').length,
   estimatedCost: document.querySelector('#cost-total')?.textContent,
 }));
 
@@ -124,8 +129,10 @@ if (!Object.entries(tabChecks).every(([tab, check]) => check.active === tab && c
   throw new Error(`Tab state/hash mismatch: ${JSON.stringify(tabChecks)}`);
 }
 if (!desktop.chartPath || desktop.itemRows < 1 || desktop.activeTab !== 'loadout') throw new Error(`Read-only tab data failed to render: ${JSON.stringify(desktop)}`);
-if (desktop.fleetBots !== 10 || desktop.fleetOnline !== '10') throw new Error(`Fleet data failed to render: ${JSON.stringify(desktop)}`);
+if (desktop.fleetBots < 1 || desktop.fleetBots > 20 || Number(desktop.fleetOnline) < 1) throw new Error(`Fleet data failed to render: ${JSON.stringify(desktop)}`);
 if (desktop.brainModel !== 'gpt-5.6-luna' || !/^(?:\$|USD)/.test(desktop.estimatedCost || '')) throw new Error(`Fleetbrain/cost data failed to render: ${JSON.stringify(desktop)}`);
+if (!desktop.longHorizon || desktop.longHorizon.startsWith('Waiting for')) throw new Error(`Hierarchical strategy failed to render: ${JSON.stringify(desktop)}`);
+if (desktop.shortGoals < 1 || desktop.milestones < 1 || desktop.progressEvidence < 1) throw new Error(`Goal ladder detail failed to render: ${JSON.stringify(desktop)}`);
 
 console.log(JSON.stringify({ mobile, desktop, policy, tabChecks, keyboardWrapped, dialogOpen, errors }, null, 2));
 await browser.close();

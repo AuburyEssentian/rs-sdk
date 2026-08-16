@@ -14,7 +14,7 @@ describe('fleet dashboard model', () => {
             Fszminer1: { updatedAt: '2026-08-16T09:59:40Z', online: true, totalLevel: 36, activity: 'mining', detail: 'copper' },
         }, now);
 
-        expect(snapshot.summary).toEqual({ configured: 2, online: 2, totalLevel: 521 });
+        expect(snapshot.summary).toEqual({ configured: 2, active: 2, disabled: 0, online: 2, totalLevel: 521 });
         expect(snapshot.bots.map(bot => bot.id)).toEqual(['FSZ6yjrsA', 'Fszminer1']);
         expect(snapshot.bots[1]).toMatchObject({ role: 'Mining supplier', clientMode: 'lite', healthy: true, ageMs: 20_000 });
     });

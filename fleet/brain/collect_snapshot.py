@@ -59,12 +59,14 @@ for definition in manifest.get("bots", []):
     if not isinstance(definition, dict):
         continue
     bot_id = definition.get("id")
+    enabled = definition.get("enabled") is not False
     status = read_json(ROOT / str(definition.get("statusPath", "")), {})
     status_age = age_seconds(status.get("updatedAt"))
     controller = children.get(f"{bot_id}:controller", {})
     client = children.get(f"{bot_id}:client", {})
     account = {
         "id": bot_id,
+        "enabled": enabled,
         "role": definition.get("roleKey") or definition.get("role"),
         "clientMode": definition.get("clientMode"),
         "online": bool(status.get("online")),
@@ -88,16 +90,17 @@ for definition in manifest.get("bots", []):
         },
     }
     accounts.append(account)
-    if status_age is None:
-        issues.append({"severity": "red", "botId": bot_id, "kind": "missing-status"})
-    elif status_age >= 600:
-        issues.append({"severity": "red", "botId": bot_id, "kind": "stale-status", "ageSeconds": status_age})
-    elif status_age >= 180:
-        issues.append({"severity": "amber", "botId": bot_id, "kind": "aging-status", "ageSeconds": status_age})
-    if definition.get("clientMode") == "lite" and not controller.get("running"):
-        issues.append({"severity": "red", "botId": bot_id, "kind": "controller-not-running"})
-    if definition.get("clientMode") == "lite" and not client.get("running"):
-        issues.append({"severity": "red", "botId": bot_id, "kind": "client-not-running"})
+    if enabled:
+        if status_age is None:
+            issues.append({"severity": "red", "botId": bot_id, "kind": "missing-status"})
+        elif status_age >= 600:
+            issues.append({"severity": "red", "botId": bot_id, "kind": "stale-status", "ageSeconds": status_age})
+        elif status_age >= 180:
+            issues.append({"severity": "amber", "botId": bot_id, "kind": "aging-status", "ageSeconds": status_age})
+        if definition.get("clientMode") == "lite" and not controller.get("running"):
+            issues.append({"severity": "red", "botId": bot_id, "kind": "controller-not-running"})
+        if definition.get("clientMode") == "lite" and not client.get("running"):
+            issues.append({"severity": "red", "botId": bot_id, "kind": "client-not-running"})
 
 supply_requests = []
 for path in sorted((ROOT / "fleet").glob("supply-*.json")):
@@ -106,27 +109,47 @@ for path in sorted((ROOT / "fleet").glob("supply-*.json")):
         supply_requests.append(request)
 
 payload = {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "generatedAt": NOW.isoformat().replace("+00:00", "Z"),
     "contract": {
         "strategicWriter": "fleetbrain",
         "gameplay": "deterministic-workers-only",
-        "allowedAutomaticMutation": "restart_controller",
-        "automaticRestartRequires": "offline or status stale >= 600 seconds; five-minute cooldown",
+        "allowedAutomaticMutations": ["restart_controller", "restart_client", "restart_account", "add_account", "remove_account"],
+        "hardMaxAccounts": min(20, int((manifest.get("limits") or {}).get("maxAccounts", 20))),
+        "protectedAccounts": list((manifest.get("limits") or {}).get("protectedAccounts", ["FSZ6yjrsA"])),
+        "removalPolicy": "disable-and-archive; never delete character data or credentials",
+        "allowedNewRoleKeys": ["smith", "fish", "cook", "wood", "thief", "rune", "banker", "flex"],
+        "restartCooldown": "five minutes per account",
+        "scaleCooldown": "fifteen minutes; reactivation is an immediate rollback exception",
         "dashboard": "strictly-read-only",
     },
     "summary": {
         "configured": len(accounts),
-        "online": sum(1 for account in accounts if account["online"] and (account["statusAgeSeconds"] or 10**9) < 180),
+        "active": sum(1 for account in accounts if account["enabled"]),
+        "disabled": sum(1 for account in accounts if not account["enabled"]),
+        "online": sum(1 for account in accounts if account["enabled"] and account["online"] and account["statusAgeSeconds"] is not None and account["statusAgeSeconds"] < 180),
+        "capacityRemaining": max(0, min(20, int((manifest.get("limits") or {}).get("maxAccounts", 20))) - len(accounts)),
         "liteChildrenRunning": sum(1 for child in supervisor.get("children", []) if child.get("running")),
         "liteChildrenConfigured": len(supervisor.get("children", [])),
         "issueCount": len(issues),
     },
     "issues": issues[:20],
     "accounts": accounts,
+    "strategy": read_json(RUNTIME / "strategy.json", {
+        "version": 1,
+        "longHorizon": {"state": "selecting", "title": "No durable objective selected"},
+        "milestones": [],
+        "shortTermGoals": [],
+        "progressEvidence": [],
+    }),
     "logistics": read_json(ROOT / "fleet" / "logistics.json", {}),
     "supplyRequests": supply_requests,
     "controlPlane": {
+        "supervisor": {
+            "manifestVersion": supervisor.get("manifestVersion"),
+            "manifestError": supervisor.get("manifestError"),
+            "limits": supervisor.get("limits"),
+        },
         "reconciler": read_json(RUNTIME / "reconciler-status.json", {}),
         "previousBrainStatus": read_json(RUNTIME / "brain-status.json", {}),
         "pendingWorkOrders": file_count(RUNTIME / "work-orders" / "pending"),

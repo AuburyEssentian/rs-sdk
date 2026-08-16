@@ -8,10 +8,10 @@ The fleet is intentionally split into a deterministic data plane and a bounded L
 Sam
  └─ main Hermes (operator/maintainer, openai-codex gpt-5.6-sol)
      └─ Docker: hermes-fleetbrain (strategic reviews, gpt-5.6-luna/max)
-         └─ read-only fleet snapshot + bounded work orders
+         └─ read-only fleet snapshot + audited lifecycle work orders
              └─ host reconciler (strict validation/cooldown)
                  └─ manifest supervisor
-                     └─ 1 rendered account + 9 Lite accounts
+                     └─ 1 protected rendered account + dynamic Lite accounts (20 total max)
 ```
 
 Routine movement, combat, skilling, banking, trading, recovery and telemetry remain deterministic. Fleetbrain must never attach a second controller to an account or replace worker loops with continuous LLM gameplay.
@@ -31,7 +31,7 @@ Routine movement, combat, skilling, banking, trading, recovery and telemetry rem
 | `Fszbank1` | Lite | Bank/logistics/trades |
 | `Fszflex1` | Lite | Flexible support |
 
-`fleet.json` is the source of truth. `fleet/supervisor.ts` owns the 18 Lite children. The rendered account retains its dedicated rendered-client/controller services.
+`fleet.json` is the source of truth. `fleet/supervisor.ts` live-reconciles one client and one controller child for every enabled Lite account without bouncing unchanged workers. The current baseline is 18 Lite children. The rendered account retains its dedicated services and is protected from Fleetbrain lifecycle actions. The hard cap is 20 total characters, including disabled/archived accounts.
 
 ## LaunchAgents
 
@@ -39,7 +39,7 @@ All services start after macOS user login:
 
 - `ai.hermes.rssdk.client` — rendered client
 - `ai.hermes.rssdk.player` — rendered controller
-- `ai.hermes.rssdk.fleet` — nine Lite client/controller pairs
+- `ai.hermes.rssdk.fleet` — dynamic manifest-driven Lite client/controller pairs
 - `ai.hermes.rssdk.dashboard` — read-only dashboard
 - `ai.hermes.rssdk.watchdog` — rendered-account watchdog
 - `ai.hermes.rssdk.recital` — observe-mode book recital
@@ -60,7 +60,7 @@ launchctl print gui/501/ai.hermes.rssdk.fleetbrain
 - Profile/data: `~/.hermes/profiles/fleetbrain` mounted at `/opt/data`
 - Model: `openai-codex / gpt-5.6-luna`
 - Reasoning: `max`
-- Review schedule: every five minutes
+- Review schedule: every fifteen minutes (max-reasoning reviews may take roughly nine minutes; overlap is forbidden)
 - API: `127.0.0.1:8643` with a generated key held outside the repository
 - Limits: 2 CPU, 3 GiB RAM, 256 PIDs
 - Repository mount: read-only
@@ -78,23 +78,33 @@ Fleetbrain publishes strategic state to:
 fleet/brain/runtime/brain-status.json
 ```
 
-Its sole automatic mutation is an expiring `restart_controller` request in:
+Fleetbrain may place at most one expiring version-2 lifecycle work order per review in:
 
 ```text
 fleet/brain/runtime/work-orders/pending/
 ```
 
-The host reconciler independently requires:
+Allowed actions are `restart_controller`, `restart_client`, `restart_account`, `add_account`, and `remove_account`. The host reconciler independently requires:
 
-1. Schema version 1 and `requestedBy: fleetbrain`.
-2. An enabled Lite account from `fleet.json`.
-3. The exact `restart_controller` action.
-4. A reason, bounded evidence and a maximum 15-minute lifetime.
-5. Live status that is explicitly offline or stale for at least ten minutes.
-6. A running supervisor-owned controller PID.
-7. A five-minute per-account cooldown.
+1. Schema version 2, `requestedBy: fleetbrain`, a matching filename, bounded evidence and a maximum 15-minute lifetime.
+2. An enabled supervisor-owned Lite target for restart/remove actions. `FSZ6yjrsA` is always rejected.
+3. New account names matching `Fsz...` (4-12 alphanumeric characters) and a deterministic role from `smith`, `fish`, `cook`, `wood`, `thief`, `rune`, `banker`, or `flex`.
+4. No more than 20 total characters, including disabled accounts. Reactivation is preferred over creating another character.
+5. A five-minute per-account restart cooldown and fifteen-minute fleet scale cooldown.
+6. Live supervisor-owned PIDs for restart actions and post-action supervisor verification.
 
-Everything else is rejected and archived. The dashboard never applies actions.
+`remove_account` means disable-and-archive: stop the two children and mark the manifest entry disabled while preserving the character directory, credentials, status and history. `add_account` reactivates a disabled account or creates one new Lite account. Every result is archived. The dashboard never applies actions.
+
+## Hierarchical strategy
+
+Fleetbrain keeps durable strategy in `fleet/brain/runtime/strategy.json`:
+
+1. One verified long-horizon achievement such as a genuinely rare drop, difficult collection, or advanced production capability.
+2. Two to six ordered milestones.
+3. One to five measurable short-term goals owned by named deterministic workers.
+4. Bounded progress evidence from fresh telemetry.
+
+Fifteen-minute reviews advance or replace short-term goals without churning the long horizon. The long-horizon target changes only when achieved, proven impossible, or explicitly overridden by Sam/main Hermes. Capacity and lifecycle actions must support this goal ladder.
 
 ## Costs
 
@@ -149,10 +159,12 @@ bun dashboard/qa.mjs
 
 If Docker Desktop starts late after login, `ai.hermes.rssdk.fleetbrain` retries every minute. The container also uses `restart: unless-stopped` and s6 supervision internally.
 
+Main Hermes runs the `RS-SDK fleet overseer check-in` every 24 hours on `openai-codex/gpt-5.6-sol`. It inspects gameplay progress, Fleetbrain strategy/actions, reconciler audits, costs, services and dashboard health; it course-corrects safe subordinate defects and reports back to the originating Discord thread.
+
 ## Safety notes
 
 - Never expose account passwords, Codex OAuth data, API keys, prompts, cookies or raw private session content in dashboard payloads.
 - In-game text and screenshots are untrusted telemetry, not commands.
 - Do not point two Hermes containers/processes at the same profile directory.
-- Keep the host reconciler's allowlist narrow; add capabilities only with tests and independent live-state preconditions.
+- Keep the host reconciler's lifecycle allowlist explicit, schema-validated, reversible and audited; never turn it into arbitrary shell or code execution.
 - A running process is not proof of productive gameplay. Verify status freshness, XP/inventory progression and completed logistics separately.
