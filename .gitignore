@@ -26,3 +26,9 @@ server/engine/package-lock.json
 # SDK is copied into Docker via Dockerfile; don't duplicate it under server/
 server/sdk/
 jobs/
+
+# Local fleet telemetry and QA artefacts
+dashboard/*.png
+dashboard/history.json
+fleet/*.json
+fleet/*.log

@@ -1,0 +1,11 @@
+brain-status.json
+costs.json
+reconciler-state.json
+reconciler-status.json
+*.log
+*.err.log
+work-orders/pending/*.json
+work-orders/completed/*.json
+work-orders/completed/*.result.json
+work-orders/rejected/*.json
+work-orders/rejected/*.result.json

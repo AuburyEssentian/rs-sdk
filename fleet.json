@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "resourcePlan": {
+    "hostMemoryGiB": 16,
+    "renderedClients": 1,
+    "liteClientsTarget": 9,
+    "measuredRenderedClientMiB": 1212.0,
+    "measuredLiteClientMiB": 101.8,
+    "measuredRenderedStackMiB": 1373.2,
+    "measuredLiteStackMiB": 565.2,
+    "projectedFleetRssMiB": 6460.0,
+    "note": "Keep one rendered browser for screenshots; run additional accounts with LiteClient."
+  },
+  "bots": [
+    {
+      "id": "FSZ6yjrsA",
+      "role": "Generalist, melee and Prayer",
+      "clientMode": "browser",
+      "controller": "bots/FSZ6yjrsA/autoplay.ts",
+      "statusPath": "bots/FSZ6yjrsA/status.json"
+    },
+    {
+      "id": "Fszminer1",
+      "role": "Mining supplier",
+      "clientMode": "lite",
+      "controller": "bots/Fszminer1/miner.ts",
+      "statusPath": "bots/Fszminer1/status.json"
+    },
+    {
+      "id": "Fszsmith1",
+      "role": "Smithing and metalwork",
+      "roleKey": "smith",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszsmith1/status.json"
+    },
+    {
+      "id": "Fszfish1",
+      "role": "Fishing supplier",
+      "roleKey": "fish",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszfish1/status.json"
+    },
+    {
+      "id": "Fszcook1",
+      "role": "Cooking and food logistics",
+      "roleKey": "cook",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszcook1/status.json"
+    },
+    {
+      "id": "Fszwood1",
+      "role": "Woodcutting and firemaking",
+      "roleKey": "wood",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszwood1/status.json"
+    },
+    {
+      "id": "Fszthief1",
+      "role": "Thieving and cash generation",
+      "roleKey": "thief",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszthief1/status.json"
+    },
+    {
+      "id": "Fszrune1",
+      "role": "Runecrafting and Magic supplies",
+      "roleKey": "rune",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszrune1/status.json"
+    },
+    {
+      "id": "Fszbank1",
+      "role": "Banking and trade logistics",
+      "roleKey": "banker",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszbank1/status.json"
+    },
+    {
+      "id": "Fszflex1",
+      "role": "Flexible bottleneck worker",
+      "roleKey": "flex",
+      "clientMode": "lite",
+      "controller": "fleet/worker.ts",
+      "statusPath": "bots/Fszflex1/status.json"
+    }
+  ],
+  "plannedRoles": [
+    "Generalist / combat and Prayer",
+    "Mining supplier",
+    "Smithing and metalwork",
+    "Fishing supplier",
+    "Cooking and food logistics",
+    "Woodcutting and firemaking",
+    "Thieving and cash generation",
+    "Runecrafting and Magic supplies",
+    "Banking and trade logistics",
+    "Fleet coordinator / flexible bottleneck role"
+  ]
+}

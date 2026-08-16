@@ -1,0 +1,36 @@
+services:
+  fleetbrain:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes-fleetbrain
+    restart: unless-stopped
+    command: gateway run
+    env_file:
+      - /Users/aubury/.hermes/profiles/fleetbrain/docker.env
+    environment:
+      HERMES_HOME: /opt/data
+      FLEET_REPO_ROOT: /workspace/rs-sdk
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: "8642"
+      API_SERVER_KEY: ${FLEETBRAIN_API_SERVER_KEY}
+      HERMES_DASHBOARD: "0"
+      HERMES_GATEWAY_NO_SUPERVISE: "0"
+      TZ: Australia/Sydney
+    volumes:
+      - /Users/aubury/.hermes/profiles/fleetbrain:/opt/data:rw
+      - /Users/aubury/.hermes/agent-games/rs-sdk:/workspace/rs-sdk:ro
+      - /Users/aubury/.hermes/agent-games/rs-sdk/fleet/brain/runtime:/workspace/rs-sdk/fleet/brain/runtime:rw
+    ports:
+      - "127.0.0.1:8643:8642"
+    cpus: 2.0
+    mem_limit: 3g
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8642),3); s.close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    stop_grace_period: 45s

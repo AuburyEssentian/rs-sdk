@@ -1,0 +1,1313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d110d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Rune Watch">
+  <title>Rune Watch · FSZ6yjrsA</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090b09;
+      --surface: #11150f;
+      --surface-2: #171c14;
+      --surface-3: #1d2419;
+      --ink: #eef4df;
+      --muted: #94a087;
+      --faint: #626d5b;
+      --line: #293124;
+      --line-strong: #3b4732;
+      --lime: #d9ef91;
+      --lime-2: #9eb85c;
+      --amber: #f0bf67;
+      --red: #ef806f;
+      --green: #80d495;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .38);
+      --radius: 18px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; background: var(--bg); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--sans);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 80% -10%, rgba(153, 184, 91, .13), transparent 34rem),
+        radial-gradient(circle at -20% 20%, rgba(240, 191, 103, .06), transparent 28rem),
+        var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, a { -webkit-tap-highlight-color: transparent; }
+    button { font: inherit; }
+    a { color: inherit; }
+    :focus-visible { outline: 2px solid var(--lime); outline-offset: 3px; }
+
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .025;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+      z-index: 20;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: max(12px, env(safe-area-inset-top)) 16px 10px;
+      background: rgba(9, 11, 9, .86);
+      border-bottom: 1px solid rgba(59, 71, 50, .6);
+      backdrop-filter: blur(18px) saturate(1.2);
+    }
+
+    .topbar-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .sigil {
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      color: #12160f;
+      background: var(--lime);
+      font: 900 18px/1 var(--mono);
+      box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18);
+    }
+
+    .identity { min-width: 0; flex: 1; }
+    .eyebrow {
+      margin: 0 0 2px;
+      color: var(--muted);
+      font: 700 10px/1.2 var(--mono);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .name-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    h1 { margin: 0; font-size: 17px; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .combat { color: var(--amber); font: 700 12px/1 var(--mono); white-space: nowrap; }
+
+    .status-pill {
+      min-height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      background: rgba(23, 28, 20, .86);
+      font: 700 11px/1 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 4px rgba(239, 128, 111, .1); }
+    .online .status-dot { background: var(--green); box-shadow: 0 0 0 4px rgba(128, 212, 149, .1), 0 0 14px rgba(128, 212, 149, .45); }
+
+    .section-nav {
+      max-width: 1180px;
+      margin: 10px auto 0;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .section-nav::-webkit-scrollbar { display: none; }
+    .section-nav .app-tab {
+      min-height: 44px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      color: var(--muted);
+      background: transparent;
+      font: 650 12px/1 var(--sans);
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .section-nav .app-tab:hover { color: var(--ink); border-color: var(--line); background: var(--surface); }
+    .section-nav .app-tab.active { color: #12160f; border-color: var(--lime); background: var(--lime); font-weight: 800; }
+
+    [hidden] { display: none !important; }
+    body[data-active-tab="progress"] .layout,
+    body[data-active-tab="loadout"] .layout,
+    body[data-active-tab="world"] .layout,
+    body[data-active-tab="logs"] .layout { display: block; }
+    body[data-active-tab="progress"] .layout > aside,
+    body[data-active-tab="loadout"] .layout > aside { display: none; }
+    body[data-active-tab="world"] .layout > .stack:first-child,
+    body[data-active-tab="logs"] .layout > .stack:first-child { display: none; }
+
+    main {
+      width: min(100%, 1212px);
+      margin: 0 auto;
+      padding: 16px 16px calc(42px + env(safe-area-inset-bottom));
+    }
+
+    .layout { display: grid; gap: 16px; }
+    .stack { display: grid; gap: 16px; min-width: 0; }
+    .card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(25, 30, 22, .96), rgba(15, 18, 14, .98));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card-head {
+      min-height: 54px;
+      padding: 13px 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .card-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .card-title h2 { margin: 0; font-size: 14px; letter-spacing: -.01em; }
+    .kicker { color: var(--muted); font: 700 10px/1.2 var(--mono); letter-spacing: .11em; text-transform: uppercase; }
+    .live-badge {
+      min-height: 28px;
+      padding: 0 9px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid rgba(128, 212, 149, .24);
+      border-radius: 7px;
+      color: var(--green);
+      background: rgba(128, 212, 149, .07);
+      font: 800 10px/1 var(--mono);
+      letter-spacing: .08em;
+    }
+    .live-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+
+    .frame-button {
+      position: relative;
+      width: 100%;
+      display: block;
+      border: 0;
+      padding: 0;
+      color: inherit;
+      background: #060706;
+      cursor: zoom-in;
+    }
+    .frame-button img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 765 / 503;
+      object-fit: cover;
+      background: #060706;
+    }
+    .frame-button::after {
+      content: "Tap to inspect";
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      padding: 7px 9px;
+      border-radius: 7px;
+      color: #fff;
+      background: rgba(0, 0, 0, .66);
+      font: 700 10px/1 var(--mono);
+      opacity: .7;
+      backdrop-filter: blur(8px);
+    }
+    .frame-meta {
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font: 650 11px/1.3 var(--mono);
+      border-top: 1px solid var(--line);
+    }
+
+    .objective { padding: 17px; }
+    .objective-label { margin-bottom: 10px; color: var(--lime); font: 800 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .objective h2 { margin: 0; font-size: clamp(22px, 7vw, 34px); line-height: 1.02; letter-spacing: -.045em; text-wrap: balance; }
+    .objective-detail { margin: 11px 0 18px; color: var(--muted); font-size: 14px; line-height: 1.5; text-wrap: pretty; }
+    .target-row { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin-bottom: 8px; }
+    .target-copy { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .target-value { color: var(--lime); font: 800 12px/1 var(--mono); white-space: nowrap; }
+    .progress { height: 7px; overflow: hidden; border-radius: 999px; background: #090c08; box-shadow: inset 0 0 0 1px rgba(255,255,255,.035); }
+    .progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--lime-2), var(--lime)); transition: width .5s ease; }
+
+    .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+    .summary {
+      min-height: 104px;
+      padding: 15px;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .summary-label { color: var(--muted); font: 700 10px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .summary-value { margin-top: 12px; font-size: 26px; font-weight: 780; letter-spacing: -.045em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .summary-note { margin-top: 3px; color: var(--faint); font-size: 11px; line-height: 1.2; }
+
+    .skills { padding: 7px 14px 14px; }
+    .skill-row {
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(41, 49, 36, .7);
+    }
+    .skill-row:last-child { border-bottom: 0; }
+    .skill-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; color: var(--lime); background: rgba(217, 239, 145, .07); font: 800 11px/1 var(--mono); }
+    .skill-name { min-width: 0; font-size: 13px; font-weight: 650; }
+    .skill-bar { height: 3px; margin-top: 5px; overflow: hidden; border-radius: 99px; background: #090c08; }
+    .skill-bar span { display: block; height: 100%; border-radius: inherit; background: var(--lime-2); }
+    .skill-level { min-width: 31px; text-align: right; color: var(--ink); font: 800 15px/1 var(--mono); }
+    details.more-skills { border-top: 1px solid var(--line); }
+    details.more-skills summary { min-height: 48px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); cursor: pointer; list-style: none; font-size: 12px; font-weight: 700; }
+    details.more-skills summary::-webkit-details-marker { display: none; }
+    details.more-skills summary::after { content: "+"; font: 700 18px/1 var(--mono); }
+    details.more-skills[open] summary::after { content: "−"; }
+
+    .health-list { padding: 7px 14px; }
+    .health-row { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid rgba(41,49,36,.7); }
+    .health-row:last-child { border-bottom: 0; }
+    .health-name { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 650; }
+    .health-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--red); }
+    .health-dot.ok { background: var(--green); box-shadow: 0 0 10px rgba(128,212,149,.38); }
+    .health-age { color: var(--muted); font: 650 11px/1 var(--mono); }
+
+    .log-tabs { display: flex; gap: 6px; }
+    .log-tab {
+      min-height: 44px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      background: transparent;
+      font: 700 10px/1 var(--mono);
+      cursor: pointer;
+    }
+    .log-tab.active { color: var(--ink); border-color: var(--line-strong); background: var(--surface-3); }
+    .log-list {
+      height: min(48vh, 480px);
+      min-height: 280px;
+      margin: 0;
+      padding: 8px 0;
+      overflow: auto;
+      list-style: none;
+      background: rgba(4, 6, 4, .42);
+      scrollbar-color: var(--line-strong) transparent;
+    }
+    .log-line {
+      padding: 7px 14px 7px 31px;
+      position: relative;
+      color: #aeb7a3;
+      border-bottom: 1px solid rgba(41,49,36,.38);
+      font: 11px/1.5 var(--mono);
+      overflow-wrap: anywhere;
+    }
+    .log-line::before { content: "·"; position: absolute; left: 15px; color: var(--faint); }
+    .log-line.ok { color: #bfd5ae; }
+    .log-line.ok::before { content: "✓"; color: var(--green); }
+    .log-line.warn { color: #d7b09e; }
+    .log-line.warn::before { content: "!"; color: var(--red); font-weight: 900; }
+    .empty { padding: 28px 16px; color: var(--faint); text-align: center; font-size: 12px; }
+
+    .footer { padding: 20px 4px 0; color: var(--faint); font: 11px/1.6 var(--mono); text-align: center; }
+
+    dialog {
+      width: 100vw;
+      max-width: none;
+      height: 100dvh;
+      max-height: none;
+      margin: 0;
+      border: 0;
+      padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+      color: var(--ink);
+      background: rgba(4, 5, 4, .97);
+    }
+    dialog::backdrop { background: #040504; }
+    .viewer { width: 100%; height: 100%; display: grid; grid-template-rows: auto 1fr; gap: 12px; }
+    .viewer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .viewer-head strong { font-size: 14px; }
+    .close {
+      min-width: 48px;
+      min-height: 44px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      color: var(--ink);
+      background: var(--surface-2);
+      cursor: pointer;
+    }
+    .viewer-image { min-height: 0; display: grid; place-items: center; overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #000; }
+    .viewer-image img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+
+    .skeleton { position: relative; overflow: hidden; color: transparent !important; background: var(--surface-3) !important; border-radius: 7px; }
+    .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255,255,255,.05), transparent); animation: shimmer 1.3s infinite; }
+    @keyframes shimmer { to { transform: translateX(100%); } }
+
+    @media (min-width: 720px) {
+      .topbar { padding-left: 24px; padding-right: 24px; }
+      main { padding: 24px 24px 64px; }
+      .layout { grid-template-columns: minmax(0, 1.45fr) minmax(300px, .75fr); align-items: start; }
+      .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .summary { min-height: 116px; }
+      .objective { padding: 22px; }
+      .frame-button::after { opacity: 0; transition: opacity .2s ease; }
+      .frame-button:hover::after { opacity: .9; }
+    }
+
+    @media (min-width: 1040px) {
+      .layout { grid-template-columns: minmax(0, 1.55fr) 360px; }
+      .topbar-inner { min-height: 50px; }
+      .section-nav { margin-top: 4px; }
+    }
+
+    @media (max-width: 520px) {
+      .status-pill { width: 36px; padding: 0; justify-content: center; }
+      .status-pill span:last-child { display: none; }
+      main { padding-left: 10px; padding-right: 10px; }
+      .card { border-radius: 15px; }
+      .frame-meta { font-size: 10px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+
+    .readonly-pill {
+      min-height: 36px;
+      padding: 0 11px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid rgba(217, 239, 145, .22);
+      border-radius: 999px;
+      color: var(--lime);
+      background: rgba(217, 239, 145, .055);
+      font: 800 9px/1 var(--mono);
+      letter-spacing: .11em;
+      white-space: nowrap;
+    }
+
+    .frame-tools {
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-top: 1px solid var(--line);
+      background: rgba(9, 12, 8, .45);
+    }
+    .frame-tools-copy { color: var(--muted); font: 650 11px/1.35 var(--mono); }
+    .tool-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+    .tool-action {
+      min-height: 40px;
+      padding: 0 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      color: var(--ink);
+      background: var(--surface-2);
+      font: 750 10px/1 var(--mono);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .tool-action:hover { border-color: var(--lime-2); color: var(--lime); }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+    }
+    .analytics-stat { min-height: 92px; padding: 14px; background: var(--surface); }
+    .analytics-stat strong { display: block; margin-top: 10px; font-size: 23px; letter-spacing: -.045em; }
+    .analytics-stat small { display: block; margin-top: 3px; color: var(--faint); font-size: 10px; }
+    .chart-shell { padding: 16px; border-top: 1px solid var(--line); }
+    .chart-head { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .chart-head strong { font-size: 12px; }
+    .chart-head span { color: var(--muted); font: 650 10px/1 var(--mono); }
+    .chart {
+      width: 100%;
+      height: 148px;
+      display: block;
+      overflow: visible;
+      border-radius: 10px;
+      background:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 100% 37px,
+        rgba(5, 7, 5, .5);
+    }
+    .chart-fill { fill: url(#chart-gradient); }
+    .chart-line { fill: none; stroke: var(--lime); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 7px rgba(217,239,145,.22)); }
+    .chart-dot { fill: var(--amber); stroke: var(--surface); stroke-width: 2; }
+    .chart-empty { color: var(--faint); font-size: 11px; }
+
+    .rate-list, .world-list { padding: 7px 14px 12px; }
+    .data-row {
+      min-height: 46px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(41,49,36,.7);
+    }
+    .data-row:last-child { border-bottom: 0; }
+    .data-main { min-width: 0; }
+    .data-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .data-note { margin-top: 3px; color: var(--faint); font: 10px/1.25 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .data-value { color: var(--lime); font: 800 12px/1 var(--mono); text-align: right; white-space: nowrap; }
+
+    .milestone-block { padding: 15px; border-top: 1px solid var(--line); }
+    .subhead { margin: 0 0 10px; color: var(--muted); font: 800 9px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .chip { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: rgba(9,12,8,.4); font: 700 10px/1 var(--mono); }
+    .chip.reached { color: var(--green); border-color: rgba(128,212,149,.24); background: rgba(128,212,149,.055); }
+    .chip.next { color: var(--amber); border-color: rgba(240,191,103,.24); background: rgba(240,191,103,.055); }
+
+    .fleet-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+    .fleet-stat { padding: 14px; background: var(--surface); }
+    .fleet-stat span { display: block; color: var(--muted); font: 700 9px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .fleet-stat strong { display: block; margin-top: 8px; font-size: clamp(20px, 4vw, 30px); }
+    .fleet-list { display: grid; gap: 9px; padding: 14px; }
+    .fleet-bot { padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: rgba(8,11,7,.48); }
+    .fleet-bot-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .fleet-bot-name { font-size: 14px; font-weight: 800; }
+    .fleet-bot-role { margin-top: 4px; color: var(--muted); font: 10px/1.35 var(--mono); }
+    .fleet-bot-state { display: flex; align-items: center; gap: 6px; color: var(--muted); font: 800 9px/1 var(--mono); text-transform: uppercase; }
+    .fleet-bot-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 3px rgba(226,109,109,.08); }
+    .fleet-bot-state.ok::before { background: var(--green); box-shadow: 0 0 0 3px rgba(128,212,149,.08); }
+    .fleet-bot-meta { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+    .fleet-meta { min-width: 0; padding: 8px; border-radius: 8px; background: rgba(217,239,145,.035); }
+    .fleet-meta span { display: block; color: var(--faint); font: 700 8px/1 var(--mono); text-transform: uppercase; }
+    .fleet-meta strong { display: block; margin-top: 5px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fleet-detail { margin-top: 10px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .fleet-plan { padding: 14px; }
+    .fleet-plan-grid { display: grid; gap: 8px; }
+    .fleet-plan-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 11px; }
+    .fleet-plan-row:last-child { border-bottom: 0; }
+    .fleet-plan-row span { color: var(--muted); }
+    .fleet-role-list { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 10px; line-height: 1.65; }
+
+    .brain-objective { padding: 18px; }
+    .brain-objective h3 { margin: 7px 0 8px; font-size: clamp(20px, 4vw, 30px); letter-spacing: -.035em; }
+    .brain-decision { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .observation-list { display: grid; gap: 8px; padding: 0 14px 14px; }
+    .observation { padding: 10px 12px; border-left: 2px solid var(--lime-2); border-radius: 0 8px 8px 0; color: var(--muted); background: rgba(217,239,145,.035); font-size: 11px; line-height: 1.45; }
+    .cost-note { margin: 14px; padding: 12px; border: 1px solid rgba(240,191,103,.22); border-radius: 10px; color: var(--amber); background: rgba(240,191,103,.05); font-size: 11px; line-height: 1.5; }
+    .cost-lists { display: grid; gap: 1px; background: var(--line); }
+    .cost-panel { padding: 14px; background: var(--surface); }
+    .cost-panel .data-row:last-child { border-bottom: 0; }
+
+    .gear-grid { display: grid; gap: 1px; background: var(--line); }
+    .gear-grid > div { background: var(--surface); }
+    .gear-panel { min-width: 0; padding: 15px; background: var(--surface); }
+    #equipment-grid { grid-template-columns: 1fr; }
+    .panel-title { margin: 0 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .panel-title strong { font-size: 12px; }
+    .panel-title span { color: var(--muted); font: 700 10px/1 var(--mono); }
+    .item-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .item {
+      min-width: 0;
+      min-height: 52px;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(8, 11, 7, .5);
+    }
+    .item-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; color: var(--amber); background: rgba(240,191,103,.07); font: 800 9px/1 var(--mono); }
+    .item-copy { min-width: 0; }
+    .item-name { font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-count { margin-top: 3px; color: var(--muted); font: 9px/1 var(--mono); }
+    .empty-state { padding: 18px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--muted); background: rgba(8,11,7,.35); font-size: 11px; line-height: 1.5; }
+    .empty-state strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 12px; }
+
+    .world-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+    .world-stat { padding: 13px; background: var(--surface); }
+    .world-stat span { display: block; color: var(--muted); font: 700 9px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+    .world-stat strong { display: block; margin-top: 8px; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    details.readout { border-top: 1px solid var(--line); }
+    details.readout summary { min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; list-style: none; cursor: pointer; font-size: 12px; font-weight: 750; }
+    details.readout summary::-webkit-details-marker { display: none; }
+    details.readout summary span { color: var(--muted); font: 700 10px/1 var(--mono); }
+    details.readout summary::after { content: "+"; margin-left: auto; color: var(--muted); font: 700 17px/1 var(--mono); }
+    details.readout[open] summary::after { content: "−"; }
+
+    .skill-sub { margin-top: 3px; color: var(--faint); font: 9px/1.2 var(--mono); }
+    .readonly-foot { color: var(--lime-2); }
+
+    @media (min-width: 720px) {
+      .analytics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .gear-grid { grid-template-columns: minmax(0, 1.45fr) minmax(220px, .55fr); }
+      .item-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .tool-action { min-height: 40px; }
+    }
+
+    @media (max-width: 520px) {
+      .readonly-pill { display: none; }
+      .frame-tools { align-items: flex-start; flex-direction: column; }
+      .tool-actions { width: 100%; justify-content: stretch; }
+      .tool-action { min-height: 44px; flex: 1; }
+      .item-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body data-active-tab="overview">
+  <div class="noise" aria-hidden="true"></div>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="sigil" aria-hidden="true">RS</div>
+      <div class="identity">
+        <p class="eyebrow">Autonomous character</p>
+        <div class="name-row"><h1>FSZ6yjrsA</h1><span class="combat" id="combat-level">combat —</span></div>
+      </div>
+      <div class="readonly-pill" title="No dashboard route can mutate game or service state">READ ONLY</div>
+      <div class="status-pill" id="status-pill"><span class="status-dot"></span><span id="online-label">Connecting</span></div>
+    </div>
+    <nav class="section-nav" role="tablist" aria-label="Dashboard views">
+      <button class="app-tab active" id="tab-overview" type="button" role="tab" aria-selected="true" data-dashboard-tab="overview">Overview</button>
+      <button class="app-tab" id="tab-fleet" type="button" role="tab" aria-selected="false" tabindex="-1" data-dashboard-tab="fleet">Fleet</button>
+      <button class="app-tab" id="tab-brain" type="button" role="tab" aria-selected="false" tabindex="-1" data-dashboard-tab="brain">Fleet Brain</button>
+      <button class="app-tab" id="tab-costs" type="button" role="tab" aria-selected="false" tabindex="-1" data-dashboard-tab="costs">Costs</button>
+      <button class="app-tab" id="tab-progress" type="button" role="tab" aria-selected="false" tabindex="-1" data-dashboard-tab="progress">Progress</button>
+      <button class="app-tab" id="tab-loadout" type="button" role="tab" aria-selected="false" tabindex="-1" data-dashboard-tab="loadout">Loadout</button>
+      <button class="app-tab" id="tab-world" type="button" role="tab" aria-selected="false" tabindex="-1" data-dashboard-tab="world">World</button>
+      <button class="app-tab" id="tab-logs" type="button" role="tab" aria-selected="false" tabindex="-1" data-dashboard-tab="logs">Logs</button>
+    </nav>
+  </header>
+
+  <main>
+    <div class="layout">
+      <div class="stack">
+        <section class="card" id="live" role="tabpanel" aria-labelledby="tab-overview">
+          <div class="card-head">
+            <div class="card-title"><span class="kicker">01</span><h2>Live client</h2></div>
+            <div class="live-badge" id="frame-badge">LIVE</div>
+          </div>
+          <button class="frame-button" id="open-viewer" type="button" aria-label="Open live game frame fullscreen">
+            <img id="live-frame" src="/live.jpg" alt="Live RuneScape client view for FSZ6yjrsA">
+          </button>
+          <div class="frame-tools">
+            <div class="frame-tools-copy"><span id="frame-age">Waiting for frame…</span><br>refreshes every 2 seconds</div>
+            <div class="tool-actions">
+              <a class="tool-action" href="/live.jpg?download=1" download>Save frame</a>
+              <button class="tool-action" id="share-frame" type="button">Share</button>
+              <a class="tool-action" href="/api/export" download>Export JSON</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" id="objective" role="tabpanel" aria-labelledby="tab-overview">
+          <div class="objective">
+            <div class="objective-label">Current objective</div>
+            <h2 id="objective-title" class="skeleton">Loading objective</h2>
+            <p class="objective-detail" id="objective-detail">Syncing with the autoplay controller…</p>
+            <div class="target-row"><div class="target-copy" id="objective-target">Reading target</div><div class="target-value" id="objective-progress">—%</div></div>
+            <div class="progress" aria-label="Objective progress"><span id="objective-bar"></span></div>
+          </div>
+        </section>
+
+        <section class="card" id="stats" role="tabpanel" aria-labelledby="tab-overview">
+          <div class="card-head"><div class="card-title"><span class="kicker">02</span><h2>Character readout</h2></div><span class="kicker" id="state-age">—</span></div>
+          <div class="summary-grid">
+            <div class="summary"><span class="summary-label">Total level</span><div><div class="summary-value" id="total-level">—</div><div class="summary-note">all skills combined</div></div></div>
+            <div class="summary"><span class="summary-label">Hitpoints</span><div><div class="summary-value" id="hitpoints">—</div><div class="summary-note" id="combat-state">not in combat</div></div></div>
+            <div class="summary"><span class="summary-label">Position</span><div><div class="summary-value" id="position">—</div><div class="summary-note">world coordinates</div></div></div>
+            <div class="summary"><span class="summary-label">Actions</span><div><div class="summary-value" id="actions">—</div><div class="summary-note" id="failure-note">session tally</div></div></div>
+          </div>
+          <div class="skills" id="core-skills"></div>
+          <details class="more-skills">
+            <summary>Show remaining skills</summary>
+            <div class="skills" id="other-skills"></div>
+          </details>
+        </section>
+
+        <section class="card" id="fleet" role="tabpanel" aria-labelledby="tab-fleet" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">FLEET</span><h2>Account roster</h2></div><span class="kicker" id="fleet-health">checking</span></div>
+          <div class="fleet-summary">
+            <div class="fleet-stat"><span>Configured</span><strong id="fleet-configured">—</strong></div>
+            <div class="fleet-stat"><span>Online</span><strong id="fleet-online">—</strong></div>
+            <div class="fleet-stat"><span>Combined level</span><strong id="fleet-total-level">—</strong></div>
+          </div>
+          <div class="fleet-list" id="fleet-list"><div class="empty-state">Waiting for fleet telemetry…</div></div>
+        </section>
+
+        <section class="card" id="brain" role="tabpanel" aria-labelledby="tab-brain" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">BRAIN</span><h2>Luna fleet orchestrator</h2></div><span class="kicker" id="brain-health">starting</span></div>
+          <div class="fleet-summary">
+            <div class="fleet-stat"><span>State</span><strong id="brain-state">—</strong></div>
+            <div class="fleet-stat"><span>Model</span><strong id="brain-model">—</strong></div>
+            <div class="fleet-stat"><span>Last review</span><strong id="brain-age">—</strong></div>
+          </div>
+          <div class="brain-objective">
+            <span class="kicker">Fleet objective</span>
+            <h3 id="brain-objective">Waiting for Fleetbrain</h3>
+            <p class="brain-decision" id="brain-decision">The isolated orchestrator has not published its first review.</p>
+          </div>
+          <p class="subhead" style="padding:0 14px">Latest observations</p>
+          <div class="observation-list" id="brain-observations"></div>
+        </section>
+
+        <section class="card" id="costs" role="tabpanel" aria-labelledby="tab-costs" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">LLM</span><h2>List-price equivalent</h2></div><span class="kicker" id="cost-freshness">collecting</span></div>
+          <div class="fleet-summary">
+            <div class="fleet-stat"><span>Estimated cost</span><strong id="cost-total">$0.00</strong></div>
+            <div class="fleet-stat"><span>Canonical tokens</span><strong id="cost-tokens">0</strong></div>
+            <div class="fleet-stat"><span>Sessions</span><strong id="cost-sessions">0</strong></div>
+          </div>
+          <div class="cost-note" id="cost-explanation">Calculated from Luna list prices. This is not an actual Codex subscription invoice.</div>
+          <div class="cost-lists">
+            <div class="cost-panel"><p class="subhead">Recent Luna runs</p><div id="cost-runs"></div></div>
+            <div class="cost-panel"><p class="subhead">Daily totals</p><div id="cost-daily"></div></div>
+          </div>
+        </section>
+
+        <section class="card" id="progress" role="tabpanel" aria-labelledby="tab-progress" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">03</span><h2>Progress telemetry</h2></div><span class="kicker" id="history-window">collecting</span></div>
+          <div class="analytics-grid">
+            <div class="analytics-stat"><span class="summary-label">Level gain</span><strong id="level-gain">—</strong><small>telemetry window</small></div>
+            <div class="analytics-stat"><span class="summary-label">Top XP rate</span><strong id="top-rate">—</strong><small id="top-rate-skill">collecting</small></div>
+            <div class="analytics-stat"><span class="summary-label">Samples</span><strong id="history-points">—</strong><small>up to seven days</small></div>
+            <div class="analytics-stat"><span class="summary-label">Next band</span><strong id="next-band">—</strong><small>balanced target</small></div>
+          </div>
+          <div class="chart-shell">
+            <div class="chart-head"><strong>Total-level history</strong><span id="chart-range">waiting for second sample</span></div>
+            <svg class="chart" id="level-chart" viewBox="0 0 600 148" role="img" aria-label="Total level over time">
+              <defs><linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d9ef91" stop-opacity=".22"/><stop offset="1" stop-color="#d9ef91" stop-opacity="0"/></linearGradient></defs>
+              <path class="chart-fill" id="chart-fill"></path>
+              <path class="chart-line" id="chart-line"></path>
+              <circle class="chart-dot" id="chart-dot" r="4" cx="0" cy="0"></circle>
+            </svg>
+          </div>
+          <div class="rate-list" id="rate-list"><div class="empty-state">Collecting the first XP-rate window…</div></div>
+          <div class="milestone-block">
+            <p class="subhead">Reached milestones</p>
+            <div class="chips" id="reached-milestones"></div>
+            <p class="subhead" style="margin-top:14px">Next targets</p>
+            <div class="chips" id="next-milestones"></div>
+          </div>
+        </section>
+
+        <section class="card" id="gear" role="tabpanel" aria-labelledby="tab-loadout" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">04</span><h2>Inventory + equipment</h2></div><span class="kicker">live readout</span></div>
+          <div class="gear-grid">
+            <div class="gear-panel">
+              <div class="panel-title"><strong>Inventory</strong><span id="inventory-count">— slots</span></div>
+              <div class="item-grid" id="inventory-grid"></div>
+            </div>
+            <div>
+              <div class="gear-panel">
+                <div class="panel-title"><strong>Equipped</strong><span id="equipment-count">— items</span></div>
+                <div class="item-grid" id="equipment-grid"></div>
+              </div>
+              <div class="gear-panel" style="border-top:1px solid var(--line)">
+                <div class="panel-title"><strong>Bank</strong><span id="bank-state">closed</span></div>
+                <div id="bank-grid"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <aside class="stack">
+        <section class="card" id="health" role="tabpanel" aria-labelledby="tab-overview">
+          <div class="card-head"><div class="card-title"><span class="kicker">05</span><h2>System health</h2></div><span class="kicker" id="health-summary">checking</span></div>
+          <div class="health-list" id="health-list"></div>
+        </section>
+
+        <section class="card" id="fleet-plan" role="tabpanel" aria-labelledby="tab-fleet" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">CAPACITY</span><h2>Scale-out plan</h2></div><span class="kicker">read only</span></div>
+          <div class="fleet-plan">
+            <div class="fleet-plan-grid" id="fleet-resource-plan"></div>
+            <p class="subhead" style="margin-top:18px">Verified logistics</p>
+            <div id="fleet-logistics"></div>
+            <p class="subhead" style="margin-top:18px">Proposed specialisations</p>
+            <ol class="fleet-role-list" id="fleet-role-list"></ol>
+          </div>
+        </section>
+
+        <section class="card" id="brain-control" role="tabpanel" aria-labelledby="tab-brain" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">CONTROL</span><h2>Bounded reconciler</h2></div><span class="kicker">read only</span></div>
+          <div class="fleet-summary">
+            <div class="fleet-stat"><span>Pending</span><strong id="brain-orders-pending">0</strong></div>
+            <div class="fleet-stat"><span>Completed</span><strong id="brain-orders-completed">0</strong></div>
+            <div class="fleet-stat"><span>Rejected</span><strong id="brain-orders-rejected">0</strong></div>
+          </div>
+          <div class="fleet-plan"><div class="fleet-plan-grid" id="brain-control-details"></div></div>
+        </section>
+
+        <section class="card" id="cost-rates" role="tabpanel" aria-labelledby="tab-costs" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">RATES</span><h2>Luna token pricing</h2></div><span class="kicker">USD / 1M</span></div>
+          <div class="fleet-plan"><div class="fleet-plan-grid" id="cost-rate-list"></div></div>
+        </section>
+
+        <section class="card" id="world" role="tabpanel" aria-labelledby="tab-world" hidden aria-hidden="true">
+          <div class="card-head"><div class="card-title"><span class="kicker">06</span><h2>World snapshot</h2></div><span class="kicker">nearby</span></div>
+          <div class="world-overview">
+            <div class="world-stat"><span>Weapon</span><strong id="weapon-name">—</strong></div>
+            <div class="world-stat"><span>Combat style</span><strong id="combat-style">—</strong></div>
+            <div class="world-stat"><span>Run energy</span><strong id="run-energy">—</strong></div>
+            <div class="world-stat"><span>Other players</span><strong id="nearby-players">—</strong></div>
+          </div>
+          <details class="readout" open>
+            <summary>NPCs <span id="npc-count">0 nearby</span></summary>
+            <div class="world-list" id="npc-list"></div>
+          </details>
+          <details class="readout">
+            <summary>Ground items <span id="ground-count">0 nearby</span></summary>
+            <div class="world-list" id="ground-list"></div>
+          </details>
+          <details class="readout">
+            <summary>Objects <span id="object-count">0 nearby</span></summary>
+            <div class="world-list" id="object-list"></div>
+          </details>
+        </section>
+
+        <section class="card" id="log" role="tabpanel" aria-labelledby="tab-logs" hidden aria-hidden="true">
+          <div class="card-head">
+            <div class="card-title"><span class="kicker">07</span><h2>Activity log</h2></div>
+            <div class="log-tabs" role="tablist">
+              <button class="log-tab active" id="tab-player" type="button" role="tab" aria-selected="true">PLAYER</button>
+              <button class="log-tab" id="tab-client" type="button" role="tab" aria-selected="false">CLIENT</button>
+            </div>
+          </div>
+          <ol class="log-list" id="log-list"><li class="empty">Waiting for activity…</li></ol>
+        </section>
+      </aside>
+    </div>
+    <footer class="footer"><span class="readonly-foot">Strictly read only</span> · Private tailnet view · no game credentials are exposed · <span id="generated-at">connecting</span></footer>
+  </main>
+
+  <dialog id="viewer">
+    <div class="viewer">
+      <div class="viewer-head"><strong>FSZ6yjrsA · live game client</strong><button class="close" id="close-viewer" type="button">Close</button></div>
+      <div class="viewer-image"><img id="viewer-frame" alt="Fullscreen live RuneScape client view"></div>
+    </div>
+  </dialog>
+
+  <script type="module" src="/tabs.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const coreOrder = ['Attack', 'Strength', 'Defence', 'Hitpoints', 'Prayer', 'Woodcutting', 'Firemaking', 'Thieving'];
+    let latest = null;
+    let activeLog = 'player';
+    let refreshing = false;
+
+    function age(ms) {
+      if (ms == null) return 'no signal';
+      if (ms < 1500) return 'just now';
+      if (ms < 60000) return `${Math.round(ms / 1000)}s ago`;
+      if (ms < 3600000) return `${Math.round(ms / 60000)}m ago`;
+      return `${Math.round(ms / 3600000)}h ago`;
+    }
+
+    function titleCase(value) {
+      return String(value || '').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function formatNumber(value) {
+      if (!Number.isFinite(value)) return '—';
+      return Intl.NumberFormat('en-AU', { notation: value >= 10000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
+    }
+
+    function formatUsd(value) {
+      if (!Number.isFinite(value)) return '$0.00';
+      return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'USD', minimumFractionDigits: value < 1 ? 4 : 2, maximumFractionDigits: value < 1 ? 4 : 2 }).format(value);
+    }
+
+    function skillRow(name, value, skill = null, rate = null) {
+      const row = document.createElement('div');
+      row.className = 'skill-row';
+      const mark = document.createElement('div');
+      mark.className = 'skill-mark';
+      mark.textContent = name.slice(0, 2).toUpperCase();
+      const body = document.createElement('div');
+      const label = document.createElement('div');
+      label.className = 'skill-name';
+      label.textContent = name;
+      const sub = document.createElement('div');
+      sub.className = 'skill-sub';
+      sub.textContent = skill ? `${formatNumber(skill.xp)} XP${rate ? ` · ${formatNumber(rate)}/h` : ''}` : 'XP telemetry unavailable';
+      const bar = document.createElement('div');
+      bar.className = 'skill-bar';
+      const fill = document.createElement('span');
+      fill.style.width = `${Math.max(2, Math.min(100, value))}%`;
+      bar.append(fill);
+      body.append(label, sub, bar);
+      const number = document.createElement('div');
+      number.className = 'skill-level';
+      number.textContent = value;
+      row.append(mark, body, number);
+      return row;
+    }
+
+    function renderSkills(levels, skills = {}, rates = {}) {
+      const core = $('core-skills');
+      const other = $('other-skills');
+      core.replaceChildren();
+      other.replaceChildren();
+      coreOrder.forEach(name => core.append(skillRow(name, levels[name] ?? levels.HP ?? 1, skills[name], rates[name])));
+      Object.entries(levels)
+        .filter(([name]) => !coreOrder.includes(name) && !/^Stat\d+$/.test(name))
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .forEach(([name, value]) => other.append(skillRow(name, value, skills[name], rates[name])));
+    }
+
+    function renderHealth(health) {
+      const list = $('health-list');
+      list.replaceChildren();
+      let good = 0;
+      Object.values(health).forEach(service => {
+        if (service.ok) good++;
+        const row = document.createElement('div');
+        row.className = 'health-row';
+        const name = document.createElement('div');
+        name.className = 'health-name';
+        const dot = document.createElement('span');
+        dot.className = `health-dot ${service.ok ? 'ok' : ''}`;
+        const text = document.createElement('span');
+        text.textContent = service.label;
+        name.append(dot, text);
+        const state = document.createElement('span');
+        state.className = 'health-age';
+        state.textContent = service.ok ? age(service.ageMs) : 'attention';
+        row.append(name, state);
+        list.append(row);
+      });
+      $('health-summary').textContent = `${good}/${Object.keys(health).length} healthy`;
+    }
+
+    function renderLogs() {
+      if (!latest) return;
+      const lines = latest.logs[activeLog] || [];
+      const list = $('log-list');
+      list.replaceChildren();
+      if (!lines.length) {
+        const empty = document.createElement('li');
+        empty.className = 'empty';
+        empty.textContent = 'No activity recorded yet.';
+        list.append(empty);
+        return;
+      }
+      lines.slice(0, 70).forEach(entry => {
+        const line = document.createElement('li');
+        line.className = `log-line ${entry.type}`;
+        line.textContent = entry.text;
+        list.append(line);
+      });
+    }
+
+    function emptyState(title, detail) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      const strong = document.createElement('strong');
+      strong.textContent = title;
+      empty.append(strong, document.createTextNode(detail));
+      return empty;
+    }
+
+    function itemCard(item) {
+      const card = document.createElement('div');
+      card.className = 'item';
+      const mark = document.createElement('div');
+      mark.className = 'item-mark';
+      mark.textContent = item.name.split(/\s+/).map(word => word[0]).join('').slice(0, 2).toUpperCase();
+      const copy = document.createElement('div');
+      copy.className = 'item-copy';
+      const name = document.createElement('div');
+      name.className = 'item-name';
+      name.textContent = item.name;
+      const count = document.createElement('div');
+      count.className = 'item-count';
+      count.textContent = `${formatNumber(item.count)}${Number.isFinite(item.slot) ? ` · slot ${item.slot}` : ''}`;
+      copy.append(name, count);
+      card.append(mark, copy);
+      return card;
+    }
+
+    function renderGear(current) {
+      const inventory = current.inventory || [];
+      const equipment = current.equipment || [];
+      const bank = current.bank || { isOpen: false, items: [] };
+      $('inventory-count').textContent = `${inventory.length}/28 slots`;
+      $('equipment-count').textContent = `${equipment.length} items`;
+      const inventoryGrid = $('inventory-grid');
+      const equipmentGrid = $('equipment-grid');
+      const bankGrid = $('bank-grid');
+      inventoryGrid.replaceChildren(...(inventory.length ? inventory.map(itemCard) : [emptyState('Inventory empty', 'No occupied slots in the current state.') ]));
+      equipmentGrid.replaceChildren(...(equipment.length ? equipment.map(itemCard) : [emptyState('Nothing equipped', 'No worn items are visible.') ]));
+      $('bank-state').textContent = bank.isOpen ? `${bank.items.length} items` : 'interface closed';
+      if (bank.isOpen) {
+        const grid = document.createElement('div');
+        grid.className = 'item-grid';
+        grid.replaceChildren(...(bank.items.length ? bank.items.map(itemCard) : [emptyState('Bank empty', 'The open bank has no visible items.') ]));
+        bankGrid.replaceChildren(grid);
+      } else {
+        bankGrid.replaceChildren(emptyState('Bank not currently visible', 'Contents are shown only when the game naturally has the bank open. This dashboard will never open or modify it.'));
+      }
+    }
+
+    function renderChart(series) {
+      const line = $('chart-line');
+      const fill = $('chart-fill');
+      const dot = $('chart-dot');
+      if (!series?.length) {
+        line.setAttribute('d', '');
+        fill.setAttribute('d', '');
+        dot.style.display = 'none';
+        $('chart-range').textContent = 'collecting first sample';
+        return;
+      }
+      const width = 600, height = 148, px = 18, py = 16;
+      const values = series.map(point => point.totalLevel);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const span = Math.max(1, max - min);
+      const points = series.map((point, index) => {
+        const x = series.length === 1 ? width / 2 : px + (index / (series.length - 1)) * (width - px * 2);
+        const y = height - py - ((point.totalLevel - min) / span) * (height - py * 2);
+        return { x, y };
+      });
+      const path = points.map((point, index) => `${index ? 'L' : 'M'}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ');
+      line.setAttribute('d', path);
+      fill.setAttribute('d', `${path} L${points.at(-1).x.toFixed(1)},${height - py} L${points[0].x.toFixed(1)},${height - py} Z`);
+      const last = points.at(-1);
+      dot.style.display = '';
+      dot.setAttribute('cx', last.x);
+      dot.setAttribute('cy', last.y);
+      $('chart-range').textContent = series.length > 1 ? `${min} → ${max} total` : `${max} total · collecting baseline`;
+    }
+
+    function renderAnalytics(analytics, milestones) {
+      $('level-gain').textContent = `+${analytics.totalLevelGain || 0}`;
+      $('history-points').textContent = analytics.historyPoints || 0;
+      $('next-band').textContent = milestones.nextBand;
+      $('history-window').textContent = analytics.windowHours > 0 ? `${analytics.windowHours.toFixed(1)}h window` : 'collecting';
+      const topRate = analytics.topSkill ? analytics.xpPerHour[analytics.topSkill] : null;
+      $('top-rate').textContent = topRate ? formatNumber(topRate) : '—';
+      $('top-rate-skill').textContent = analytics.topSkill ? `${analytics.topSkill} XP/hour` : 'needs two samples';
+      renderChart(analytics.series || []);
+
+      const rateList = $('rate-list');
+      const rates = Object.entries(analytics.xpPerHour || {}).sort((a, b) => b[1] - a[1]);
+      if (!rates.length) {
+        rateList.replaceChildren(emptyState('XP rates are warming up', 'A second telemetry sample is needed. The dashboard records one read-only sample per controller update.'));
+      } else {
+        rateList.replaceChildren(...rates.slice(0, 8).map(([name, value]) => dataRow(name, `${formatNumber(analytics.skillGains[name]?.xp || 0)} XP gained`, `${formatNumber(value)}/h`)));
+      }
+
+      const reached = $('reached-milestones');
+      const next = $('next-milestones');
+      reached.replaceChildren(...(milestones.reached || []).map(text => chip(text, 'reached')));
+      next.replaceChildren(...(milestones.remaining || []).map(text => chip(text, 'next')));
+    }
+
+    function chip(text, kind) {
+      const node = document.createElement('span');
+      node.className = `chip ${kind}`;
+      node.textContent = text;
+      return node;
+    }
+
+    function dataRow(name, note, value) {
+      const row = document.createElement('div');
+      row.className = 'data-row';
+      const main = document.createElement('div');
+      main.className = 'data-main';
+      const label = document.createElement('div');
+      label.className = 'data-name';
+      label.textContent = name;
+      const detail = document.createElement('div');
+      detail.className = 'data-note';
+      detail.textContent = note;
+      const number = document.createElement('div');
+      number.className = 'data-value';
+      number.textContent = value;
+      main.append(label, detail);
+      row.append(main, number);
+      return row;
+    }
+
+    function renderWorld(current) {
+      const world = current.world || {};
+      const style = current.combatStyle;
+      $('weapon-name').textContent = style?.weaponName || 'Unarmed';
+      $('combat-style').textContent = style?.current?.name || 'Unknown';
+      $('run-energy').textContent = `${current.player?.runEnergy ?? '—'}%`;
+      $('nearby-players').textContent = world.nearbyPlayers ?? 0;
+      const npcs = world.nearbyNpcs || [];
+      const ground = world.groundItems || [];
+      const objects = world.nearbyObjects || [];
+      $('npc-count').textContent = `${npcs.length} shown`;
+      $('ground-count').textContent = `${ground.length} shown`;
+      $('object-count').textContent = `${objects.length} shown`;
+      $('npc-list').replaceChildren(...(npcs.length ? npcs.map(npc => dataRow(npc.name, `level ${npc.combatLevel || 0}${npc.inCombat ? ' · in combat' : ''}`, `${npc.distance} tiles`)) : [emptyState('No NPCs visible', 'Waiting for the scene state.') ]));
+      $('ground-list').replaceChildren(...(ground.length ? ground.map(item => dataRow(item.name, `${formatNumber(item.count)} on ground${item.reachable === false ? ' · blocked' : ''}`, `${item.distance} tiles`)) : [emptyState('No ground items visible', 'Nothing is currently published nearby.') ]));
+      $('object-list').replaceChildren(...(objects.length ? objects.map(item => dataRow(item.name, (item.options || []).join(', ') || 'scenery', `${item.distance} tiles`)) : [emptyState('No objects visible', 'Waiting for nearby scenery data.') ]));
+    }
+
+    function fleetBotCard(bot) {
+      const card = document.createElement('article');
+      card.className = 'fleet-bot';
+      const head = document.createElement('div');
+      head.className = 'fleet-bot-head';
+      const identity = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'fleet-bot-name';
+      name.textContent = bot.id;
+      const role = document.createElement('div');
+      role.className = 'fleet-bot-role';
+      role.textContent = bot.role;
+      identity.append(name, role);
+      const state = document.createElement('div');
+      state.className = `fleet-bot-state ${bot.healthy ? 'ok' : ''}`;
+      state.textContent = bot.healthy ? 'online' : 'attention';
+      head.append(identity, state);
+
+      const meta = document.createElement('div');
+      meta.className = 'fleet-bot-meta';
+      const values = [
+        ['Client', bot.clientMode],
+        ['Total level', bot.totalLevel ?? '—'],
+        ['Signal', age(bot.ageMs)],
+      ];
+      for (const [label, value] of values) {
+        const cell = document.createElement('div');
+        cell.className = 'fleet-meta';
+        const caption = document.createElement('span');
+        caption.textContent = label;
+        const strong = document.createElement('strong');
+        strong.textContent = value;
+        cell.append(caption, strong);
+        meta.append(cell);
+      }
+      const detail = document.createElement('div');
+      detail.className = 'fleet-detail';
+      detail.textContent = `${titleCase(bot.activity)} · ${bot.detail}`;
+      card.append(head, meta, detail);
+      return card;
+    }
+
+    function fleetPlanRow(label, value) {
+      const row = document.createElement('div');
+      row.className = 'fleet-plan-row';
+      const caption = document.createElement('span');
+      caption.textContent = label;
+      const strong = document.createElement('strong');
+      strong.textContent = value;
+      row.append(caption, strong);
+      return row;
+    }
+
+    function renderFleet(fleet = {}) {
+      const summary = fleet.summary || { configured: 0, online: 0, totalLevel: 0 };
+      $('fleet-configured').textContent = summary.configured;
+      $('fleet-online').textContent = summary.online;
+      $('fleet-total-level').textContent = formatNumber(summary.totalLevel);
+      $('fleet-health').textContent = `${summary.online}/${summary.configured} online`;
+      const bots = fleet.bots || [];
+      $('fleet-list').replaceChildren(...(bots.length ? bots.map(fleetBotCard) : [emptyState('No accounts configured', 'Add accounts to the local fleet manifest to expose read-only telemetry.') ]));
+
+      const plan = fleet.resourcePlan || {};
+      $('fleet-resource-plan').replaceChildren(
+        fleetPlanRow('Host memory', `${plan.hostMemoryGiB ?? '—'} GiB`),
+        fleetPlanRow('Rendered browser', `${plan.measuredRenderedClientMiB ?? '—'} MiB measured`),
+        fleetPlanRow('Lite client', `${plan.measuredLiteClientMiB ?? '—'} MiB measured`),
+        fleetPlanRow('Full lite account', `${plan.measuredLiteStackMiB ?? '—'} MiB RSS`),
+        fleetPlanRow('Projected 10 accounts', `${plan.projectedFleetRssMiB ?? '—'} MiB RSS`),
+        fleetPlanRow('Target mix', `${plan.renderedClients ?? 1} rendered + ${plan.liteClientsTarget ?? 0} lite`),
+      );
+      const transfer = fleet.logistics?.lastTransfer;
+      if (transfer) {
+        const gave = (transfer.gave || []).map(item => `${formatNumber(item.count ?? item.amount ?? 0)} ${item.name ?? item.item ?? 'item'}`).join(', ') || 'items';
+        $('fleet-logistics').replaceChildren(dataRow(`${transfer.from} → ${transfer.to}`, gave, age(Date.now() - Date.parse(fleet.logistics.updatedAt))));
+      } else {
+        $('fleet-logistics').replaceChildren(emptyState('Awaiting first verified handoff', 'Fleet workers will record completed two-screen trades here.'));
+      }
+      const roles = fleet.plannedRoles || [];
+      $('fleet-role-list').replaceChildren(...roles.map(role => {
+        const item = document.createElement('li');
+        item.textContent = role;
+        return item;
+      }));
+    }
+
+    function renderBrain(brain = {}) {
+      const status = brain.status || {};
+      const reconciler = brain.reconciler || {};
+      const workOrders = brain.workOrders || {};
+      const costs = brain.costs || {};
+      const totals = costs.totals || {};
+      $('brain-health').textContent = brain.healthy ? 'connected' : 'attention';
+      $('brain-state').textContent = status.health || (status.online ? 'online' : 'offline');
+      $('brain-model').textContent = status.model || 'gpt-5.6-luna';
+      $('brain-age').textContent = age(brain.statusAgeMs);
+      $('brain-objective').textContent = status.objective || 'Waiting for the first strategic review';
+      $('brain-decision').textContent = status.decision || 'No fleet-level decision has been published.';
+      const observations = Array.isArray(status.observations) ? status.observations.slice(0, 5) : [];
+      $('brain-observations').replaceChildren(...(observations.length ? observations.map(text => {
+        const node = document.createElement('div');
+        node.className = 'observation';
+        node.textContent = String(text);
+        return node;
+      }) : [emptyState('No observations yet', 'Luna will publish a bounded review after its first scheduled pass.') ]));
+
+      $('brain-orders-pending').textContent = workOrders.pending ?? 0;
+      $('brain-orders-completed').textContent = workOrders.completed ?? 0;
+      $('brain-orders-rejected').textContent = workOrders.rejected ?? 0;
+      $('brain-control-details').replaceChildren(
+        fleetPlanRow('Reconciler', reconciler.online ? `${reconciler.phase || 'idle'} · online` : 'offline'),
+        fleetPlanRow('Automatic authority', (reconciler.allowedActions || ['restart_controller']).join(', ')),
+        fleetPlanRow('Restart guard', 'offline or stale ≥10m'),
+        fleetPlanRow('Cooldown', `${Math.round((reconciler.cooldownMs || 300000) / 60000)} minutes per controller`),
+        fleetPlanRow('Gameplay ownership', 'deterministic workers only'),
+        fleetPlanRow('Dashboard controls', 'none · read only'),
+      );
+
+      const canonicalTokens = (totals.inputTokens || 0) + (totals.outputTokens || 0) + (totals.cacheReadTokens || 0) + (totals.cacheWriteTokens || 0);
+      $('cost-total').textContent = formatUsd(totals.estimatedCostUsd || 0);
+      $('cost-tokens').textContent = formatNumber(canonicalTokens);
+      $('cost-sessions').textContent = totals.sessions || 0;
+      $('cost-freshness').textContent = age(brain.costAgeMs);
+      $('cost-explanation').textContent = costs.explanation || 'Estimated API-equivalent cost. Codex subscription usage is not an actual metered invoice.';
+      const rates = costs.pricing?.perMillionTokens || {};
+      $('cost-rate-list').replaceChildren(
+        fleetPlanRow('Uncached input', `${formatUsd(rates.input || 0)} / 1M`),
+        fleetPlanRow('Model output', `${formatUsd(rates.output || 0)} / 1M`),
+        fleetPlanRow('Cache read', `${formatUsd(rates.cacheRead || 0)} / 1M`),
+        fleetPlanRow('Cache write', `${formatUsd(rates.cacheWrite || 0)} / 1M`),
+        fleetPlanRow('Reasoning tokens', 'included in output bucket'),
+        fleetPlanRow('Actual subscription charge', costs.actualSubscriptionCharge == null ? 'not metered' : formatUsd(costs.actualSubscriptionCharge)),
+      );
+      const runs = Array.isArray(costs.runs) ? costs.runs.slice(0, 8) : [];
+      $('cost-runs').replaceChildren(...(runs.length ? runs.map(run => dataRow(
+        run.title || 'Fleetbrain review',
+        `${run.model || 'gpt-5.6-luna'} · ${run.apiCalls || 0} API call${run.apiCalls === 1 ? '' : 's'} · ${age(Date.now() - Date.parse(run.startedAt))}`,
+        `${formatUsd(run.estimatedCostUsd || 0)} · ${formatNumber((run.inputTokens || 0) + (run.outputTokens || 0) + (run.cacheReadTokens || 0) + (run.cacheWriteTokens || 0))} tok`,
+      )) : [emptyState('No priced runs yet', 'The ledger updates automatically from Fleetbrain’s isolated Hermes state database.') ]));
+      const daily = Array.isArray(costs.daily) ? costs.daily.slice(0, 7) : [];
+      $('cost-daily').replaceChildren(...(daily.length ? daily.map(day => dataRow(
+        day.date,
+        `${day.sessions || 0} sessions · ${formatNumber((day.inputTokens || 0) + (day.outputTokens || 0) + (day.cacheReadTokens || 0) + (day.cacheWriteTokens || 0))} tokens`,
+        formatUsd(day.estimatedCostUsd || 0),
+      )) : [emptyState('No daily totals yet', 'Daily list-price equivalents appear after the first Luna run.') ]));
+    }
+
+    function render(data) {
+      latest = data;
+      $('status-pill').classList.toggle('online', data.online);
+      $('online-label').textContent = data.online ? 'Online' : 'Attention';
+      $('combat-level').textContent = `combat ${data.current.player?.combatLevel ?? '—'}`;
+      $('objective-title').textContent = data.current.objective.title;
+      $('objective-title').classList.remove('skeleton');
+      $('objective-detail').textContent = data.current.detail ? `Last action · ${data.current.detail}` : titleCase(data.current.activity);
+      $('objective-target').textContent = data.current.objective.target;
+      const progress = Math.round(data.current.objective.progress);
+      $('objective-progress').textContent = `${progress}%`;
+      $('objective-bar').style.width = `${progress}%`;
+      $('total-level').textContent = data.current.totalLevel ?? '—';
+      const hp = data.current.player;
+      $('hitpoints').textContent = hp ? `${hp.hp}/${hp.maxHp}` : (data.current.levels.Hitpoints ?? '—');
+      $('combat-state').textContent = hp?.inCombat ? 'currently in combat' : 'safe / between actions';
+      const pos = data.current.position;
+      $('position').textContent = pos ? `${pos.x},${pos.z}` : '—';
+      $('actions').textContent = data.current.actions ?? 0;
+      $('failure-note').textContent = `${data.current.failures ?? 0} recoverable failures`;
+      $('state-age').textContent = age(data.health.controller.ageMs);
+      $('frame-age').textContent = `Frame captured ${age(data.screenshot.ageMs)}`;
+      $('frame-badge').style.opacity = data.health.screenshot.ok ? '1' : '.45';
+      $('live-frame').src = data.screenshot.url;
+      $('viewer-frame').src = data.screenshot.url;
+      $('generated-at').textContent = `updated ${age(Date.now() - Date.parse(data.generatedAt))}`;
+      renderSkills(data.current.levels || {}, data.current.skills || {}, data.analytics?.xpPerHour || {});
+      renderAnalytics(data.analytics || { xpPerHour: {}, series: [], historyPoints: 0, totalLevelGain: 0 }, data.milestones || { nextBand: '—', reached: [], remaining: [] });
+      renderGear(data.current);
+      renderWorld(data.current);
+      renderFleet(data.fleet);
+      renderBrain(data.brain);
+      renderHealth(data.health);
+      renderLogs();
+    }
+
+    async function refresh() {
+      if (refreshing || document.hidden) return;
+      refreshing = true;
+      try {
+        const response = await fetch('/api/status', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        render(await response.json());
+      } catch (error) {
+        $('online-label').textContent = 'Offline';
+        $('status-pill').classList.remove('online');
+        $('frame-age').textContent = `Dashboard error: ${error.message}`;
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    async function shareLiveFrame() {
+      const button = $('share-frame');
+      const original = button.textContent;
+      try {
+        if (!navigator.share || !latest?.screenshot?.url) throw new Error('share unavailable');
+        const response = await fetch(latest.screenshot.url, { cache: 'no-store' });
+        const blob = await response.blob();
+        const file = new File([blob], 'FSZ6yjrsA-live.jpg', { type: 'image/jpeg' });
+        const payload = { title: 'FSZ6yjrsA live client', text: 'Read-only live client snapshot', files: [file] };
+        if (navigator.canShare && !navigator.canShare(payload)) throw new Error('file sharing unavailable');
+        await navigator.share(payload);
+      } catch (error) {
+        if (error?.name !== 'AbortError') window.open('/live.jpg', '_blank', 'noopener');
+      } finally {
+        button.textContent = original;
+      }
+    }
+
+    function setTab(next) {
+      activeLog = next;
+      ['player', 'client'].forEach(name => {
+        const tab = $(`tab-${name}`);
+        const active = name === next;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      renderLogs();
+    }
+
+    $('tab-player').addEventListener('click', () => setTab('player'));
+    $('tab-client').addEventListener('click', () => setTab('client'));
+    $('share-frame').addEventListener('click', shareLiveFrame);
+    const viewer = $('viewer');
+    $('open-viewer').addEventListener('click', () => viewer.showModal());
+    $('close-viewer').addEventListener('click', () => viewer.close());
+    viewer.addEventListener('click', event => { if (event.target === viewer) viewer.close(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>
