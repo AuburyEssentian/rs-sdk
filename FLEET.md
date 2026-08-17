@@ -108,16 +108,16 @@ Fifteen-minute reviews advance or replace short-term goals without churning the 
 
 ## Costs
 
-The dashboard Costs tab reports API-equivalent pricing, not a Codex subscription invoice. Luna rates are read from Hermes' official pricing snapshot:
+The dashboard Costs tab reports API-equivalent pricing, not a Codex subscription invoice. Fleetbrain's calls are in OpenAI's short-context band (at most 272K input tokens per request), using the current direct API rates from <https://developers.openai.com/api/docs/pricing>:
 
 | Bucket | USD / 1M tokens |
 |---|---:|
-| Uncached input | $1.00 |
-| Output (including reasoning) | $6.00 |
-| Cache read | $0.10 |
-| Cache write | $1.25 |
+| Uncached input | $0.20 |
+| Output (including reasoning) | $1.20 |
+| Cache read | $0.02 |
+| Cache write | $0.25 |
 
-`fleet/brain/collect_costs.py` reads Fleetbrain's `state.db` in SQLite read-only mode and writes `fleet/brain/runtime/costs.json` atomically. Reasoning tokens are shown separately but are not charged twice because they are already a subset of output tokens.
+`fleet/brain/collect_costs.py` reads Fleetbrain's `state.db` in SQLite read-only mode and writes `fleet/brain/runtime/costs.json` atomically. The payload also records Luna's >272K long-context rates for transparency, but they are not used for these runs. Reasoning tokens are shown separately but are not charged twice because they are already a subset of output tokens.
 
 ## Dashboard
 

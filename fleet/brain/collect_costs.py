@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a read-only list-price-equivalent token-cost ledger for Fleetbrain."""
+"""Build a read-only API-list-price-equivalent token-cost ledger for Fleetbrain."""
 from __future__ import annotations
 
 import json
@@ -12,12 +12,21 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 MODEL = "gpt-5.6-luna"
-PRICING_VERSION = "openai-gpt-5.6-2026-07"
+PRICING_VERSION = "openai-gpt-5.6-2026-08-17"
+PRICING_SOURCE = "https://developers.openai.com/api/docs/pricing"
+CONTEXT_BAND = "short"
+CONTEXT_BAND_DEFINITION = "<=272K input tokens per request"
 PRICES = {
-    "input": 1.00,
-    "output": 6.00,
-    "cacheRead": 0.10,
-    "cacheWrite": 1.25,
+    "input": 0.20,
+    "output": 1.20,
+    "cacheRead": 0.02,
+    "cacheWrite": 0.25,
+}
+LONG_CONTEXT_PRICES = {
+    "input": 0.40,
+    "output": 1.80,
+    "cacheRead": 0.04,
+    "cacheWrite": 0.50,
 }
 LOCAL_TZ = ZoneInfo("Australia/Sydney")
 DEFAULT_DB = Path.home() / ".hermes" / "profiles" / "fleetbrain" / "state.db"
@@ -144,8 +153,11 @@ def collect(db_path: Path) -> dict[str, Any]:
         "pricing": {
             "model": MODEL,
             "version": PRICING_VERSION,
-            "source": "Hermes official pricing snapshot",
+            "source": PRICING_SOURCE,
+            "contextBand": CONTEXT_BAND,
+            "contextBandDefinition": CONTEXT_BAND_DEFINITION,
             "perMillionTokens": PRICES,
+            "longContextPerMillionTokens": LONG_CONTEXT_PRICES,
         },
         "totals": {
             "sessions": len(rows),
