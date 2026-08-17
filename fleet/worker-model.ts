@@ -1,8 +1,25 @@
 export type FleetRole = 'smith' | 'fish' | 'cook' | 'wood' | 'thief' | 'rune' | 'banker' | 'flex';
-export type WorkerAction = 'mine' | 'smelt' | 'smith' | 'acquire-hammer' | 'acquire-net' | 'local-cash' | 'supply-net' | 'fish' | 'cook' | 'bank' | 'burn' | 'chop' | 'eat' | 'recover' | 'thieve' | 'bootstrap-cash' | 'buy-runes' | 'serve-trades';
+export type WorkerAction = 'mine' | 'smelt' | 'smith' | 'acquire-hammer' | 'acquire-net' | 'local-cash' | 'supply-net' | 'fish' | 'cook' | 'bank' | 'burn' | 'chop' | 'eat' | 'recover' | 'thieve' | 'bootstrap-cash' | 'buy-runes' | 'serve-trades' | 'fund-banker' | 'receive-funding';
+
+export interface WorkerDirective {
+    id?: string;
+    mode: 'fund-banker';
+    amount?: number;
+    reason: string;
+}
+
+export interface StrategicWorkerDirective extends WorkerDirective {
+    id: string;
+    botId: string;
+    role: FleetRole;
+    amount: number;
+    createdAt: string;
+    expiresAt: string;
+}
 
 export const COPPER_ROCK_IDS = [2090, 2091] as const;
 export const TIN_ROCK_IDS = [2094, 2095] as const;
+export const FLEET_BANKER_PATTERN = /^Fszbank1$/i;
 
 export interface WorkerItem {
     name: string;
@@ -44,11 +61,121 @@ export function roleProfile(role: FleetRole): RoleProfile {
     return PROFILES[role];
 }
 
+function hasExactKeys(value: any, expected: readonly string[]): boolean {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        && Object.keys(value).length === expected.length
+        && expected.every(key => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+function parseIsoTimestamp(value: unknown): number {
+    if (typeof value !== 'string' || value.length > 40) return Number.NaN;
+    const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+    if (!match) return Number.NaN;
+    const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+    const millisecond = Number((match[7] ?? '').padEnd(3, '0'));
+    const calendar = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millisecond));
+    if (calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 || calendar.getUTCDate() !== day
+        || calendar.getUTCHours() !== hour || calendar.getUTCMinutes() !== minute || calendar.getUTCSeconds() !== second) return Number.NaN;
+    return Date.parse(value);
+}
+
+function isValidStrategicDirective(directive: any, role: FleetRole, now: number): directive is StrategicWorkerDirective {
+    if (!hasExactKeys(directive, ['id', 'botId', 'role', 'mode', 'amount', 'reason', 'createdAt', 'expiresAt'])) return false;
+    if (!directive || !/^Fsz[A-Za-z0-9]{1,9}$/.test(directive.botId ?? '')) return false;
+    if (directive.mode !== 'fund-banker' || !['thief', 'rune'].includes(role)) return false;
+    if (!/^fd-[a-z0-9][a-z0-9-]{7,79}$/.test(directive.id ?? '')) return false;
+    const createdAt = parseIsoTimestamp(directive.createdAt);
+    const expiresAt = parseIsoTimestamp(directive.expiresAt);
+    if (!Number.isFinite(createdAt) || !Number.isFinite(expiresAt) || createdAt > now || expiresAt <= now) return false;
+    if (expiresAt <= createdAt || expiresAt - createdAt > 6 * 60 * 60_000) return false;
+    if (!Number.isInteger(directive.amount) || directive.amount < 100 || directive.amount > 5_000) return false;
+    if (typeof directive.reason !== 'string' || directive.reason.length < 20 || directive.reason.length > 300) return false;
+    return true;
+}
+
+export function selectWorkerDirective(
+    raw: any,
+    botId: string,
+    role: FleetRole,
+    now = Date.now(),
+    completedDirectiveIds: ReadonlySet<string> = new Set(),
+): StrategicWorkerDirective | null {
+    if (!hasExactKeys(raw, ['version', 'updatedAt', 'directives'])) return null;
+    if (raw.version !== 1 || !Number.isFinite(parseIsoTimestamp(raw.updatedAt)) || !Array.isArray(raw.directives) || raw.directives.length > 5) return null;
+    if (!raw.directives.every((candidate: any) => isValidStrategicDirective(candidate, candidate?.role as FleetRole, now))) return null;
+    const validated = raw.directives as StrategicWorkerDirective[];
+    const ids = validated.map(candidate => candidate.id);
+    const bots = validated.map(candidate => candidate.botId);
+    if (new Set(ids).size !== ids.length || new Set(bots).size !== bots.length) return null;
+    return validated.find(directive =>
+        !completedDirectiveIds.has(directive.id) && directive.botId === botId && directive.role === role) ?? null;
+}
+
+function hasFundingReceiptShape(value: any): boolean {
+    if (!hasExactKeys(value, [
+        'version', 'directiveId', 'botId', 'mode', 'completedAt', 'ok', 'from', 'to', 'amount', 'recoveredFromClaim',
+    ])) return false;
+    return value.version === 1
+        && typeof value.directiveId === 'string' && /^fd-[a-z0-9][a-z0-9-]{7,79}$/.test(value.directiveId)
+        && typeof value.botId === 'string' && /^Fsz[A-Za-z0-9]{1,9}$/.test(value.botId)
+        && value.mode === 'fund-banker'
+        && Number.isFinite(parseIsoTimestamp(value.completedAt))
+        && value.ok === true
+        && value.from === value.botId
+        && value.to === 'Fszbank1'
+        && Number.isInteger(value.amount) && value.amount >= 100 && value.amount <= 5_000
+        && typeof value.recoveredFromClaim === 'boolean';
+}
+
+export function validateFundingReceiptTombstone(value: any, directiveId: string): boolean {
+    return hasFundingReceiptShape(value) && value.directiveId === directiveId;
+}
+
+export function validateFundingReceipt(value: any, directive: StrategicWorkerDirective): boolean {
+    return validateFundingReceiptTombstone(value, directive.id)
+        && value.botId === directive.botId
+        && value.from === directive.botId
+        && value.amount === directive.amount;
+}
+
+function itemCount(items: any, pattern: RegExp): number {
+    if (!Array.isArray(items)) return 0;
+    return items
+        .filter(item => typeof item?.name === 'string' && pattern.test(item.name))
+        .reduce((sum, item) => sum + Number(item.count ?? 0), 0);
+}
+
+export function receivedFundingFromTrades(result: any, directive: Pick<StrategicWorkerDirective, 'botId' | 'amount'>): boolean {
+    return Array.isArray(result?.trades) && result.trades.some((trade: any) =>
+        trade?.success === true
+        && String(trade.partner ?? '').toLowerCase() === directive.botId.toLowerCase()
+        && itemCount(trade.received, /^coins$/i) >= directive.amount);
+}
+
+export function gaveFundingInTrade(result: any, directive: Pick<StrategicWorkerDirective, 'amount'>): boolean {
+    return result?.success === true
+        && String(result.partner ?? '').toLowerCase() === 'fszbank1'
+        && itemCount(result.gave, /^coins$/i) >= directive.amount;
+}
+
+export function fundingClaimSatisfied(claim: { beforeCoins: number; amount: number }, currentCoins: number): boolean {
+    return Number.isFinite(claim.beforeCoins)
+        && Number.isInteger(claim.amount)
+        && currentCoins - claim.beforeCoins >= claim.amount;
+}
+
 function count(items: WorkerItem[], pattern: RegExp): number {
     return items.filter(item => pattern.test(item.name)).reduce((total, item) => total + item.count, 0);
 }
 
-export function chooseWorkerAction(role: FleetRole, snapshot: WorkerSnapshot): WorkerAction {
+export function chooseWorkerAction(role: FleetRole, snapshot: WorkerSnapshot, directive?: WorkerDirective | null): WorkerAction {
+    if ((role === 'thief' || role === 'rune') && snapshot.hp <= Math.max(3, Math.floor(snapshot.maxHp * 0.35))) {
+        return count(snapshot.inventory, /bread|shrimps|kebab|meat|fish/i) > 0 ? 'eat' : 'recover';
+    }
+    const directiveAmount = directive?.amount ?? 100;
+    if (directive?.mode === 'fund-banker' && (role === 'thief' || role === 'rune') && count(snapshot.inventory, /^coins$/i) >= directiveAmount + 100) {
+        return 'fund-banker';
+    }
     if (role === 'smith') {
         const copper = count(snapshot.inventory, /^copper ore$/i);
         const tin = count(snapshot.inventory, /^tin ore$/i);

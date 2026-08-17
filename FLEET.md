@@ -8,8 +8,8 @@ The fleet is intentionally split into a deterministic data plane and a bounded L
 Sam
  └─ main Hermes (operator/maintainer, openai-codex gpt-5.6-sol)
      └─ Docker: hermes-fleetbrain (strategic reviews, gpt-5.6-luna/max)
-         └─ read-only fleet snapshot + audited lifecycle work orders
-             └─ host reconciler (strict validation/cooldown)
+         └─ read-only fleet snapshot + bounded worker directives + audited lifecycle work orders
+             └─ deterministic workers / host reconciler (strict validation/cooldown)
                  └─ manifest supervisor
                      └─ 1 protected rendered account + dynamic Lite accounts (20 total max)
 ```
@@ -72,13 +72,16 @@ Container configuration lives at `fleet/brain/docker-compose.yml`. The profile i
 
 ## Control contract
 
-Fleetbrain publishes strategic state to:
+Fleetbrain publishes strategic state and allowlisted worker directives to:
 
 ```text
 fleet/brain/runtime/brain-status.json
+fleet/brain/runtime/worker-directives.json
 ```
 
-Fleetbrain may place at most one expiring version-2 lifecycle work order per review in:
+The first bounded directive is `fund-banker`: a `thief` or `rune` worker may transfer 100-5000 Coins to `Fszbank1`, while retaining a 100-Coin reserve. Both workers verify the exact directive schema, unique ID/target, expiry, role and completion receipt; routine gameplay remains deterministic. The banker writes a completion receipt only after verifying the expected partner and received Coin delta. Authoritative receipts, banker pre-trade claims, and donor at-most-once attempt markers live in host-only `~/.hermes/fleetbrain-worker-state/`, outside Luna's mounted workspace; a strict public receipt is mirrored into `fleet/brain/runtime/directive-results/` for the next review. The durable claim reconciles the narrow post-trade crash window without replaying a completed transfer.
+
+Fleetbrain may place up to three expiring version-2 lifecycle work orders for distinct accounts per review in:
 
 ```text
 fleet/brain/runtime/work-orders/pending/
@@ -92,6 +95,8 @@ Allowed actions are `restart_controller`, `restart_client`, `restart_account`, `
 4. No more than 20 total characters, including disabled accounts. Reactivation is preferred over creating another character.
 5. A five-minute per-account restart cooldown and fifteen-minute fleet scale cooldown.
 6. Live supervisor-owned PIDs for restart actions and post-action supervisor verification.
+7. A rolling maximum of three distinct account targets per five minutes, plus exact client → controller → full-account escalation while telemetry remains stale.
+8. Permanent replay suppression for processed work-order IDs. Budget, recovery and replay state is stored in host-only `~/.hermes/fleetbrain-worker-state/reconciler-state.json`, outside Luna's writable runtime mount.
 
 `remove_account` means disable-and-archive: stop the two children and mark the manifest entry disabled while preserving the character directory, credentials, status and history. `add_account` reactivates a disabled account or creates one new Lite account. Every result is archived. The dashboard never applies actions.
 
@@ -104,7 +109,7 @@ Fleetbrain keeps durable strategy in `fleet/brain/runtime/strategy.json`:
 3. One to five measurable short-term goals owned by named deterministic workers.
 4. Bounded progress evidence from fresh telemetry.
 
-Fifteen-minute reviews advance or replace short-term goals without churning the long horizon. The long-horizon target changes only when achieved, proven impossible, or explicitly overridden by Sam/main Hermes. Capacity and lifecycle actions must support this goal ladder.
+Five-minute reviews advance or replace short-term goals without churning the long horizon. The host reconciler enforces a rolling maximum of three distinct account targets and stale-recovery progression from client to controller to full account. Fresh progress or an intervention still settling may justify observation; two consecutive stalled reviews require a bounded directive, lifecycle/capacity correction, or an executable replacement goal. Failed recovery escalates instead of repeating the same narrow action. The long-horizon target changes only when achieved, proven impossible, or explicitly overridden by Sam/main Hermes. Capacity, lifecycle and directive actions must support this goal ladder.
 
 ## Costs
 

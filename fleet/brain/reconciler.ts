@@ -1,15 +1,24 @@
+import { randomUUID } from 'node:crypto';
 import { chmod, lstat, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
     ALLOWED_ROLE_KEYS,
+    canAcceptReviewOrder,
+    canAdvanceRecovery,
+    canProcessWorkOrderId,
     canRestartController,
     canScaleFleet,
+    supervisorVerificationSucceeded,
     validateWorkOrder,
     type FleetRoleKey,
     type FleetValidationContext,
+    type RecentReviewOrder,
+    type RecoveryAttempt,
     type WorkOrder,
     type WorkOrderAction,
 } from './reconciler-model';
+import { buildFleetChildSpecs, type SupervisorBot } from '../supervisor-model';
 
 const BRAIN_DIR = import.meta.dir;
 const REPO_ROOT = join(BRAIN_DIR, '..', '..');
@@ -18,7 +27,8 @@ const PENDING_DIR = join(RUNTIME_DIR, 'work-orders', 'pending');
 const COMPLETED_DIR = join(RUNTIME_DIR, 'work-orders', 'completed');
 const REJECTED_DIR = join(RUNTIME_DIR, 'work-orders', 'rejected');
 const STATUS_PATH = join(RUNTIME_DIR, 'reconciler-status.json');
-const STATE_PATH = join(RUNTIME_DIR, 'reconciler-state.json');
+const PRIVATE_STATE_DIR = process.env.FLEET_PRIVATE_STATE_DIR ?? join(homedir(), '.hermes', 'fleetbrain-worker-state');
+const STATE_PATH = join(PRIVATE_STATE_DIR, 'reconciler-state.json');
 const MANIFEST_PATH = join(REPO_ROOT, 'fleet.json');
 const SUPERVISOR_PATH = join(REPO_ROOT, 'fleet', 'supervisor-status.json');
 const RESTART_COOLDOWN_MS = 5 * 60_000;
@@ -41,6 +51,9 @@ const ROLE_LABELS: Record<FleetRoleKey, string> = {
 interface ReconcilerState {
     lastRestartAt: Record<string, string>;
     lastScaleAt?: string;
+    recentOrders: RecentReviewOrder[];
+    recovery: Record<string, RecoveryAttempt>;
+    processedOrderIds: string[];
 }
 
 async function readJson(path: string): Promise<any | null> {
@@ -52,8 +65,8 @@ async function readJson(path: string): Promise<any | null> {
 }
 
 async function atomicJson(path: string, value: unknown, mode = 0o600): Promise<void> {
-    const tmp = `${path}.${process.pid}.tmp`;
-    await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { mode });
+    const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode });
     await rename(tmp, path);
 }
 
@@ -76,9 +89,15 @@ async function publishStatus(overrides: Record<string, unknown> = {}): Promise<v
 }
 
 async function archive(path: string, destination: string, order: unknown, result: Record<string, unknown>): Promise<void> {
-    const target = join(destination, basename(path));
+    const sourceName = basename(path);
+    let target = join(destination, sourceName);
+    try {
+        await lstat(target);
+        const stem = sourceName.endsWith('.json') ? sourceName.slice(0, -5) : sourceName;
+        target = join(destination, `${stem}.${randomUUID()}.json`);
+    } catch {}
     await rename(path, target).catch(async () => {
-        await writeFile(target, `${JSON.stringify(order, null, 2)}\n`, { mode: 0o600 });
+        await writeFile(target, `${JSON.stringify(order, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
     });
     await atomicJson(`${target}.result.json`, {
         ...result,
@@ -106,8 +125,16 @@ function validationContext(manifest: any): FleetValidationContext {
 
 function loadState(raw: any): ReconcilerState {
     return raw && typeof raw === 'object'
-        ? { lastRestartAt: raw.lastRestartAt ?? {}, lastScaleAt: raw.lastScaleAt }
-        : { lastRestartAt: {} };
+        ? {
+            lastRestartAt: raw.lastRestartAt ?? {},
+            lastScaleAt: raw.lastScaleAt,
+            recentOrders: Array.isArray(raw.recentOrders) ? raw.recentOrders : [],
+            recovery: raw.recovery && typeof raw.recovery === 'object' ? raw.recovery : {},
+            processedOrderIds: Array.isArray(raw.processedOrderIds)
+                ? [...new Set<string>(raw.processedOrderIds.filter((id: unknown): id is string => typeof id === 'string' && /^wo-[a-z0-9][a-z0-9-]{7,79}$/.test(id)))]
+                : [],
+        }
+        : { lastRestartAt: {}, recentOrders: [], recovery: {}, processedOrderIds: [] };
 }
 
 function runningChildren(supervisor: any, botId: string, kinds: Array<'client' | 'controller'>): any[] {
@@ -118,13 +145,27 @@ function runningChildren(supervisor: any, botId: string, kinds: Array<'client' |
         && Number.isInteger(candidate.pid));
 }
 
-async function signalLifecycle(supervisor: any, botId: string, kinds: Array<'client' | 'controller'>): Promise<Record<string, number>> {
+async function processCommand(pid: number): Promise<string> {
+    const child = Bun.spawn({ cmd: ['/bin/ps', '-p', String(pid), '-o', 'command='], stdout: 'pipe', stderr: 'ignore' });
+    const [exitCode, stdout] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+    return exitCode === 0 ? stdout.trim() : '';
+}
+
+async function signalLifecycle(supervisor: any, manifest: any, botId: string, kinds: Array<'client' | 'controller'>): Promise<Record<string, number>> {
+    const supervisorAt = Date.parse(supervisor?.updatedAt ?? '');
+    if (!Number.isFinite(supervisorAt) || Date.now() - supervisorAt < 0 || Date.now() - supervisorAt > 15_000) {
+        throw new Error('supervisor status is not fresh enough for PID signalling');
+    }
     const children = runningChildren(supervisor, botId, kinds);
     if (children.length !== kinds.length) throw new Error(`supervisor does not have all requested running children: ${kinds.join(',')}`);
+    const expectedSpecs = buildFleetChildSpecs((manifest?.bots ?? []) as SupervisorBot[], REPO_ROOT);
     const pids: Record<string, number> = {};
     for (const kind of ['controller', 'client'] as const) {
         if (!kinds.includes(kind)) continue;
         const child = children.find(candidate => candidate.kind === kind);
+        const expected = expectedSpecs.find(spec => spec.key === `${botId}:${kind}`);
+        const command = await processCommand(child.pid);
+        if (!expected || command !== expected.command.join(' ')) throw new Error(`refusing to signal PID ${child.pid}: process command does not match ${botId}:${kind}`);
         process.kill(child.pid, 0);
         process.kill(child.pid, 'SIGTERM');
         pids[kind] = child.pid;
@@ -225,8 +266,8 @@ async function processNext(): Promise<boolean> {
 
     const path = join(PENDING_DIR, files[0]);
     const info = await lstat(path);
-    if (!info.isFile() || info.isSymbolicLink()) {
-        await archive(path, REJECTED_DIR, null, { ok: false, error: 'work order must be a regular file' });
+    if (!info.isFile() || info.isSymbolicLink() || info.size <= 0 || info.size > 16_384) {
+        await archive(path, REJECTED_DIR, null, { ok: false, error: 'work order must be a regular file no larger than 16 KiB' });
         return true;
     }
 
@@ -250,36 +291,75 @@ async function processNext(): Promise<boolean> {
     }
 
     const state = loadState(rawState);
+    const now = Date.now();
+    if (!canProcessWorkOrderId(state.processedOrderIds, typed.id)) {
+        const error = 'work-order id has already been processed';
+        await archive(path, REJECTED_DIR, typed, { ok: false, error });
+        await publishStatus({ phase: 'idle', lastResult: 'rejected', lastError: error, lastWorkOrderId: typed.id });
+        return true;
+    }
+    // Reserve every valid ID before any policy decision or side effect. Rejected IDs
+    // remain immutable tombstones so a later payload cannot reuse the identity.
+    state.processedOrderIds = [...state.processedOrderIds, typed.id];
+    await atomicJson(STATE_PATH, state, 0o600);
     const isScale = typed.action === 'add_account' || typed.action === 'remove_account';
     const isReactivation = typed.action === 'add_account' && context.disabledLiteBots?.has(typed.botId);
-    if (isScale && !isReactivation && !canScaleFleet(state.lastScaleAt, Date.now(), SCALE_COOLDOWN_MS)) {
+    if (!canAcceptReviewOrder(state.recentOrders, typed.botId, now)) {
+        const error = 'five-minute review budget allows at most three distinct account targets';
+        await archive(path, REJECTED_DIR, typed, { ok: false, error });
+        await publishStatus({ lastResult: 'rejected', lastError: error, lastWorkOrderId: typed.id });
+        return true;
+    }
+    if (isScale && !isReactivation && !canScaleFleet(state.lastScaleAt, now, SCALE_COOLDOWN_MS)) {
         const error = 'fleet scale action is inside the fifteen-minute cooldown';
         await archive(path, REJECTED_DIR, typed, { ok: false, error });
         await publishStatus({ lastResult: 'rejected', lastError: error, lastWorkOrderId: typed.id });
         return true;
     }
-    if (!isScale && !canRestartController(state.lastRestartAt[typed.botId], Date.now(), RESTART_COOLDOWN_MS)) {
+    if (!isScale && !canRestartController(state.lastRestartAt[typed.botId], now, RESTART_COOLDOWN_MS)) {
         const error = 'account lifecycle restart is inside the five-minute cooldown';
         await archive(path, REJECTED_DIR, typed, { ok: false, error });
         await publishStatus({ lastResult: 'rejected', lastError: error, lastWorkOrderId: typed.id });
         return true;
     }
+    if (!isScale) {
+        const definition = (manifest?.bots ?? []).find((candidate: any) => candidate.id === typed.botId);
+        const status = definition?.statusPath ? await readJson(join(REPO_ROOT, definition.statusPath)) : null;
+        if (!canAdvanceRecovery(typed.action as RecoveryAttempt['action'], state.recovery[typed.botId], status?.updatedAt)) {
+            const error = 'stale lifecycle recovery must escalate client -> controller -> full account';
+            await archive(path, REJECTED_DIR, typed, { ok: false, error });
+            await publishStatus({ lastResult: 'rejected', lastError: error, lastWorkOrderId: typed.id });
+            return true;
+        }
+    }
+
+    const acceptedAt = new Date(now).toISOString();
+    state.recentOrders = state.recentOrders.filter(entry => {
+        const parsed = Date.parse(entry.acceptedAt);
+        return Number.isFinite(parsed) && now - parsed >= 0 && now - parsed < 5 * 60_000;
+    });
+    state.recentOrders.push({ botId: typed.botId, acceptedAt });
+    if (isScale) {
+        state.lastScaleAt = acceptedAt;
+    } else {
+        state.lastRestartAt[typed.botId] = acceptedAt;
+        state.recovery[typed.botId] = { action: typed.action as RecoveryAttempt['action'], attemptedAt: acceptedAt };
+    }
+    await atomicJson(STATE_PATH, state);
 
     try {
         let details: Record<string, unknown>;
         if (isScale) {
             details = await applyScaleAction(typed, manifest);
-            state.lastScaleAt = new Date().toISOString();
         } else {
             const kinds: Array<'client' | 'controller'> = typed.action === 'restart_controller'
                 ? ['controller']
                 : typed.action === 'restart_client' ? ['client'] : ['client', 'controller'];
-            const previousPids = await signalLifecycle(supervisor, typed.botId, kinds);
+            const previousPids = await signalLifecycle(supervisor, manifest, typed.botId, kinds);
             const verified = await waitForSupervisor(typed.botId, true, previousPids);
             details = { previousPids, supervisorVerified: verified };
-            state.lastRestartAt[typed.botId] = new Date().toISOString();
         }
-        await atomicJson(STATE_PATH, state);
+        if (!supervisorVerificationSucceeded(details)) throw new Error('post-action supervisor verification failed');
         const freshManifest = await readJson(MANIFEST_PATH);
         const freshContext = validationContext(freshManifest);
         await archive(path, COMPLETED_DIR, typed, {
@@ -305,7 +385,11 @@ async function processNext(): Promise<boolean> {
 }
 
 await Promise.all([PENDING_DIR, COMPLETED_DIR, REJECTED_DIR].map(path => mkdir(path, { recursive: true })));
-await publishStatus({ phase: 'starting', lastResult: 'starting' });
+await mkdir(PRIVATE_STATE_DIR, { recursive: true, mode: 0o700 });
+const privateStateInfo = await lstat(PRIVATE_STATE_DIR);
+if (!privateStateInfo.isDirectory() || privateStateInfo.isSymbolicLink()) throw new Error('private reconciler state path must be a regular directory');
+await chmod(PRIVATE_STATE_DIR, 0o700);
+await publishStatus({ phase: 'starting', lastResult: 'starting', lastError: null });
 console.log(`[fleetbrain-reconciler] watching ${PENDING_DIR}; actions=${ACTIONS.join(',')}; maxAccounts=${HARD_MAX_ACCOUNTS}`);
 
 let stopping = false;

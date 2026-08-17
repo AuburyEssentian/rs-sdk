@@ -1,9 +1,27 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { rename, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { runScript, type ScriptContext } from '../sdk/runner';
 import { shouldExitForRestart } from '../bots/FSZ6yjrsA/reliability';
 import { uniqueItemTypes } from '../bots/Fszminer1/miner-model';
-import { chooseWorkerAction, COPPER_ROCK_IDS, roleProfile, shouldPassAlKharidToll, TIN_ROCK_IDS, type FleetRole, type WorkerAction } from './worker-model';
+import {
+    chooseWorkerAction,
+    COPPER_ROCK_IDS,
+    FLEET_BANKER_PATTERN,
+    fundingClaimSatisfied,
+    gaveFundingInTrade,
+    receivedFundingFromTrades,
+    roleProfile,
+    selectWorkerDirective,
+    shouldPassAlKharidToll,
+    validateFundingReceipt,
+    validateFundingReceiptTombstone,
+    TIN_ROCK_IDS,
+    type FleetRole,
+    type StrategicWorkerDirective,
+    type WorkerAction,
+} from './worker-model';
 
 const BOT_ID = process.argv[2];
 const ROLE = process.argv[3] as FleetRole;
@@ -14,6 +32,13 @@ if (!BOT_ID || !['smith', 'fish', 'cook', 'wood', 'thief', 'rune', 'banker', 'fl
 const BOT_DIR = `bots/${BOT_ID}`;
 const STATUS_PATH = `${BOT_DIR}/status.json`;
 const BOOTSTRAP_PATH = `${BOT_DIR}/fleet-bootstrap.done`;
+const DIRECTIVES_PATH = `${import.meta.dir}/brain/runtime/worker-directives.json`;
+const PUBLIC_DIRECTIVE_RESULTS_DIR = `${import.meta.dir}/brain/runtime/directive-results`;
+const PRIVATE_DIRECTIVE_STATE_DIR = process.env.FLEET_PRIVATE_STATE_DIR
+    ?? `${homedir()}/.hermes/fleetbrain-worker-state`;
+const DIRECTIVE_RESULTS_DIR = `${PRIVATE_DIRECTIVE_STATE_DIR}/directive-results`;
+const DIRECTIVE_CLAIMS_DIR = `${PRIVATE_DIRECTIVE_STATE_DIR}/directive-claims`;
+const DIRECTIVE_ATTEMPTS_DIR = `${PRIVATE_DIRECTIVE_STATE_DIR}/directive-attempts`;
 const SUPPLY_REQUESTERS = ['Fszfish1', 'Fszcook1'] as const;
 const VARROCK_BANK = { x: 3185, z: 3436 };
 const DRAYNOR_BANK = { x: 3092, z: 3243 };
@@ -28,9 +53,17 @@ let failures = 0;
 let lastStatusAt = 0;
 let detail = 'Starting fleet worker';
 let activity = profile.label.toLowerCase();
+let currentDirective: StrategicWorkerDirective | null = null;
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function ensurePrivateDirectory(path: string): void {
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    const info = lstatSync(path);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`private state path is not a regular directory: ${path}`);
+    chmodSync(path, 0o700);
 }
 
 function pendingSupplyRequest(): any | null {
@@ -47,6 +80,206 @@ function pendingSupplyRequest(): any | null {
 
 function supplyRequestPath(requester: string): string {
     return `${import.meta.dir}/supply-${requester}.json`;
+}
+
+function readDirectives(): any {
+    try {
+        return JSON.parse(readFileSync(DIRECTIVES_PATH, 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+function mirrorPublicReceipt(id: string, receipt: unknown): void {
+    if (!existsSync(PUBLIC_DIRECTIVE_RESULTS_DIR)) mkdirSync(PUBLIC_DIRECTIVE_RESULTS_DIR, { recursive: true, mode: 0o700 });
+    const directory = lstatSync(PUBLIC_DIRECTIVE_RESULTS_DIR);
+    if (!directory.isDirectory() || directory.isSymbolicLink()) throw new Error('public directive-results path is not a regular directory');
+    const path = `${PUBLIC_DIRECTIVE_RESULTS_DIR}/${id}.json`;
+    const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    renameSync(tmp, path);
+}
+
+function completedDirectiveIds(raw: any): Set<string> {
+    const completed = new Set<string>();
+    if (!Array.isArray(raw?.directives)) return completed;
+    for (const candidate of raw.directives.slice(0, 5)) {
+        const id = candidate?.id;
+        if (typeof id !== 'string' || !/^fd-[a-z0-9][a-z0-9-]{7,79}$/.test(id)) continue;
+        try {
+            const path = `${DIRECTIVE_RESULTS_DIR}/${id}.json`;
+            const info = lstatSync(path);
+            if (!info.isFile() || info.isSymbolicLink() || info.size <= 0 || info.size > 4_096) continue;
+            const receipt = JSON.parse(readFileSync(path, 'utf8'));
+            if (validateFundingReceiptTombstone(receipt, id)) {
+                completed.add(id);
+                try { unlinkSync(`${DIRECTIVE_ATTEMPTS_DIR}/${id}.json`); } catch {}
+                try { unlinkSync(`${DIRECTIVE_CLAIMS_DIR}/${id}.json`); } catch {}
+                let publicValid = false;
+                try {
+                    const publicPath = `${PUBLIC_DIRECTIVE_RESULTS_DIR}/${id}.json`;
+                    const publicInfo = lstatSync(publicPath);
+                    publicValid = publicInfo.isFile() && !publicInfo.isSymbolicLink() && publicInfo.size > 0 && publicInfo.size <= 4_096
+                        && validateFundingReceiptTombstone(JSON.parse(readFileSync(publicPath, 'utf8')), id);
+                } catch {}
+                if (!publicValid) mirrorPublicReceipt(id, receipt);
+            }
+        } catch {}
+    }
+    return completed;
+}
+
+function activeDirectiveFor(botId: string, role: FleetRole): StrategicWorkerDirective | null {
+    const raw = readDirectives();
+    return selectWorkerDirective(raw, botId, role, Date.now(), completedDirectiveIds(raw));
+}
+
+function incomingFundingDirective(): StrategicWorkerDirective | null {
+    const raw = readDirectives();
+    if (!Array.isArray(raw?.directives)) return null;
+    const completed = completedDirectiveIds(raw);
+    for (const candidate of raw.directives) {
+        if (candidate?.mode !== 'fund-banker' || !['thief', 'rune'].includes(candidate?.role)) continue;
+        const selected = selectWorkerDirective(raw, candidate.botId, candidate.role, Date.now(), completed);
+        if (selected) return selected;
+    }
+    return null;
+}
+
+interface FundingClaim {
+    version: 1;
+    directiveId: string;
+    botId: string;
+    amount: number;
+    beforeCoins: number;
+    createdAt: string;
+}
+
+interface FundingAttempt {
+    version: 1;
+    directiveId: string;
+    botId: string;
+    amount: number;
+    createdAt: string;
+}
+
+function directiveResultPath(id: string): string {
+    return `${DIRECTIVE_RESULTS_DIR}/${id}.json`;
+}
+
+function directiveClaimPath(id: string): string {
+    return `${DIRECTIVE_CLAIMS_DIR}/${id}.json`;
+}
+
+function directiveAttemptPath(id: string): string {
+    return `${DIRECTIVE_ATTEMPTS_DIR}/${id}.json`;
+}
+
+function readFundingAttempt(directive: StrategicWorkerDirective): FundingAttempt | null {
+    try {
+        const path = directiveAttemptPath(directive.id);
+        const info = lstatSync(path);
+        if (!info.isFile() || info.isSymbolicLink() || info.size <= 0 || info.size > 4_096) return null;
+        const attempt = JSON.parse(readFileSync(path, 'utf8'));
+        const keys = ['version', 'directiveId', 'botId', 'amount', 'createdAt'];
+        if (!attempt || typeof attempt !== 'object' || Object.keys(attempt).length !== keys.length
+            || !keys.every(key => Object.prototype.hasOwnProperty.call(attempt, key))) return null;
+        if (attempt.version !== 1 || attempt.directiveId !== directive.id || attempt.botId !== directive.botId
+            || attempt.amount !== directive.amount || !Number.isFinite(Date.parse(attempt.createdAt))) return null;
+        return attempt as FundingAttempt;
+    } catch {
+        return null;
+    }
+}
+
+function beginFundingAttempt(directive: StrategicWorkerDirective): boolean {
+    if (readFundingAttempt(directive)) return false;
+    ensurePrivateDirectory(DIRECTIVE_ATTEMPTS_DIR);
+    const attempt: FundingAttempt = {
+        version: 1,
+        directiveId: directive.id,
+        botId: directive.botId,
+        amount: directive.amount,
+        createdAt: new Date().toISOString(),
+    };
+    try {
+        writeFileSync(directiveAttemptPath(directive.id), `${JSON.stringify(attempt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+        return true;
+    } catch {
+        if (readFundingAttempt(directive)) return false;
+        throw new Error('funding-attempt marker exists but is invalid');
+    }
+}
+
+function inventoryCoins(sdk: any): number {
+    return sdk.getInventory()
+        .filter((item: any) => /^coins$/i.test(item.name))
+        .reduce((sum: number, item: any) => sum + item.count, 0);
+}
+
+function readFundingClaim(directive: StrategicWorkerDirective): FundingClaim | null {
+    const path = directiveClaimPath(directive.id);
+    try {
+        const info = lstatSync(path);
+        if (!info.isFile() || info.isSymbolicLink() || info.size > 4_096) return null;
+        const claim = JSON.parse(readFileSync(path, 'utf8'));
+        const keys = ['version', 'directiveId', 'botId', 'amount', 'beforeCoins', 'createdAt'];
+        if (!claim || typeof claim !== 'object' || Object.keys(claim).length !== keys.length
+            || !keys.every(key => Object.prototype.hasOwnProperty.call(claim, key))) return null;
+        if (claim.version !== 1 || claim.directiveId !== directive.id || claim.botId !== directive.botId) return null;
+        if (claim.amount !== directive.amount || !Number.isInteger(claim.beforeCoins) || claim.beforeCoins < 0) return null;
+        if (!Number.isFinite(Date.parse(claim.createdAt))) return null;
+        return claim as FundingClaim;
+    } catch {
+        return null;
+    }
+}
+
+async function ensureFundingClaim(directive: StrategicWorkerDirective, beforeCoins: number): Promise<FundingClaim | null> {
+    const existing = readFundingClaim(directive);
+    if (existing) return existing;
+    ensurePrivateDirectory(DIRECTIVE_CLAIMS_DIR);
+    const claim: FundingClaim = {
+        version: 1,
+        directiveId: directive.id,
+        botId: directive.botId,
+        amount: directive.amount,
+        beforeCoins,
+        createdAt: new Date().toISOString(),
+    };
+    try {
+        await writeFile(directiveClaimPath(directive.id), `${JSON.stringify(claim, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+        return claim;
+    } catch {
+        return readFundingClaim(directive);
+    }
+}
+
+async function completeDirective(
+    directive: StrategicWorkerDirective,
+    result: { from: string; to: string; amount: number; recoveredFromClaim: boolean },
+): Promise<void> {
+    const receipt = {
+        version: 1,
+        directiveId: directive.id,
+        botId: directive.botId,
+        mode: 'fund-banker',
+        completedAt: new Date().toISOString(),
+        ok: true,
+        from: result.from,
+        to: result.to,
+        amount: result.amount,
+        recoveredFromClaim: result.recoveredFromClaim,
+    };
+    if (!validateFundingReceipt(receipt, directive)) throw new Error('refusing to write invalid funding receipt');
+    ensurePrivateDirectory(DIRECTIVE_RESULTS_DIR);
+    const path = directiveResultPath(directive.id);
+    const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    await writeFile(tmp, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    await rename(tmp, path);
+    mirrorPublicReceipt(directive.id, receipt);
+    await unlink(directiveClaimPath(directive.id)).catch(() => {});
+    await unlink(directiveAttemptPath(directive.id)).catch(() => {});
 }
 
 function levelsFromState(state: any): Record<string, number> {
@@ -81,6 +314,12 @@ async function persistStatus(sdk: any, force = false): Promise<void> {
         totalLevel: Object.values(levels).reduce((sum: number, value) => sum + Number(value), 0),
         inventorySlots: inventory.length,
         inventory,
+        directive: currentDirective ? {
+            id: currentDirective.id,
+            mode: currentDirective.mode,
+            reason: currentDirective.reason,
+            expiresAt: currentDirective.expiresAt,
+        } : null,
     };
     const tmp = `${STATUS_PATH}.tmp`;
     await writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`);
@@ -571,6 +810,67 @@ async function thieve(sdk: any, bot: any, label = 'cash generation'): Promise<vo
     await note(sdk, label, result.success ? 'Pickpocket attempt' : result.message, result.success);
 }
 
+async function fundBanker(sdk: any, bot: any, directive: StrategicWorkerDirective): Promise<void> {
+    const coins = inventoryCoins(sdk);
+    if (coins < directive.amount + 100) {
+        await note(sdk, 'strategic funding', `Need ${directive.amount + 100} Coins before funding fleet banker`, false);
+        return;
+    }
+    const walked = await bot.walkTo(VARROCK_BANK.x, VARROCK_BANK.z);
+    if (!walked.success) {
+        await note(sdk, 'strategic funding', `Could not reach fleet banker: ${walked.message}`, false);
+        return;
+    }
+    if (!beginFundingAttempt(directive)) {
+        await note(sdk, 'strategic funding', `Funding attempt ${directive.id} is awaiting banker reconciliation`, false);
+        return;
+    }
+    const beforeTradeCoins = inventoryCoins(sdk);
+    const result = await bot.trade(FLEET_BANKER_PATTERN, {
+        give: [{ item: /^coins$/i, amount: directive.amount }],
+        want: [],
+        timeout: 120_000,
+    });
+    const afterTradeCoins = inventoryCoins(sdk);
+    const verified = gaveFundingInTrade(result, directive) && beforeTradeCoins - afterTradeCoins >= directive.amount;
+    await note(sdk, 'strategic funding', verified
+        ? `Transferred ${directive.amount} Coins to Fszbank1; awaiting banker receipt for ${directive.id}`
+        : `Banker funding was not verified: ${result.message}`, verified);
+}
+
+async function receiveStrategicFunding(sdk: any, bot: any, directive: StrategicWorkerDirective): Promise<void> {
+    const claim = await ensureFundingClaim(directive, inventoryCoins(sdk));
+    if (!claim) {
+        await note(sdk, 'strategic funding', `Funding claim for ${directive.id} is missing or invalid`, false);
+        return;
+    }
+    if (fundingClaimSatisfied(claim, inventoryCoins(sdk))) {
+        await completeDirective(directive, { from: directive.botId, to: 'Fszbank1', amount: directive.amount, recoveredFromClaim: true });
+        await note(sdk, 'strategic funding', `Recovered verified ${directive.amount}-Coin receipt for ${directive.id}`);
+        return;
+    }
+    const walked = await bot.walkTo(VARROCK_BANK.x, VARROCK_BANK.z);
+    if (!walked.success) {
+        await note(sdk, 'strategic funding', `Could not reach funding rendezvous: ${walked.message}`, false);
+        return;
+    }
+    const result = await bot.serveTrades({
+        from: new RegExp(`^${directive.botId}$`, 'i'),
+        want: [{ item: /^coins$/i, amount: directive.amount }],
+        maxTrades: 1,
+        timeout: 120_000,
+        tradeTimeout: 120_000,
+    });
+    const verified = receivedFundingFromTrades(result, directive)
+        && fundingClaimSatisfied(claim, inventoryCoins(sdk));
+    if (verified) {
+        await completeDirective(directive, { from: directive.botId, to: 'Fszbank1' as const, amount: directive.amount, recoveredFromClaim: false });
+    }
+    await note(sdk, 'strategic funding', verified
+        ? `Received and verified ${directive.amount} Coins from ${directive.botId} for ${directive.id}`
+        : `Funding receipt was not verified: ${result.message}`, verified);
+}
+
 const runResult = await runScript(async ({ sdk, bot }: ScriptContext) => {
     await bootstrap(sdk, bot);
     await persistStatus(sdk, true);
@@ -578,13 +878,16 @@ const runResult = await runScript(async ({ sdk, bot }: ScriptContext) => {
         await dismissDialog(sdk);
         const state = sdk.getState();
         if (!state?.player) throw new Error('No live player state');
+        const fundingDirective = ROLE === 'banker' ? incomingFundingDirective() : null;
+        currentDirective = ROLE === 'banker' ? fundingDirective : activeDirectiveFor(BOT_ID, ROLE);
         let action = chooseWorkerAction(ROLE, {
             inventory: sdk.getInventory().map((item: any) => ({ name: item.name, count: item.count })),
             inventorySlots: sdk.getInventory().length,
             hp: state.player.hp,
             maxHp: state.player.maxHp,
-        });
-        if (ROLE === 'banker' && pendingSupplyRequest()) action = 'serve-trades';
+        }, currentDirective);
+        if (ROLE === 'banker' && fundingDirective) action = 'receive-funding';
+        else if (ROLE === 'banker' && pendingSupplyRequest()) action = 'serve-trades';
         if (ROLE === 'rune' && pendingSupplyRequest()?.item === 'Small fishing net') action = 'supply-net';
         activity = profile.label.toLowerCase();
         detail = `Next deterministic action: ${action}`;
@@ -607,6 +910,8 @@ const runResult = await runScript(async ({ sdk, bot }: ScriptContext) => {
             await note(sdk, 'health recovery', 'Waiting safely for hitpoint regeneration');
             await delay(30_000);
         } else if (action === 'thieve') await thieve(sdk, bot);
+        else if (action === 'fund-banker' && currentDirective) await fundBanker(sdk, bot, currentDirective);
+        else if (action === 'receive-funding' && fundingDirective) await receiveStrategicFunding(sdk, bot, fundingDirective);
         else if (action === 'bootstrap-cash') await thieve(sdk, bot, 'runecrafting bootstrap cash');
         else if (action === 'serve-trades') {
             const request = ROLE === 'banker' ? pendingSupplyRequest() : null;

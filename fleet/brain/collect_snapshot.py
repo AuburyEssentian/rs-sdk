@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from snapshot_model import bounded_worker_directives, recent_directive_receipts
+
 ROOT = Path(os.environ.get("FLEET_REPO_ROOT", Path(__file__).resolve().parents[2]))
 BRAIN = ROOT / "fleet" / "brain"
 RUNTIME = BRAIN / "runtime"
@@ -115,11 +117,20 @@ payload = {
         "strategicWriter": "fleetbrain",
         "gameplay": "deterministic-workers-only",
         "allowedAutomaticMutations": ["restart_controller", "restart_client", "restart_account", "add_account", "remove_account"],
+        "allowedStrategicDirectives": {
+            "path": "fleet/brain/runtime/worker-directives.json",
+            "modes": ["fund-banker"],
+            "roles": ["thief", "rune"],
+            "fundingAmountRange": [100, 5000],
+            "workerCoinReserve": 100,
+        },
         "hardMaxAccounts": min(20, int((manifest.get("limits") or {}).get("maxAccounts", 20))),
         "protectedAccounts": list((manifest.get("limits") or {}).get("protectedAccounts", ["FSZ6yjrsA"])),
         "removalPolicy": "disable-and-archive; never delete character data or credentials",
         "allowedNewRoleKeys": ["smith", "fish", "cook", "wood", "thief", "rune", "banker", "flex"],
         "restartCooldown": "five minutes per account",
+        "reviewBudget": "host-enforced maximum of three distinct account targets per rolling five minutes",
+        "recoveryProgression": "host-enforced client -> controller -> full account while telemetry remains stale",
         "scaleCooldown": "fifteen minutes; reactivation is an immediate rollback exception",
         "dashboard": "strictly-read-only",
     },
@@ -142,6 +153,8 @@ payload = {
         "shortTermGoals": [],
         "progressEvidence": [],
     }),
+    "workerDirectives": bounded_worker_directives(RUNTIME / "worker-directives.json"),
+    "directiveResults": recent_directive_receipts(RUNTIME / "directive-results"),
     "logistics": read_json(ROOT / "fleet" / "logistics.json", {}),
     "supplyRequests": supply_requests,
     "controlPlane": {

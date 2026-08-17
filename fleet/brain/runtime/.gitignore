@@ -10,3 +10,5 @@ work-orders/completed/*.json
 work-orders/completed/*.result.json
 work-orders/rejected/*.json
 work-orders/rejected/*.result.json
+worker-directives.json
+directive-results/
